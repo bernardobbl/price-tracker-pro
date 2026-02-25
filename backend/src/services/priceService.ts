@@ -2,12 +2,14 @@ import fs from "fs";
 import path from "path";
 import { supabase } from "../config/supabaseClient";
 import { scrapeMercadoLivrePrice } from "../scrapers/mercadoLivreScraper";
+import { evaluateAlertsForPrice } from "./alertService";
 
 export interface ProductToTrack {
   id: string;
   name: string;
   searchQuery: string;
   marketplace: "mercado-livre";
+  user_id?: string;
 }
 export interface PriceHistoryItem {
   date: string;
@@ -68,12 +70,13 @@ export async function trackAndStorePrice(product: ProductToTrack) {
 
   appendToCsv(product.id, record);
 
-  if (supabase) {
+  if (supabase && product.user_id) {
     const { error } = await supabase.from("prices").insert({
-      product_id: product.id,
-      product_name: product.name,
+      user_id: product.user_id,
+      tracked_product_id: product.id,
       date: now,
-      price: scraped.price,
+      full_price: fullPrice,
+      discounted_price: scraped.price,
       currency: scraped.currency,
       title: scraped.title,
       url: scraped.url
@@ -84,12 +87,21 @@ export async function trackAndStorePrice(product: ProductToTrack) {
     }
   }
 
+  await evaluateAlertsForPrice({
+    productId: product.id,
+    currentPrice: record.discountedPrice,
+    fullPrice: record.fullPrice,
+    currency: record.currency,
+    title: record.title,
+    url: record.url
+  });
+
   console.log(`[PriceService] Preço registrado para ${product.id}: R$ ${scraped.price}`);
 
   return record;
 }
 
-export async function getPriceHistory(productId: string): Promise<PriceHistoryItem[]> {
+export async function getPriceHistory(productId: string, _userId?: string | null): Promise<PriceHistoryItem[]> {
   const csvPath = getCsvPath(productId);
   const itemsFromCsv: PriceHistoryItem[] = [];
 
@@ -115,11 +127,12 @@ export async function getPriceHistory(productId: string): Promise<PriceHistoryIt
     }
   }
 
-  if (supabase) {
+  if (supabase && _userId) {
     const { data, error } = await supabase
       .from("prices")
       .select("*")
-      .eq("product_id", productId)
+      .eq("user_id", _userId)
+      .eq("tracked_product_id", productId)
       .order("date", { ascending: true });
 
     if (error) {
@@ -127,8 +140,8 @@ export async function getPriceHistory(productId: string): Promise<PriceHistoryIt
     } else if (data) {
       return data.map((row) => ({
         date: row.date,
-        fullPrice: row.price,
-        discountedPrice: row.price,
+        fullPrice: Number(row.full_price),
+        discountedPrice: Number(row.discounted_price),
         currency: row.currency,
         title: row.title,
         url: row.url

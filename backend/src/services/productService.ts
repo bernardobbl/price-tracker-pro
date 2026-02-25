@@ -6,6 +6,7 @@ export interface CreateProductInput {
   name: string;
   searchQuery: string;
   marketplace?: "mercado-livre";
+  userId?: string;
 }
 
 // Fallback em memória quando Supabase não está configurado
@@ -18,24 +19,27 @@ const FALLBACK_PRODUCTS: ProductToTrack[] = [
   }
 ];
 
-function mapRowToProduct(row: any): ProductToTrack {
+function mapRowToProduct(row: { id: string; name: string; search_query: string; marketplace: string; user_id?: string }): ProductToTrack {
   return {
     id: row.id,
     name: row.name,
     searchQuery: row.search_query,
-    marketplace: row.marketplace as "mercado-livre"
+    marketplace: row.marketplace as "mercado-livre",
+    user_id: row.user_id
   };
 }
 
-export async function listProducts(): Promise<ProductToTrack[]> {
+export async function listProducts(userId?: string | null): Promise<ProductToTrack[]> {
   if (!supabase) {
     return FALLBACK_PRODUCTS;
   }
 
-  const { data, error } = await supabase
+  const query = supabase
     .from("tracked_products")
-    .select("id, name, search_query, marketplace")
+    .select("id, name, search_query, marketplace, user_id")
     .order("created_at", { ascending: true });
+
+  const { data, error } = await (userId ? query.eq("user_id", userId) : query);
 
   if (error) {
     console.error("[Supabase] Erro ao listar produtos:", error.message);
@@ -47,17 +51,25 @@ export async function listProducts(): Promise<ProductToTrack[]> {
   return data.map(mapRowToProduct);
 }
 
-export async function getProductById(id: string): Promise<ProductToTrack | null> {
+export async function getProductById(
+  id: string,
+  userId?: string | null
+): Promise<ProductToTrack | null> {
   if (!supabase) {
     const found = FALLBACK_PRODUCTS.find((p) => p.id === id);
     return found ?? null;
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("tracked_products")
-    .select("id, name, search_query, marketplace")
-    .eq("id", id)
-    .maybeSingle();
+    .select("id, name, search_query, marketplace, user_id")
+    .eq("id", id);
+
+  if (userId) {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     console.error("[Supabase] Erro ao buscar produto:", error.message);
@@ -92,9 +104,10 @@ export async function createProduct(input: CreateProductInput): Promise<ProductT
       id: input.id,
       name: input.name,
       search_query: input.searchQuery,
-      marketplace
+      marketplace,
+      user_id: input.userId
     })
-    .select("id, name, search_query, marketplace")
+    .select("id, name, search_query, marketplace, user_id")
     .maybeSingle();
 
   if (error) {
