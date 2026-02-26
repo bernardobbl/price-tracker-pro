@@ -6,7 +6,7 @@ import { getPriceHistory, trackAndStorePrice } from "./services/priceService";
 import { createProduct, getProductById, listProducts } from "./services/productService";
 import type { AuthenticatedRequest } from "./middleware/authMiddleware";
 import { requireAuth } from "./middleware/authMiddleware";
-import { createOrUpdateAlert, listAlertsByUser } from "./services/alertService";
+import { createOrUpdateAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 
 const app = express();
 app.use(cors());
@@ -93,7 +93,7 @@ app.post("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(401).json({ error: "Usuário não autenticado" });
     }
 
-    const { productId, thresholdPrice, currency, channel, enabled } = req.body;
+    const { productId, thresholdPrice, currency, channel, enabled, currentPrice, productName, productUrl } = req.body;
 
     if (!productId || typeof thresholdPrice !== "number") {
       return res
@@ -106,10 +106,25 @@ app.post("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
       productId,
       thresholdPrice,
       currency,
-      // por enquanto só suportamos email
       channel: channel ?? "email",
       enabled
     });
+
+    // Se preço atual foi enviado e já atinge o threshold, envia email imediatamente
+    const hasCurrentPrice =
+      typeof currentPrice === "number" && typeof productName === "string" && typeof productUrl === "string";
+    if (hasCurrentPrice && alert) {
+      await evaluateAlertImmediately({
+        alertId: alert.id,
+        userId,
+        productId,
+        thresholdPrice,
+        currentPrice,
+        currency: currency ?? "R$",
+        productName,
+        productUrl
+      });
+    }
 
     return res.status(201).json(alert);
   } catch (error) {

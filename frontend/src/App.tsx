@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createProduct, fetchPriceHistory, fetchProducts, trackPriceNow } from "./api/client";
 import type { PriceHistoryItem, TrackedProduct } from "./types";
@@ -31,7 +31,33 @@ function App() {
   const [alertError, setAlertError] = useState<string | null>(null);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
 
-  async function loadProductsAndMaybeSelect() {
+  const loadData = useCallback(async (id: string, currentProducts?: TrackedProduct[]) => {
+    try {
+      setLoading(true);
+      setError(null);
+      let data = await fetchPriceHistory(id);
+
+      // Se ainda não houver dados, dispara um rastreamento imediato e tenta de novo
+      if (data.length === 0) {
+        const productsList = currentProducts ?? products;
+        const exists = productsList.some((p) => p.id === id);
+        if (!exists) {
+          throw new Error("Produto não está configurado para rastreamento");
+        }
+
+        await trackPriceNow(id);
+        data = await fetchPriceHistory(id);
+      }
+
+      setHistory(data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro inesperado");
+    } finally {
+      setLoading(false);
+    }
+  }, [products]);
+
+  const loadProductsAndMaybeSelect = useCallback(async () => {
     try {
       const list = await fetchProducts();
       setProducts(list);
@@ -42,7 +68,7 @@ function App() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao carregar produtos");
     }
-  }
+  }, [selectedProductId, loadData]);
 
   useEffect(() => {
     if (!supabase) {
@@ -67,32 +93,6 @@ function App() {
     };
   }, []);
 
-  async function loadData(id: string, currentProducts?: TrackedProduct[]) {
-    try {
-      setLoading(true);
-      setError(null);
-      let data = await fetchPriceHistory(id);
-
-      // Se ainda não houver dados, dispara um rastreamento imediato e tenta de novo
-      if (data.length === 0) {
-        const productsList = currentProducts ?? products;
-        const exists = productsList.some((p) => p.id === id);
-        if (!exists) {
-          throw new Error("Produto não está configurado para rastreamento");
-        }
-
-        await trackPriceNow(id);
-        data = await fetchPriceHistory(id);
-      }
-
-      setHistory(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erro inesperado");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
     if (!supabase) {
       void loadProductsAndMaybeSelect();
@@ -107,7 +107,7 @@ function App() {
     }
 
     void loadProductsAndMaybeSelect();
-  }, [user]);
+  }, [user, loadProductsAndMaybeSelect]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,7 +248,10 @@ function App() {
           thresholdPrice: numericThreshold,
           currency: latest.currency,
           channel: "email",
-          enabled: true
+          enabled: true,
+          currentPrice: latest.discountedPrice,
+          productName: latest.title,
+          productUrl: latest.url
         })
       });
 
