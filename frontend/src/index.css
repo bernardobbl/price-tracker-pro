@@ -161,15 +161,24 @@ body {
 
 .chart-container {
   margin-top: 0.75rem;
-  height: 320px;
+  height: 520px;
 }
 
 .footer {
   padding: 0.75rem 2rem 1.25rem;
   font-size: 0.8rem;
   color: #9ca3af;
-  border-top: 1px solid rgba(148, 163, 184, 0.3);
-  background: rgba(15, 23, 42, 0.95);
+  background: transparent;
+}
+
+/* Remove setas do input number */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 .footer code {
@@ -179,3 +188,77 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.6);
 }
 
+/* ── Auth logado ── */
+.auth-row--logged {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 0.75rem;
+}
+
+.auth-email {
+  font-size: 0.875rem;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+}
+
+.btn-logout {
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.btn-logout:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.8);
+  transform: translateY(-1px);
+}
+
+/* ── Lista de produtos buscados ── */
+.product-links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.product-links-list li {
+  margin: 0;
+}
+
+.product-link {
+  display: block;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e5e7eb;
+  text-decoration: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.product-link:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.product-link-title {
+  font-size: 0.9rem;
+  color: #60a5fa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

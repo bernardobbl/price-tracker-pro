@@ -5,6 +5,13 @@ import type { PriceHistoryItem, TrackedProduct } from "./types";
 import { PriceChart } from "./components/PriceChart";
 import { supabase } from "./supabaseClient";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+
+interface SearchResultItem {
+  title: string;
+  url: string;
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -21,34 +28,43 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [newProduct, setNewProduct] = useState({
-    id: "",
-    name: "",
-    searchQuery: ""
-  });
+  const [newProductName, setNewProductName] = useState("");
   const [alertThreshold, setAlertThreshold] = useState("");
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
 
-  const loadData = useCallback(async (id: string, currentProducts?: TrackedProduct[]) => {
+  // ── Busca livre ──────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchResults([]);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) throw new Error("Erro ao buscar produtos");
+      const data: SearchResultItem[] = await res.json();
+      setSearchResults(data);
+    } catch (err: unknown) {
+      setSearchError(err instanceof Error ? err.message : "Erro inesperado na busca");
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+  // ────────────────────────────────────────────────────────────────────────
+
+  const loadData = useCallback(async (id: string) => {
     try {
       setLoading(true);
       setError(null);
-      let data = await fetchPriceHistory(id);
-
-      // Se ainda não houver dados, dispara um rastreamento imediato e tenta de novo
-      if (data.length === 0) {
-        const productsList = currentProducts ?? products;
-        const exists = productsList.some((p) => p.id === id);
-        if (!exists) {
-          throw new Error("Produto não está configurado para rastreamento");
-        }
-
-        await trackPriceNow(id);
-        data = await fetchPriceHistory(id);
-      }
-
+      const data = await fetchPriceHistory(id);
       setHistory(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
@@ -63,7 +79,7 @@ function App() {
       setProducts(list);
       if (!selectedProductId && list.length > 0) {
         setSelectedProductId(list[0].id);
-        void loadData(list[0].id, list);
+        void loadData(list[0].id);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao carregar produtos");
@@ -168,28 +184,28 @@ function App() {
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
-    const id = newProduct.id.trim();
-    const name = newProduct.name.trim();
-    const searchQuery = newProduct.searchQuery.trim();
-
-    if (!id || !name || !searchQuery) {
-      setCreateError("Preencha id, nome e busca.");
+    const name = newProductName.trim();
+    if (!name) {
+      setCreateError("Digite o nome do produto.");
       return;
     }
-
+    // Gera ID automático: "PlayStation 5" → "playstation-5"
+    const id = name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
     try {
       setCreating(true);
-      const created = await createProduct({
-        id,
-        name,
-        searchQuery,
-        marketplace: "mercado-livre"
-      });
+      const created = await createProduct({ id, name, searchQuery: name, marketplace: "mercado-livre" });
       const updatedProducts = [...products, created];
       setProducts(updatedProducts);
       setSelectedProductId(created.id);
-      setNewProduct({ id: "", name: "", searchQuery: "" });
-      await loadData(created.id, updatedProducts);
+      setNewProductName("");
+      // Dispara scraping imediato no backend
+      await trackPriceNow(created.id);
+      await loadData(created.id);
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : "Erro ao cadastrar produto");
     } finally {
@@ -278,9 +294,9 @@ function App() {
             {authLoading ? (
               <p className="muted">Verificando sessão...</p>
             ) : user ? (
-              <div className="auth-row">
-                <span className="meta">Logado como {user.email}</span>
-                <button type="button" onClick={handleLogout}>
+              <div className="auth-row auth-row--logged">
+                <span className="auth-email">👤 {user.email}</span>
+                <button type="button" className="btn-logout" onClick={handleLogout}>
                   Sair
                 </button>
               </div>
@@ -350,6 +366,12 @@ function App() {
 
           {error && <p className="error">{error}</p>}
 
+          {!loading && selectedProductId && history.length === 0 && (
+            <p className="muted" style={{ marginTop: "1rem" }}>
+              ⏳ Aguardando primeiro rastreamento pelo backend...
+            </p>
+          )}
+
           {latest && (
             <div className="summary">
               <h2>Último preço</h2>
@@ -409,29 +431,11 @@ function App() {
             <h2>Cadastrar novo produto</h2>
             <form className="form" onSubmit={handleCreateProduct}>
               <label>
-                ID (slug único):
+                Nome do produto:
                 <input
-                  value={newProduct.id}
-                  onChange={(e) => setNewProduct((p) => ({ ...p, id: e.target.value }))}
-                  placeholder="ps5, rtx-4070, iphone-15..."
-                />
-              </label>
-              <label>
-                Nome:
-                <input
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="PlayStation 5"
-                />
-              </label>
-              <label>
-                Termo de busca (Mercado Livre):
-                <input
-                  value={newProduct.searchQuery}
-                  onChange={(e) =>
-                    setNewProduct((p) => ({ ...p, searchQuery: e.target.value }))
-                  }
-                  placeholder="PlayStation 5 console"
+                  value={newProductName}
+                  onChange={(e) => setNewProductName(e.target.value)}
+                  placeholder="Ex: PlayStation 5, iPhone 15, RTX 4070..."
                 />
               </label>
               <button type="submit" disabled={creating}>
@@ -448,15 +452,8 @@ function App() {
         </section>
       </main>
 
-      <footer className="footer">
-        <span>
-          Backend em <code>http://localhost:4000</code> — ajuste <code>VITE_API_BASE_URL</code> se
-          necessário.
-        </span>
-      </footer>
     </div>
   );
 }
 
 export default App;
-

@@ -7,10 +7,14 @@ import { createProduct, getProductById, listProducts } from "./services/productS
 import type { AuthenticatedRequest } from "./middleware/authMiddleware";
 import { requireAuth } from "./middleware/authMiddleware";
 import { createOrUpdateAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
+import searchRouter from "./routes/searchRoute";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ── Rotas ──────────────────────────────────────────────────────────────────
+app.use("/api/search", searchRouter);
 
 const PORT = process.env.PORT || 4000;
 
@@ -18,7 +22,6 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-// Lista todos os produtos configurados para rastreamento
 app.get("/api/products", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
@@ -30,7 +33,6 @@ app.get("/api/products", requireAuth, async (req: AuthenticatedRequest, res) => 
   }
 });
 
-// Cadastra um novo produto para rastreamento
 app.post("/api/products", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
@@ -53,26 +55,31 @@ app.post("/api/products", requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 });
 
-// Dispara rastreamento imediato de um produto configurado
 app.post("/api/track/:productId", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
     const { productId } = req.params;
-    const product = await getProductById(productId, userId);
 
+    const product = await getProductById(productId, userId);
     if (!product) {
-      return res.status(404).json({ error: "Produto não configurado para rastreamento" });
+      return res.status(404).json({ error: "Produto não encontrado." });
     }
 
-    const record = await trackAndStorePrice(product);
-    res.status(201).json(record);
+    const record = await trackAndStorePrice({
+      id: product.id,
+      name: product.name,
+      searchQuery: product.searchQuery,
+      marketplace: "mercado-livre",
+      user_id: userId,
+    });
+
+    return res.status(201).json(record);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Erro ao rastrear preço" });
+    console.error("[/api/track] Erro ao rastrear preço:", error);
+    res.status(500).json({ error: "Erro ao registrar preço" });
   }
 });
 
-// Retorna histórico de preços para um produto
 app.get("/api/prices/:productId", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
@@ -85,44 +92,31 @@ app.get("/api/prices/:productId", requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
-// Cria ou atualiza alerta para um produto
 app.post("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Usuário não autenticado" });
-    }
+    if (!userId) return res.status(401).json({ error: "Usuário não autenticado" });
 
     const { productId, thresholdPrice, currency, channel, enabled, currentPrice, productName, productUrl } = req.body;
 
     if (!productId || typeof thresholdPrice !== "number") {
-      return res
-        .status(400)
-        .json({ error: "Campos obrigatórios: productId e thresholdPrice (number)" });
+      return res.status(400).json({ error: "Campos obrigatórios: productId e thresholdPrice (number)" });
     }
 
     const alert = await createOrUpdateAlert({
-      userId,
-      productId,
-      thresholdPrice,
-      currency,
-      channel: channel ?? "email",
-      enabled
+      userId, productId, thresholdPrice, currency,
+      channel: channel ?? "email", enabled,
     });
 
-    // Se preço atual foi enviado e já atinge o threshold, envia email imediatamente
     const hasCurrentPrice =
-      typeof currentPrice === "number" && typeof productName === "string" && typeof productUrl === "string";
+      typeof currentPrice === "number" &&
+      typeof productName === "string" &&
+      typeof productUrl === "string";
+
     if (hasCurrentPrice && alert) {
       await evaluateAlertImmediately({
-        alertId: alert.id,
-        userId,
-        productId,
-        thresholdPrice,
-        currentPrice,
-        currency: currency ?? "R$",
-        productName,
-        productUrl
+        alertId: alert.id, userId, productId, thresholdPrice,
+        currentPrice, currency: currency ?? "R$", productName, productUrl,
       });
     }
 
@@ -133,13 +127,10 @@ app.post("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// Lista alertas do usuário autenticado
 app.get("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Usuário não autenticado" });
-    }
+    if (!userId) return res.status(401).json({ error: "Usuário não autenticado" });
 
     const alerts = await listAlertsByUser(userId);
     return res.json(alerts);
@@ -153,4 +144,3 @@ app.listen(PORT, () => {
   console.log(`Backend rodando na porta ${PORT}`);
   scheduleDailyPriceJob();
 });
-
