@@ -71,7 +71,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [products]);
+  }, []);
 
   const loadProductsAndMaybeSelect = useCallback(async () => {
     try {
@@ -92,9 +92,12 @@ function App() {
       return;
     }
 
+    const timeout = setTimeout(() => setAuthLoading(false), 2000);
+
     void (async () => {
       const { data } = await supabase.auth.getSession();
       setUser(data.session?.user ?? null);
+      clearTimeout(timeout);
       setAuthLoading(false);
     })();
 
@@ -168,6 +171,9 @@ function App() {
   };
 
   const latest = history[history.length - 1];
+  const avgPrice = history.length > 1
+    ? history.reduce((sum, item) => sum + item.discountedPrice, 0) / history.length
+    : null;
   const selectedProduct = products.find((p) => p.id === selectedProductId);
   const listingUrl =
     selectedProduct?.marketplace === "mercado-livre"
@@ -241,8 +247,6 @@ function App() {
 
     try {
       setAlertSaving(true);
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
-
       const {
         data: { session }
       } = await supabase.auth.getSession();
@@ -284,60 +288,112 @@ function App() {
     }
   };
 
+  // Tela de loading
+  if (authLoading) {
+    return (
+      <div className="app">
+        <div className="auth-loading">Verificando sessão...</div>
+      </div>
+    );
+  }
+
+  // Tela de login (quando não autenticado e Supabase está ativo)
+  if (supabase && !user) {
+    return (
+      <div className="app">
+        <header className="header">
+          <div className="header-brand">
+            <h1>Price Tracker Pro</h1>
+            <p>Monitore preços do Mercado Livre</p>
+          </div>
+        </header>
+
+        <div className="auth-page">
+          <div className="auth-card">
+            <div className="auth-card-logo">
+              <h2>Price Tracker Pro</h2>
+              <p>Entre na sua conta para continuar</p>
+            </div>
+
+            <div className="auth-tabs">
+              <button
+                type="button"
+                className={`auth-tab${authMode === "login" ? " active" : ""}`}
+                onClick={() => { setAuthMode("login"); setAuthError(null); }}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                className={`auth-tab${authMode === "signup" ? " active" : ""}`}
+                onClick={() => { setAuthMode("signup"); setAuthError(null); }}
+              >
+                Criar conta
+              </button>
+            </div>
+
+            <form onSubmit={handleAuthSubmit}>
+              <div className="auth-fields">
+                <div className="input-group">
+                  <label htmlFor="auth-email">E-mail</label>
+                  <input
+                    id="auth-email"
+                    type="email"
+                    placeholder="seu@email.com"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+                <div className="input-group">
+                  <label htmlFor="auth-password">Senha</label>
+                  <input
+                    id="auth-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                    required
+                  />
+                </div>
+              </div>
+
+              {authError && <p className="error">{authError}</p>}
+
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ marginTop: authError ? "1rem" : "0.25rem" }}
+                disabled={authSubmitting}
+              >
+                {authSubmitting
+                  ? "Aguarde..."
+                  : authMode === "login"
+                    ? "Entrar na conta"
+                    : "Criar conta"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="header">
-        <h1>Price Tracker Pro</h1>
-        <p>Dashboard simples de evolução de preço</p>
-        {supabase && (
-          <div className="auth-panel">
-            {authLoading ? (
-              <p className="muted">Verificando sessão...</p>
-            ) : user ? (
-              <div className="auth-row auth-row--logged">
-                <span className="auth-email">👤 {user.email}</span>
-                <button type="button" className="btn-logout" onClick={handleLogout}>
-                  Sair
-                </button>
-              </div>
-            ) : (
-              <form className="auth-form" onSubmit={handleAuthSubmit}>
-                <div className="auth-row">
-                  <input
-                    type="email"
-                    placeholder="Seu email"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                  />
-                  <input
-                    type="password"
-                    placeholder="Senha"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                  />
-                </div>
-                <div className="auth-row" style={{ marginTop: "0.5rem" }}>
-                  <button type="submit" disabled={authSubmitting}>
-                    {authSubmitting
-                      ? "Enviando..."
-                      : authMode === "login"
-                        ? "Entrar"
-                        : "Cadastrar"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode((mode) => (mode === "login" ? "signup" : "login"))}
-                  >
-                    {authMode === "login" ? "Criar conta" : "Já tenho conta"}
-                  </button>
-                </div>
-                {authError && (
-                  <p className="error" style={{ marginTop: "0.5rem" }}>
-                    {authError}
-                  </p>
-                )}
-              </form>
-            )}
+        <div className="header-brand">
+          <h1>Price Tracker Pro</h1>
+          <p>Monitore preços do Mercado Livre</p>
+        </div>
+        {supabase && user && (
+          <div className="auth-row auth-row--logged">
+            <span className="auth-email">👤 {user.email}</span>
+            <button type="button" className="btn-logout" onClick={handleLogout}>
+              Sair
+            </button>
           </div>
         )}
       </header>
@@ -374,51 +430,62 @@ function App() {
 
           {latest && (
             <div className="summary">
-              <h2>Último preço</h2>
+              <h2>{avgPrice !== null ? "Média de preço" : "Preço atual"}</h2>
               <p className="price">
-                {latest.currency} {latest.discountedPrice.toFixed(2)}
+                {latest.currency}{" "}
+                {avgPrice !== null ? avgPrice.toFixed(2) : latest.discountedPrice.toFixed(2)}
               </p>
-              {latest.fullPrice > latest.discountedPrice && (
+
+              {avgPrice !== null && (
                 <p className="meta">
+                  Atual:{" "}
+                  <strong style={{ color: "#e5e7eb" }}>
+                    {latest.currency} {latest.discountedPrice.toFixed(2)}
+                  </strong>
+                  {" · "}
+                  Baseado em {history.length} registros
+                </p>
+              )}
+
+              {latest.fullPrice > latest.discountedPrice && (
+                <p className="meta" style={{ marginTop: "0.25rem" }}>
                   <span style={{ textDecoration: "line-through", marginRight: "0.5rem" }}>
                     {latest.currency} {latest.fullPrice.toFixed(2)}
                   </span>
                   <span style={{ color: "#f97316", fontWeight: 600 }}>
-                    -
-                    {Math.round(
-                      (1 - latest.discountedPrice / latest.fullPrice) * 100
-                    )}
-                    %
+                    -{Math.round((1 - latest.discountedPrice / latest.fullPrice) * 100)}%
                   </span>
                 </p>
               )}
-              <p className="meta">
+
+              <p className="meta" style={{ marginTop: "0.35rem" }}>
                 {new Date(latest.date).toLocaleString("pt-BR")} •{" "}
                 <a href={listingUrl ?? latest.url} target="_blank" rel="noreferrer">
                   Ver opções
                 </a>
               </p>
               <p className="title">{latest.title}</p>
+
               {supabase && user && (
-                <form className="form" onSubmit={handleCreateAlert} style={{ marginTop: "1rem" }}>
-                  <h3>Sistema de alerta</h3>
-                  <p className="meta">
-                    2️⃣ Se o preço cair abaixo de X valor, te avisamos por email.
-                  </p>
-                  <div className="alert-row">
-                    <label>
-                      Me avise quando ficar abaixo de:
+                <form className="form" onSubmit={handleCreateAlert} style={{ marginTop: "1.25rem" }}>
+                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem", color: "#94a3b8" }}>
+                    Alerta de preço
+                  </h3>
+                  <div className="alert-field">
+                    <label htmlFor="alert-threshold">Me avise quando cair abaixo de</label>
+                    <div className="alert-controls">
                       <input
+                        id="alert-threshold"
                         type="number"
                         step="0.01"
-                        placeholder={latest.discountedPrice.toFixed(2)}
+                        placeholder={(avgPrice ?? latest.discountedPrice).toFixed(2)}
                         value={alertThreshold}
                         onChange={(e) => setAlertThreshold(e.target.value)}
                       />
-                    </label>
-                    <button type="submit" disabled={alertSaving}>
-                      {alertSaving ? "Salvando alerta..." : "Ativar alerta"}
-                    </button>
+                      <button type="submit" className="btn-alert" disabled={alertSaving}>
+                        {alertSaving ? "Salvando..." : "Ativar alerta"}
+                      </button>
+                    </div>
                   </div>
                   {alertError && <p className="error">{alertError}</p>}
                   {alertSuccess && <p className="success">{alertSuccess}</p>}
@@ -426,6 +493,35 @@ function App() {
               )}
             </div>
           )}
+
+          <div className="summary" style={{ marginTop: "1.5rem" }}>
+            <h2>Buscar produto</h2>
+            <form className="form" onSubmit={handleSearch}>
+              <label>
+                Pesquisar no Mercado Livre:
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Ex: PlayStation 5, iPhone 15..."
+                />
+              </label>
+              <button type="submit" disabled={searchLoading || !searchQuery.trim()}>
+                {searchLoading ? "Buscando..." : "Buscar"}
+              </button>
+            </form>
+            {searchError && <p className="error">{searchError}</p>}
+            {searchResults.length > 0 && (
+              <ul className="search-results">
+                {searchResults.map((item, i) => (
+                  <li key={i}>
+                    <a href={item.url} target="_blank" rel="noreferrer">
+                      {item.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           <div className="summary" style={{ marginTop: "1.5rem" }}>
             <h2>Cadastrar novo produto</h2>

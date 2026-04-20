@@ -1,17 +1,8 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import axios from "axios";
+import { searchMercadoLivre } from "../scrapers/mercadoLivreScraper";
 
 const router = Router();
-
-interface MercadoLivreApiItem {
-  title: string;
-  permalink: string;
-}
-
-interface MercadoLivreSearchResponse {
-  results: MercadoLivreApiItem[];
-}
 
 router.get("/", async (req: Request, res: Response) => {
   const q = (req.query.q as string)?.trim();
@@ -21,22 +12,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 
   try {
-    const response = await axios.get<MercadoLivreSearchResponse>(
-      "https://api.mercadolibre.com/sites/MLB/search",
-      {
-        params: { q, limit: 10 },
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-          Accept: "application/json"
-        },
-        timeout: 10000
-      }
-    );
-
-    const results = (response.data.results ?? []).map((item) => ({    title: item.title,
-      url: item.permalink
-    }));
-
+    const results = await searchMercadoLivre(q, 10);
     return res.json(results);
   } catch (err) {
     console.error("[Search] Erro ao buscar no Mercado Livre:", err);

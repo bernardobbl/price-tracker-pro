@@ -8,9 +8,13 @@ import type { AuthenticatedRequest } from "./middleware/authMiddleware";
 import { requireAuth } from "./middleware/authMiddleware";
 import { createOrUpdateAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 import searchRouter from "./routes/searchRoute";
+import { scrapeMercadoLivrePrice } from "./scrapers/mercadoLivreScraper";
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  credentials: true,
+}));
 app.use(express.json());
 
 // ── Rotas ──────────────────────────────────────────────────────────────────
@@ -65,12 +69,19 @@ app.post("/api/track/:productId", requireAuth, async (req: AuthenticatedRequest,
       return res.status(404).json({ error: "Produto não encontrado." });
     }
 
+    const scraped = await scrapeMercadoLivrePrice(product.searchQuery);
+
     const record = await trackAndStorePrice({
       id: product.id,
       name: product.name,
       searchQuery: product.searchQuery,
       marketplace: "mercado-livre",
       user_id: userId,
+      price: scraped.price,
+      originalPrice: scraped.originalPrice,
+      currency: scraped.currency,
+      title: scraped.title,
+      url: scraped.url,
     });
 
     return res.status(201).json(record);

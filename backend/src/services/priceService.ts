@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import { supabase } from "../config/supabaseClient";
-import { scrapeMercadoLivrePrice } from "../scrapers/mercadoLivreScraper";
 import { evaluateAlertsForPrice } from "./alertService";
 
 export interface ProductToTrack {
@@ -10,7 +9,15 @@ export interface ProductToTrack {
   searchQuery: string;
   marketplace: "mercado-livre";
   user_id?: string;
+
+  // Dados vindos do scraper
+  price: number;
+  originalPrice?: number;
+  currency: string;
+  title: string;
+  url?: string;
 }
+
 export interface PriceHistoryItem {
   date: string;
   fullPrice: number;
@@ -23,9 +30,7 @@ export interface PriceHistoryItem {
 const DATA_DIR = path.join(process.cwd(), "data");
 
 function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 function getCsvPath(productId: string) {
@@ -49,23 +54,28 @@ function appendToCsv(productId: string, item: PriceHistoryItem) {
   }
 }
 
+/**
+ * 🔹 Agora recebe o preço já buscado pelo frontend (não faz scraping no backend)
+ */
 export async function trackAndStorePrice(product: ProductToTrack) {
   if (product.marketplace !== "mercado-livre") {
     throw new Error("Marketplace não suportado ainda.");
   }
 
-  const scraped = await scrapeMercadoLivrePrice(product.searchQuery);
   const now = new Date().toISOString();
 
-  const fullPrice = scraped.originalPrice && scraped.originalPrice > 0 ? scraped.originalPrice : scraped.price;
+  const fullPrice =
+    product.originalPrice && product.originalPrice > 0
+      ? product.originalPrice
+      : product.price;
 
   const record: PriceHistoryItem = {
     date: now,
     fullPrice,
-    discountedPrice: scraped.price,
-    currency: scraped.currency,
-    title: scraped.title,
-    url: scraped.url
+    discountedPrice: product.price,
+    currency: product.currency,
+    title: product.title,
+    url: product.url ?? "",
   };
 
   appendToCsv(product.id, record);
@@ -76,10 +86,10 @@ export async function trackAndStorePrice(product: ProductToTrack) {
       tracked_product_id: product.id,
       date: now,
       full_price: fullPrice,
-      discounted_price: scraped.price,
-      currency: scraped.currency,
-      title: scraped.title,
-      url: scraped.url
+      discounted_price: product.price,
+      currency: product.currency,
+      title: product.title,
+      url: product.url,
     });
 
     if (error) {
@@ -93,15 +103,18 @@ export async function trackAndStorePrice(product: ProductToTrack) {
     fullPrice: record.fullPrice,
     currency: record.currency,
     title: record.title,
-    url: record.url
+    url: record.url,
   });
 
-  console.log(`[PriceService] Preço registrado para ${product.id}: R$ ${scraped.price}`);
+  console.log(`[PriceService] Preço registrado para ${product.id}: R$ ${product.price}`);
 
   return record;
 }
 
-export async function getPriceHistory(productId: string, _userId?: string | null): Promise<PriceHistoryItem[]> {
+export async function getPriceHistory(
+  productId: string,
+  _userId?: string | null
+): Promise<PriceHistoryItem[]> {
   const csvPath = getCsvPath(productId);
   const itemsFromCsv: PriceHistoryItem[] = [];
 
@@ -110,9 +123,8 @@ export async function getPriceHistory(productId: string, _userId?: string | null
     const lines = raw.split("\n").slice(1).filter(Boolean);
 
     for (const line of lines) {
-      const [date, fullPriceStr, discountedPriceStr, currency, titleJson, url] = line.split(
-        /,(?=(?:[^"]*"[^"]*")*[^"]*$)/
-      );
+      const [date, fullPriceStr, discountedPriceStr, currency, titleJson, url] =
+        line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
 
       if (!date || !fullPriceStr || !discountedPriceStr) continue;
 
@@ -122,7 +134,7 @@ export async function getPriceHistory(productId: string, _userId?: string | null
         discountedPrice: Number(discountedPriceStr),
         currency,
         title: titleJson ? JSON.parse(titleJson) : "",
-        url: url || ""
+        url: url || "",
       });
     }
   }
@@ -144,11 +156,10 @@ export async function getPriceHistory(productId: string, _userId?: string | null
         discountedPrice: Number(row.discounted_price),
         currency: row.currency,
         title: row.title,
-        url: row.url
+        url: row.url,
       }));
     }
   }
 
   return itemsFromCsv;
 }
-

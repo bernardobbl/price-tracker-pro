@@ -110,3 +110,44 @@ export async function scrapeMercadoLivrePrice(searchQuery: string): Promise<Scra
   };
 }
 
+export interface SearchResultItem {
+  title: string;
+  url: string;
+}
+
+// Retorna até `limit` resultados da página de busca (sem entrar em cada anúncio)
+export async function searchMercadoLivre(
+  searchQuery: string,
+  limit = 10
+): Promise<SearchResultItem[]> {
+  const searchUrl = `https://lista.mercadolivre.com.br/${encodeURIComponent(searchQuery)}`;
+
+  const response = await axios.get(searchUrl, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    }
+  });
+
+  const $ = cheerio.load(response.data);
+  const results: SearchResultItem[] = [];
+
+  $("li.ui-search-layout__item").each((_i, el) => {
+    if (results.length >= limit) return false;
+
+    const title =
+      $(el).find("h2.ui-search-item__title").first().text().trim() ||
+      $(el).find("h2").first().text().trim();
+
+    const url =
+      $(el).find("a.ui-search-link").attr("href") ||
+      $(el).find("a").first().attr("href");
+
+    if (title && url) {
+      results.push({ title, url });
+    }
+  });
+
+  return results;
+}
+

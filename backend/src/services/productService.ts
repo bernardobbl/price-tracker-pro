@@ -1,5 +1,4 @@
 import { supabase } from "../config/supabaseClient";
-import type { ProductToTrack } from "./priceService";
 
 export interface CreateProductInput {
   id: string;
@@ -9,8 +8,17 @@ export interface CreateProductInput {
   userId?: string;
 }
 
-// Fallback em memória quando Supabase não está configurado
-const FALLBACK_PRODUCTS: ProductToTrack[] = [
+// Representa um produto salvo no banco (sem dados de preço)
+export interface StoredProduct {
+  id: string;
+  name: string;
+  searchQuery: string;
+  marketplace: "mercado-livre";
+  user_id?: string;
+}
+
+// 🔹 Fallback em memória (caso Supabase esteja ausente)
+const FALLBACK_PRODUCTS: StoredProduct[] = [
   {
     id: "ps5",
     name: "PlayStation 5",
@@ -19,7 +27,14 @@ const FALLBACK_PRODUCTS: ProductToTrack[] = [
   }
 ];
 
-function mapRowToProduct(row: { id: string; name: string; search_query: string; marketplace: string; user_id?: string }): ProductToTrack {
+// 🔹 Função auxiliar para converter dados do Supabase
+function mapRowToProduct(row: {
+  id: string;
+  name: string;
+  search_query: string;
+  marketplace: string;
+  user_id?: string;
+}): StoredProduct {
   return {
     id: row.id,
     name: row.name,
@@ -29,7 +44,10 @@ function mapRowToProduct(row: { id: string; name: string; search_query: string; 
   };
 }
 
-export async function listProducts(userId?: string | null): Promise<ProductToTrack[]> {
+/**
+ * Lista todos os produtos rastreados do usuário
+ */
+export async function listProducts(userId?: string | null): Promise<StoredProduct[]> {
   if (!supabase) {
     return FALLBACK_PRODUCTS;
   }
@@ -51,10 +69,13 @@ export async function listProducts(userId?: string | null): Promise<ProductToTra
   return data.map(mapRowToProduct);
 }
 
+/**
+ * Busca um produto específico por ID (filtrado por usuário)
+ */
 export async function getProductById(
   id: string,
   userId?: string | null
-): Promise<ProductToTrack | null> {
+): Promise<StoredProduct | null> {
   if (!supabase) {
     const found = FALLBACK_PRODUCTS.find((p) => p.id === id);
     return found ?? null;
@@ -81,20 +102,22 @@ export async function getProductById(
   return mapRowToProduct(data);
 }
 
-export async function createProduct(input: CreateProductInput): Promise<ProductToTrack> {
+/**
+ * Cria um novo produto rastreável
+ */
+export async function createProduct(input: CreateProductInput): Promise<StoredProduct> {
   const marketplace: "mercado-livre" = input.marketplace ?? "mercado-livre";
 
   if (!supabase) {
-    const product: ProductToTrack = {
+    const product: StoredProduct = {
       id: input.id,
       name: input.name,
       searchQuery: input.searchQuery,
       marketplace
     };
+
     const exists = FALLBACK_PRODUCTS.some((p) => p.id === product.id);
-    if (!exists) {
-      FALLBACK_PRODUCTS.push(product);
-    }
+    if (!exists) FALLBACK_PRODUCTS.push(product);
     return product;
   }
 
@@ -121,4 +144,3 @@ export async function createProduct(input: CreateProductInput): Promise<ProductT
 
   return mapRowToProduct(data);
 }
-
