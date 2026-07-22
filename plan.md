@@ -138,7 +138,13 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [x] _Extra:_ sincronizei os `package-lock.json` (estavam faltando deps nativas) e validei o pipeline **localmente com `npm ci`** — verde nos dois projetos, então o CI abre verde no primeiro push.
 - [ ] Deploy automático a partir da `main` → configurado na **Fase 7** (junto com os hosts).
 
-**DoD:** ✅ Pipeline completo roda e passa localmente (equivalente ao CI); PRs abrirão com checks verdes.
+**DoD:** ✅ **CI verde no GitHub** (run em `3b2e6a4`, ambos os jobs `success`).
+
+> ⚠️ **Fix aplicado:** o primeiro run falhou no `npm ci` com "Missing @emnapi/core from lock file".
+> Causa: os lockfiles foram gerados com **npm 11** (macOS local), mas o runner (node 20) usa **npm 10**,
+> que produzia um lockfile inconsistente. Solução: **regenerei os dois lockfiles dentro de um container
+> Linux `node:20`** (via Docker) para casar com o ambiente do CI. Validei `npm ci` no Linux (Docker) e no
+> macOS (npm 11) — passa nos dois. _Aprendizado:_ gerar lockfiles no mesmo ambiente do CI evita drift.
 
 ---
 
