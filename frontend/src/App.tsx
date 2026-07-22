@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { createProduct, fetchPriceHistory, fetchProducts, trackPriceNow } from "./api/client";
+import {
+  createAlert,
+  createProduct,
+  fetchPriceHistory,
+  fetchProducts,
+  searchProducts,
+  trackPriceNow,
+  type SearchResultItem
+} from "./api/client";
 import type { PriceHistoryItem, TrackedProduct } from "./types";
 import { PriceChart } from "./components/PriceChart";
 import { supabase } from "./supabaseClient";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
-
-interface SearchResultItem {
-  title: string;
-  url: string;
-}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -48,9 +49,7 @@ function App() {
     setSearchError(null);
     setSearchResults([]);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(q)}`);
-      if (!res.ok) throw new Error("Erro ao buscar produtos");
-      const data: SearchResultItem[] = await res.json();
+      const data = await searchProducts(q);
       setSearchResults(data);
     } catch (err: unknown) {
       setSearchError(err instanceof Error ? err.message : "Erro inesperado na busca");
@@ -257,38 +256,16 @@ function App() {
 
     try {
       setAlertSaving(true);
-      const {
-        data: { session }
-      } = await supabase.auth.getSession();
-
-      const token = session?.access_token;
-      if (!token) {
-        setAlertError("Sessão expirada. Faça login novamente.");
-        return;
-      }
-
-      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          productId: selectedProductId,
-          thresholdPrice: numericThreshold,
-          currency: latest.currency,
-          channel: "email",
-          enabled: true,
-          currentPrice: latest.discountedPrice,
-          productName: latest.title,
-          productUrl: latest.url
-        })
+      await createAlert({
+        productId: selectedProductId,
+        thresholdPrice: numericThreshold,
+        currency: latest.currency,
+        channel: "email",
+        enabled: true,
+        currentPrice: latest.discountedPrice,
+        productName: latest.title,
+        productUrl: latest.url
       });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error ?? "Erro ao salvar alerta");
-      }
 
       setAlertSuccess("Alerta salvo com sucesso! Você será avisado por email.");
     } catch (err: unknown) {
