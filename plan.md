@@ -20,6 +20,12 @@
 
 ### Problemas e riscos (o que precisa mudar)
 
+> ⚠️ **Esta lista é a baseline ORIGINAL (pré-Fases 0–6.6) — mantida como registro histórico.**
+> A maioria já foi resolvida e alguns itens estão **desatualizados** (ex.: citam "Mercado Livre", que migramos
+> para Books to Scrape na Seção 6.5). A reconciliação item-a-item e o que realmente resta estão na
+> **Fase 6.7 — Reconciliação e dívidas remanescentes** (logo antes da Fase 7). Não trate os itens abaixo como
+> pendências ativas sem antes conferir a Fase 6.7.
+
 **🔴 Críticos (quebram em produção ou confundem o usuário)**
 1. **Bug de UX no destaque de preço** (`App.tsx`): quando há mais de 1 registro, o número em destaque vira a **média** (rótulo "Média de preço") em vez do **preço atual**. Num rastreador de preços, o preço atual é o herói. A média é um dado secundário.
 2. **Persistência dupla e frágil**: grava em CSV local **e** em Supabase (`priceService.ts`). Os CSVs estão **commitados no git** e o filesystem de hosts de deploy (Render/Railway/Fly/Vercel) é **efêmero** → os dados em CSV se perdem a cada deploy. Fonte única de verdade tem que ser o Supabase.
@@ -226,6 +232,99 @@ coluna de cards. Cada item vira 1 commit pequeno. Verificação: rodar o app com
 
 ---
 
+### Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
+**Meta:** tirar a "cara de IA" e dar **identidade de marca**. Direção escolhida: **claro e editorial**
+(inspirado no CamelCamelCamel) — fundo papel quente, cor de marca **terracota**, tipografia **serifada**
+no wordmark/preço/títulos, ícones de verdade, números tabulares. Zero gradiente no texto, zero glassmorphism.
+
+> **Diagnóstico "cara de IA" (o que estamos matando):** título com gradiente azul→verde; fundo navy em
+> gradiente radial; `backdrop-filter: blur` (glassmorphism); sombras pesadas (`0 18px 45px`); emojis como
+> ícones; tudo arredondado/suave; fonte `system-ui`; acento azul+verde "startup". São padrões de template.
+>
+> **Referências analisadas:** Camel (identidade quente + mascote → parece marca), Keepa (densidade de dados
+> + números tabulares → parece ferramenta séria). Lição comum: fundo claro, cor contida, dados tabulares,
+> função acima de decoração.
+
+**Paleta e tipografia (fonte da verdade):**
+- Papel `#F4F3EE` · superfície `#FFFFFF` · tinta `#20222E` · muted `#6E7180` · hairline `#E4E2DA`.
+- **Marca índigo `#3B4A8C`** (profundo `#2C3A73`, suave `#EEF0F8`) · secundário dourado suave `#B08A4B`.
+- Sinal: bom `#3E7B57` (soft `#E7F0E9`) · médio `#B7822B` · caro `#B0432E`.
+- Fontes: **Fraunces** (serif de display: wordmark, títulos de seção, preço-herói) + **Inter** (UI); `tabular-nums` nos números.
+- _Nota:_ a fundação foi construída em terracota (estilo Camel) e depois a **paleta de marca migrou para índigo**
+  a pedido — o acento frio separa melhor a marca dos sinais verde (boa compra) / vermelho (espere). Só os
+  tokens de cor e as cores do gráfico mudaram; layout, tipografia e lógica ficaram iguais.
+
+**Frente D — Fundação visual (o que mais transforma)**
+- [x] **D1 · Tokens da paleta clara**: `:root`, `body` e header reescritos — saiu o navy/gradiente, entrou papel quente + tinta.
+- [x] **D2 · Tipografia real**: Fraunces + Inter importados no `index.html`; serif no wordmark/preço/sinal, `tabular-nums` nos números.
+- [x] **D3 · Ícones de verdade**: `components/Icon.tsx` (SVGs inline estilo Lucide). **Sem nova dependência.** Todos os emojis trocados.
+- [x] **D4 · Matar os sinais de IA**: fora o gradiente do título, o `backdrop-filter`/blur e as sombras pesadas → hairlines + sombras sutis; raios menores.
+
+**Frente E — Aplicar a identidade por componente**
+- [x] **E1 · Header/wordmark** editorial: brand mark terracota + wordmark na serif.
+- [x] **E2 · Sidebar**: busca, cards de produto e alertas na nova paleta.
+- [x] **E3 · Painel de detalhe**: preço-herói na serif, sinal, barra, stats e período repaginados.
+- [x] **E4 · Gráfico Chart.js** recolorido (linha tinta, área terracota, média camelo tracejada, grid/tooltip claros).
+- [x] **E5 · Login/auth** na nova identidade (card claro, tabs, serif no logo).
+- [x] **E6 · Toasts, skeletons e estados vazios** coerentes com o tema claro.
+
+**Frente F — Detalhes que elevam**
+- [~] **F1 · Acessibilidade de cor**: usei tinta escura sobre claro e tons "deep" para texto colorido (bom contraste);
+  **auditoria AA formal pendente** — revisar com ferramenta antes do deploy.
+- [x] **F2 · Ritmo e alinhamento**: stat-grid mais denso (6 colunas), hairlines e espaçamento consistentes (lição do Keepa).
+- [x] **F3 · Microinterações sóbrias**: count-up mantido; fade-in do detalhe; transições curtas e uniformes.
+- [x] **F4 · Responsivo** revisado (stat-grid colapsa 6→3→2; sidebar deixa de ser sticky no mobile).
+
+**DoD:** ✅ abrir o app **não parece mais template de IA** — identidade clara e quente, serif com personalidade,
+ícones reais, gráfico legível no claro. `lint`/`type-check`/`build` limpos e **45 testes** verdes.
+
+---
+
+### Fase 6.7 — Reconciliação e dívidas remanescentes (fazer na próxima sessão)
+**Meta:** reconciliar a baseline "Problemas e riscos" (Seção 1) com o estado real após as Fases 0–6.6,
+fechar as poucas pendências técnicas de verdade e tirar as menções obsoletas. **Sem pressa** — é higiene
+e robustez antes do deploy.
+
+**Passo 1 — Reconciliar a Seção 1 item-a-item (doc)**
+Confirmar no código e atualizar o status de cada um dos 14 itens originais. Mapa esperado (verificar, não confiar):
+
+- [ ] **#1 destaque de preço** → resolvido (Fase 0/6): preço atual é o herói. _Confirmar._
+- [ ] **#2 persistência dupla CSV+Supabase** → resolvido (Fase 1): CSV atrás de fallback. _Confirmar._
+- [ ] **#3 scraping na request** → endurecido (Fase 2) e **fonte migrada p/ Books to Scrape** (6.5). Texto original
+  cita "Mercado Livre" → **desatualizado, reescrever**. _Avaliar se vale tirar o scraping da request (fila/bg)._
+- [ ] **#4 N+1 nos alertas** → **VERIFICAR**: `evaluateAlertImmediately` vs `evaluateAlertsForPrice` ainda têm
+  lógica duplicada e `auth.admin.getUserById` por alerta? Se sim, unificar + cachear o lookup de usuário. **(dívida real provável)**
+- [ ] **#5 validação Zod** → resolvido (Fase 3). _Confirmar._
+- [ ] **#6 tipos duplicados** → decisão deliberada de manter (Fase 3). _Só reconfirmar._
+- [ ] **#7 testes/CI/Docker/deploy** → testes+CI feitos (4/5); deploy é a Fase 7. _Confirmar._
+- [ ] **#8 CSVs commitados** → resolvido (Fase 0). _Confirmar que `backend/data/*.csv` segue fora do git._
+- [ ] **#9 `requireAuth` bypass sem Supabase** → **VERIFICAR/EXPLICITAR**: garantir que o bypass só ocorre em dev,
+  com log claro e nunca em produção (falhar fechado se faltar env em prod). **(dívida real provável)**
+- [ ] **#10 gestão de produto/alertas na UI** → resolvido (Fase 6). _Confirmar._
+- [ ] **#11 estatísticas** → resolvido (Fase 6/6.5). _Confirmar._
+- [ ] **#12 skeletons/estados/responsivo/tema** → resolvido (6/6.6); agora é **tema claro**, não dark. _Reescrever o texto._
+- [ ] **#13 README fraco** → segue aberto → é a **Fase 8**.
+- [ ] **#14 fetch cru no front** → resolvido (Fase 3). _Confirmar._
+
+**Passo 2 — Fechar as pendências técnicas reais**
+- [ ] **N+1/duplicação nos alertas (#4)**: unificar as duas trilhas de avaliação de alerta e evitar `getUserById`
+  por alerta (buscar em lote ou cachear). Cobrir com teste.
+- [ ] **`requireAuth` explícito (#9)**: bypass só em dev com aviso; em produção, **falhar fechado** se faltar
+  Supabase/env. Documentar o comportamento.
+- [ ] **Auditoria de contraste AA (F1, da Fase 6.6)**: rodar checagem de contraste no tema claro índigo
+  (texto, foco, hover, chips de sinal) e corrigir o que não passar em WCAG AA.
+- [ ] **Caça a menções obsoletas**: grep por "Mercado Livre"/"mercadoLivre" em código, comentários, READMEs e
+  plan.md → trocar por Books to Scrape onde for descrição atual (preservar o registro histórico da migração).
+
+**Passo 3 — (opcional, avaliar) tirar o scraping da request (#3)**
+- [ ] Decidir se o `POST /api/track` vira **enfileiramento + processamento em background** (hoje é síncrono com
+  timeout). Para a escala atual pode não valer a pena; registrar a decisão.
+
+**DoD:** Seção 1 reconciliada e honesta (sem "Mercado Livre" solto), #4 e #9 fechados com teste, contraste AA
+auditado, e `lint`/`type-check`/`test`/`build` verdes. Aí sim seguir limpo para a Fase 7 (deploy).
+
+---
+
 ### Fase 7 — Deploy público (o marco final)
 **Meta:** link clicável funcionando, com dados de demo.
 
@@ -281,6 +380,8 @@ coluna de cards. Cada item vira 1 commit pequeno. Verificação: rodar o app com
 - [x] Fase 5 — CI
 - [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
+- [x] Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
+- [ ] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
 
@@ -392,6 +493,22 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
   `lint`/`type-check`/`build` limpos nos dois lados.
 - **Decisão registrada (B2, sparkline):** adiado — itens da busca não são rastreados, logo não têm histórico.
   Melhor lugar é o card de produto rastreado; entra quando o histórico por produto for carregado na sidebar.
+
+### ✅ Fase 6.6 — Refino visual e identidade (tema claro editorial)
+- **Diagnóstico "cara de IA"**: mapeei os padrões de template (gradiente no título, navy, glassmorphism,
+  sombras pesadas, emojis, `system-ui`) e os removi. _Por quê:_ o usuário sentiu o visual genérico de IA.
+- **Direção escolhida**: **claro e editorial** (estilo CamelCamelCamel) — identidade quente e memorável.
+- **Fundação (Frente D)**: reescrevi o `index.css` inteiro com **tokens de paleta clara** (papel `#F6F1E9`,
+  terracota `#C15F3C`, tinta `#241F1A`), importei **Fraunces + Inter** (serif no wordmark/preço/sinal),
+  criei **`components/Icon.tsx`** (SVGs inline, **sem dependência nova**) e troquei todos os emojis.
+  _Por quê:_ tipografia real + cor de marca + ícones de verdade são o que separa "produto" de "template".
+- **Aplicação (Frente E)**: header com brand mark, sidebar, painel de detalhe, **gráfico Chart.js recolorido**
+  pro claro (linha tinta + área terracota + média camelo), auth e toasts — tudo na nova identidade.
+- **Acabamento (Frente F)**: números tabulares, stat-grid mais denso (lição do Keepa), transições sóbrias
+  (count-up mantido), responsivo revisado. _Pendente:_ auditoria de contraste **AA** formal antes do deploy.
+- **Validação**: `lint`/`type-check`/`build` limpos; **45 testes** verdes; zero emoji e zero cor escura
+  hardcoded remanescentes (verificado por grep). Também corrigi o `index.html` (título/description ainda
+  citavam "Mercado Livre") e o favicon (agora terracota).
 
 ---
 

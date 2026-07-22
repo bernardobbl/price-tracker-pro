@@ -12,6 +12,7 @@ import {
 } from "./api/client";
 import type { PriceHistoryItem, TrackedProduct } from "./types";
 import { PriceChart } from "./components/PriceChart";
+import { Icon } from "./components/Icon";
 import { ToastContainer } from "./components/Toast";
 import { useToasts } from "./hooks/useToasts";
 import { useAlerts } from "./hooks/useAlerts";
@@ -382,8 +383,11 @@ function App() {
       <div className="app">
         <header className="header">
           <div className="header-brand">
-            <h1>Price Tracker Pro</h1>
-            <p>Rastreie preços de livros (Books to Scrape)</p>
+            <span className="brand-mark"><Icon name="chart" size={20} /></span>
+            <div>
+              <h1>Price Tracker Pro</h1>
+              <p>Rastreie preços de livros (Books to Scrape)</p>
+            </div>
           </div>
         </header>
 
@@ -475,9 +479,9 @@ function App() {
         </div>
         {canManage && (
           <div className="auth-row auth-row--logged">
-            <span className="auth-email">👤 {user!.email}</span>
+            <span className="auth-email"><Icon name="user" size={14} /> {user!.email}</span>
             <button type="button" className="btn-logout" onClick={handleLogout}>
-              Sair
+              <Icon name="logout" size={14} /> Sair
             </button>
           </div>
         )}
@@ -489,7 +493,7 @@ function App() {
           <div className="panel">
             <h2>Buscar produto</h2>
             <div className="search-box">
-              <span className="search-box-icon" aria-hidden="true">🔎</span>
+              <span className="search-box-icon"><Icon name="search" size={16} /></span>
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -531,7 +535,17 @@ function App() {
                         disabled={trackingId === id}
                         title={tracked ? "Atualizar preço agora" : "Rastrear este produto"}
                       >
-                        {trackingId === id ? "..." : tracked ? "✓ Rastreando" : "🔔 Rastrear"}
+                        {trackingId === id ? (
+                          "..."
+                        ) : tracked ? (
+                          <>
+                            <Icon name="check" size={13} /> Rastreando
+                          </>
+                        ) : (
+                          <>
+                            <Icon name="bell" size={13} /> Rastrear
+                          </>
+                        )}
                       </button>
                     </li>
                   );
@@ -575,7 +589,7 @@ function App() {
                         aria-label={`Excluir ${p.name}`}
                         title="Excluir produto"
                       >
-                        {deletingProductId === p.id ? "..." : "×"}
+                        {deletingProductId === p.id ? "..." : <Icon name="trash" size={15} />}
                       </button>
                     )}
                   </li>
@@ -591,7 +605,7 @@ function App() {
                 aria-label="Nome do produto"
               />
               <button type="submit" disabled={creating} aria-label="Adicionar produto">
-                {creating ? "..." : "+"}
+                {creating ? "..." : <Icon name="plus" size={18} />}
               </button>
             </form>
             {createError && <p className="error">{createError}</p>}
@@ -629,7 +643,7 @@ function App() {
         <section className="detail">
           {!selectedProductId ? (
             <div className="detail-empty">
-              <span className="detail-empty-icon" aria-hidden="true">📈</span>
+              <span className="detail-empty-icon"><Icon name="chart" size={34} /></span>
               <p>Escolha um produto na lista ou busque um livro para começar a rastrear.</p>
             </div>
           ) : (
@@ -639,7 +653,7 @@ function App() {
               {loading && <div className="skeleton skeleton--summary" aria-hidden="true" />}
 
               {!loading && history.length === 0 && (
-                <p className="muted">⏳ Aguardando primeiro rastreamento pelo backend...</p>
+                <p className="muted">Aguardando primeiro rastreamento pelo backend…</p>
               )}
 
               {latest && (

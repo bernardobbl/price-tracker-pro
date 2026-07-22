@@ -31,14 +31,23 @@ interface PriceChartProps {
   data: PriceHistoryItem[];
 }
 
-/** Gradiente vertical translúcido sob a linha (do azul ao transparente). */
+// Paleta do tema claro editorial (espelha os tokens do index.css).
+const INK = "#20222e";
+const BRAND = "#3b4a8c";
+const CAMEL = "#b08a4b";
+const GRID = "rgba(212, 210, 200, 0.55)";
+const TICK = "#6e7180";
+const SURFACE = "#ffffff";
+const LINE = "#e4e2da";
+
+/** Gradiente vertical translúcido sob a linha (índigo → transparente). */
 function makeGradient(ctx: ScriptableContext<"line">): CanvasGradient | string {
   const { chart } = ctx;
   const { ctx: canvas, chartArea } = chart;
-  if (!chartArea) return "rgba(59, 130, 246, 0.15)";
+  if (!chartArea) return "rgba(59, 74, 140, 0.12)";
   const gradient = canvas.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-  gradient.addColorStop(0, "rgba(59, 130, 246, 0.35)");
-  gradient.addColorStop(1, "rgba(59, 130, 246, 0.02)");
+  gradient.addColorStop(0, "rgba(59, 74, 140, 0.16)");
+  gradient.addColorStop(1, "rgba(59, 74, 140, 0.01)");
   return gradient;
 }
 
@@ -57,14 +66,14 @@ export function PriceChart({ data }: PriceChartProps) {
       {
         label: "Preço",
         data: prices,
-        borderColor: "#3b82f6",
+        borderColor: INK,
         backgroundColor: makeGradient,
         fill: true,
         tension: 0.35,
         pointRadius: 0,
         pointHoverRadius: 5,
-        pointHoverBackgroundColor: "#3b82f6",
-        pointHoverBorderColor: "#0f172a",
+        pointHoverBackgroundColor: BRAND,
+        pointHoverBorderColor: SURFACE,
         pointHoverBorderWidth: 2,
         borderWidth: 2,
         order: 1
@@ -72,9 +81,9 @@ export function PriceChart({ data }: PriceChartProps) {
       {
         label: "Média do período",
         data: prices.map(() => avg),
-        borderColor: "rgba(148, 163, 184, 0.55)",
+        borderColor: CAMEL,
         borderDash: [5, 5],
-        borderWidth: 1,
+        borderWidth: 1.5,
         pointRadius: 0,
         pointHoverRadius: 0,
         fill: false,
@@ -94,7 +103,7 @@ export function PriceChart({ data }: PriceChartProps) {
       legend: {
         position: "top" as const,
         labels: {
-          color: "#94a3b8",
+          color: TICK,
           usePointStyle: true,
           boxWidth: 8,
           boxHeight: 8,
@@ -102,11 +111,11 @@ export function PriceChart({ data }: PriceChartProps) {
         }
       },
       tooltip: {
-        backgroundColor: "rgba(15, 23, 42, 0.95)",
-        borderColor: "rgba(148, 163, 184, 0.2)",
+        backgroundColor: SURFACE,
+        borderColor: LINE,
         borderWidth: 1,
-        titleColor: "#e5e7eb",
-        bodyColor: "#cbd5e1",
+        titleColor: INK,
+        bodyColor: TICK,
         padding: 10,
         displayColors: true,
         callbacks: {
@@ -141,19 +150,20 @@ export function PriceChart({ data }: PriceChartProps) {
           }
         },
         grid: {
-          color: "rgba(148, 163, 184, 0.06)"
+          color: GRID,
+          display: false
         },
         ticks: {
-          color: "#64748b",
+          color: TICK,
           maxTicksLimit: 6
         }
       },
       y: {
         grid: {
-          color: "rgba(148, 163, 184, 0.08)"
+          color: GRID
         },
         ticks: {
-          color: "#64748b",
+          color: TICK,
           callback: (value: string | number) => `${currency} ${value}`
         }
       }
