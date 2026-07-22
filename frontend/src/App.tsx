@@ -11,6 +11,7 @@ import {
 } from "./api/client";
 import type { PriceHistoryItem, TrackedProduct } from "./types";
 import { PriceChart } from "./components/PriceChart";
+import { computePriceStats } from "./lib/priceStats";
 import { supabase } from "./supabaseClient";
 
 function App() {
@@ -170,19 +171,7 @@ function App() {
   };
 
   const latest = history[history.length - 1];
-  const prices = history.map((item) => item.discountedPrice);
-  const minPrice = prices.length ? Math.min(...prices) : null;
-  const maxPrice = prices.length ? Math.max(...prices) : null;
-  const avgPrice = prices.length
-    ? prices.reduce((sum, p) => sum + p, 0) / prices.length
-    : null;
-  const previousPrice = history.length > 1 ? history[history.length - 2].discountedPrice : null;
-  const priceChangePct =
-    previousPrice && previousPrice > 0 && latest
-      ? ((latest.discountedPrice - previousPrice) / previousPrice) * 100
-      : null;
-  const isLowestEver =
-    latest != null && minPrice != null && latest.discountedPrice <= minPrice;
+  const stats = computePriceStats(history);
   const selectedProduct = products.find((p) => p.id === selectedProductId);
   const listingUrl =
     selectedProduct?.marketplace === "mercado-livre"
@@ -420,7 +409,7 @@ function App() {
               <h2>Preço atual</h2>
               <p className="price">
                 {latest.currency} {latest.discountedPrice.toFixed(2)}
-                {isLowestEver && history.length > 1 && (
+                {stats.isLowestEver && history.length > 1 && (
                   <span className="price-badge">Menor preço!</span>
                 )}
               </p>
@@ -441,35 +430,35 @@ function App() {
                   <div className="stat">
                     <span className="stat-label">Menor</span>
                     <span className="stat-value stat-value--low">
-                      {latest.currency} {minPrice?.toFixed(2)}
+                      {latest.currency} {stats.min?.toFixed(2)}
                     </span>
                   </div>
                   <div className="stat">
                     <span className="stat-label">Médio</span>
                     <span className="stat-value">
-                      {latest.currency} {avgPrice?.toFixed(2)}
+                      {latest.currency} {stats.avg?.toFixed(2)}
                     </span>
                   </div>
                   <div className="stat">
                     <span className="stat-label">Maior</span>
                     <span className="stat-value stat-value--high">
-                      {latest.currency} {maxPrice?.toFixed(2)}
+                      {latest.currency} {stats.max?.toFixed(2)}
                     </span>
                   </div>
                   <div className="stat">
                     <span className="stat-label">Variação</span>
                     <span
                       className={`stat-value ${
-                        priceChangePct == null || priceChangePct === 0
+                        stats.changePct == null || stats.changePct === 0
                           ? ""
-                          : priceChangePct > 0
+                          : stats.changePct > 0
                             ? "stat-value--high"
                             : "stat-value--low"
                       }`}
                     >
-                      {priceChangePct == null
+                      {stats.changePct == null
                         ? "—"
-                        : `${priceChangePct > 0 ? "▲" : priceChangePct < 0 ? "▼" : ""} ${Math.abs(priceChangePct).toFixed(1)}%`}
+                        : `${stats.changePct > 0 ? "▲" : stats.changePct < 0 ? "▼" : ""} ${Math.abs(stats.changePct).toFixed(1)}%`}
                     </span>
                   </div>
                 </div>
@@ -497,7 +486,7 @@ function App() {
                         id="alert-threshold"
                         type="number"
                         step="0.01"
-                        placeholder={(avgPrice ?? latest.discountedPrice).toFixed(2)}
+                        placeholder={(stats.avg ?? latest.discountedPrice).toFixed(2)}
                         value={alertThreshold}
                         onChange={(e) => setAlertThreshold(e.target.value)}
                       />

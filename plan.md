@@ -117,15 +117,15 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
-### Fase 4 — Testes automatizados
+### Fase 4 — Testes automatizados ✅ CONCLUÍDA
 **Meta:** confiança para mexer sem quebrar; sinal de senioridade no portfólio.
 
-- [ ] Backend: **Vitest** (ou Jest). Testar parser de preço, services (com Supabase mockado), lógica de alerta (threshold, anti-spam).
-- [ ] Backend: teste de integração dos endpoints com **supertest** (auth mockada).
-- [ ] Frontend: **Vitest + Testing Library** para componentes-chave (`PriceChart`, formulários, estados de erro/loading).
-- [ ] Meta de cobertura pragmática: **~60–70%** nos módulos de lógica (não perseguir 100%).
+- [x] Backend com **Vitest**: parsers de preço (fixtures em `test/fixtures/`), schemas Zod, e **lógica de alerta** (extraí `decideAlertAction` pura: notify/reset/none + anti-spam).
+- [x] Backend integração com **supertest** (`test/api.test.ts`): `/health`, `/api/search` sem `q` → 400, `/api/products` inválido → 400. Exigiu split `app.ts` (app exportável) / `index.ts` (só `listen` + cron).
+- [x] Frontend com **Vitest + Testing Library**: `PriceChart` (estado vazio + com dados, gráfico mockado) e `computePriceStats` (extraído do `App.tsx` para `lib/priceStats.ts`).
+- [x] Cobertura pragmática dos módulos de lógica: parser, schemas, decisão de alerta, estatísticas e rotas. **29 testes** (22 backend + 7 frontend).
 
-**DoD:** `npm test` verde nos dois projetos; testes cobrem parser, alertas e ao menos 2 telas.
+**DoD:** ✅ `npm test` verde nos dois projetos (29 passando); cobre parser, alertas, validação e componente. Scripts `test`/`test:watch` adicionados.
 
 ---
 
@@ -210,7 +210,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [x] Fase 1 — Fonte única de verdade (Supabase, tira CSV)
 - [x] Fase 2 — Scraping robusto e fora da request
 - [x] Fase 3 — Validação, tipos, logger, cliente HTTP unificado
-- [ ] Fase 4 — Testes
+- [x] Fase 4 — Testes
 - [ ] Fase 5 — CI
 - [ ] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [ ] Fase 7 — Deploy público + email real + demo
@@ -258,6 +258,11 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - **Erros padronizados** `{ error: { code, message } }` + **error handler central** + `asyncHandler`. _Por quê:_ respostas consistentes e rotas limpas sem try/catch repetido.
 - **Logger pino** no lugar de todos os `console.*`. _Por quê:_ logs estruturados, prontos para produção.
 - **Todo `fetch` do front unificado** em `api/client.ts`. _Por quê:_ uma única camada de acesso à API, fácil de manter.
+
+### ✅ Fase 4 — Testes automatizados
+- **Vitest** nos dois projetos, com **29 testes** verdes. _Por quê:_ confiança para evoluir sem quebrar e sinal de maturidade no portfólio.
+- Extraí duas funções puras para testar a lógica com facilidade: **`decideAlertAction`** (regra de alerta/anti-spam no backend) e **`computePriceStats`** (estatísticas de preço no frontend). _Por quê:_ lógica pura é trivial de testar e deixa o código mais limpo.
+- Testes de **parser** (com fixtures de HTML), **schemas Zod**, **integração de rotas** (supertest) e **componente** (`PriceChart`). Separei `app.ts`/`index.ts` para deixar o app testável. _Por quê:_ cobrir as partes que mais quebram.
 
 ---
 
