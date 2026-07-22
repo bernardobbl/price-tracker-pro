@@ -1,3 +1,23 @@
+# Dependencies
 node_modules
+
+# Environment variables (nunca commitar segredos)
 .env
+.env.local
+.env.*.local
+
+# Build output
 dist
+build
+
+# Scraped data (gerada em runtime, não versionar)
+backend/data/*.csv
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea
+*.swp

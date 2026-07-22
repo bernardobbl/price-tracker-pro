@@ -2,6 +2,9 @@
   "name": "price-tracker-pro-frontend",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "lint": "eslint .",

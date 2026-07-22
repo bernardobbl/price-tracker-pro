@@ -1,28 +1,92 @@
-## Price Tracker Pro
+# Price Tracker Pro
 
-Sistema de rastreamento de preços (ex: Mercado Livre) com:
-- Backend em Node.js + TypeScript
-- Web scraping com Axios + Cheerio
-- Agendamento automático com `node-cron`
-- Persistência em Supabase + CSV local
-- Dashboard em React + Chart.js
+Rastreador de preços do Mercado Livre com histórico, estatísticas e **alertas por email**
+quando o preço cai abaixo de um valor desejado.
 
-### Estrutura do projeto
+- **Backend:** Node.js + TypeScript + Express, web scraping (Axios + Cheerio), cron (`node-cron`)
+- **Frontend:** React + Vite + TypeScript + Chart.js
+- **Banco / Auth:** Supabase (PostgreSQL + Row Level Security)
+- **Email:** Nodemailer (SMTP)
 
-- `backend/`: API, scraping, cron e integração com Supabase/CSV
-- `frontend/`: Dashboard em React consumindo a API
+> 📋 O roteiro de evolução do projeto (rumo ao deploy) está em [`plan.md`](./plan.md).
 
-### Pré-requisitos
+---
 
-- Node.js LTS instalado
-- Conta Supabase (URL do projeto e chave anon pública)
+## Estrutura
 
-### Passos gerais
+```
+.
+├── backend/     API, scraping, cron, integração Supabase e envio de email
+└── frontend/    Dashboard React que consome a API
+```
 
-1. Instalar dependências do backend e frontend
-2. Configurar variáveis de ambiente (Supabase, porta, etc.)
-3. Rodar o backend (API + cron)
-4. Rodar o frontend (dashboard)
+---
 
-Os detalhes de configuração e execução estarão documentados em `backend/README.md` e `frontend/README.md`.
+## Pré-requisitos
 
+- Node.js **20+** (veja `.nvmrc` → `nvm use`)
+- Conta no [Supabase](https://supabase.com) (URL do projeto + anon key + service_role key)
+- (Opcional) Credenciais SMTP para os emails de alerta
+
+---
+
+## Como rodar localmente
+
+### 1. Banco de dados
+
+No **SQL Editor** do Supabase, execute o conteúdo de `backend/supabase/schema.sql`.
+(Se já rodou uma versão antiga, rode antes `backend/supabase/migration_drop_old_tables.sql`.)
+
+### 2. Backend
+
+```bash
+cd backend
+cp .env.example .env      # preencha SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+npm install
+npm run dev               # API em http://localhost:4000
+```
+
+Variáveis (`backend/.env`):
+
+| Variável | Descrição |
+|---|---|
+| `PORT` | Porta da API (padrão 4000) |
+| `SUPABASE_URL` | URL do projeto Supabase |
+| `SUPABASE_ANON_KEY` | Chave pública anon |
+| `SUPABASE_SERVICE_ROLE_KEY` | Chave service_role (backend grava preços; **secreta**) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP para alertas (opcional) |
+| `FRONTEND_URL` | Origem liberada no CORS (padrão `http://localhost:5173`) |
+
+### 3. Frontend
+
+```bash
+cd frontend
+cp .env.example .env      # preencha VITE_API_BASE_URL e VITE_SUPABASE_*
+npm install
+npm run dev               # dashboard em http://localhost:5173
+```
+
+---
+
+## Scripts úteis
+
+| Comando | Onde | O que faz |
+|---|---|---|
+| `npm run dev` | backend/frontend | Modo desenvolvimento |
+| `npm run build` | backend/frontend | Build de produção |
+| `npm run lint` | backend/frontend | Lint |
+| `npm start` | backend | Roda o build (`dist/`) |
+
+---
+
+## Como funciona
+
+1. Usuário faz login (Supabase Auth) e cadastra um produto pelo nome.
+2. O backend faz scraping do preço no Mercado Livre e grava o histórico.
+3. Um cron diário atualiza os preços dos produtos monitorados.
+4. O dashboard mostra preço atual, menor/maior/médio, variação e o gráfico de evolução.
+5. O usuário define um alerta; quando o preço cai abaixo do alvo, recebe um email.
+
+## Licença
+
+MIT — veja [`LICENSE`](./LICENSE).
