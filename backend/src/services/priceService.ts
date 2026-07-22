@@ -29,6 +29,17 @@ export interface PriceHistoryItem {
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
+/**
+ * Fonte de verdade é o Supabase. O CSV local existe apenas para:
+ *  - modo demo/offline (Supabase não configurado), ou
+ *  - quando explicitamente ligado via USE_CSV_FALLBACK=true.
+ * Em produção (Supabase configurado) o CSV fica desligado, pois o filesystem
+ * de hosts de deploy é efêmero e os dados se perderiam.
+ */
+function csvEnabled() {
+  return !supabase || process.env.USE_CSV_FALLBACK === "true";
+}
+
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -36,6 +47,33 @@ function ensureDataDir() {
 function getCsvPath(productId: string) {
   ensureDataDir();
   return path.join(DATA_DIR, `prices_${productId}.csv`);
+}
+
+function readPricesFromCsv(productId: string): PriceHistoryItem[] {
+  const csvPath = getCsvPath(productId);
+  if (!fs.existsSync(csvPath)) return [];
+
+  const raw = fs.readFileSync(csvPath, "utf-8");
+  const lines = raw.split("\n").slice(1).filter(Boolean);
+  const items: PriceHistoryItem[] = [];
+
+  for (const line of lines) {
+    const [date, fullPriceStr, discountedPriceStr, currency, titleJson, url] =
+      line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+
+    if (!date || !fullPriceStr || !discountedPriceStr) continue;
+
+    items.push({
+      date,
+      fullPrice: Number(fullPriceStr),
+      discountedPrice: Number(discountedPriceStr),
+      currency,
+      title: titleJson ? JSON.parse(titleJson) : "",
+      url: url || "",
+    });
+  }
+
+  return items;
 }
 
 function appendToCsv(productId: string, item: PriceHistoryItem) {
@@ -78,7 +116,9 @@ export async function trackAndStorePrice(product: ProductToTrack) {
     url: product.url ?? "",
   };
 
-  appendToCsv(product.id, record);
+  if (csvEnabled()) {
+    appendToCsv(product.id, record);
+  }
 
   if (supabase && product.user_id) {
     const { error } = await supabase.from("prices").insert({
@@ -113,37 +153,14 @@ export async function trackAndStorePrice(product: ProductToTrack) {
 
 export async function getPriceHistory(
   productId: string,
-  _userId?: string | null
+  userId?: string | null
 ): Promise<PriceHistoryItem[]> {
-  const csvPath = getCsvPath(productId);
-  const itemsFromCsv: PriceHistoryItem[] = [];
-
-  if (fs.existsSync(csvPath)) {
-    const raw = fs.readFileSync(csvPath, "utf-8");
-    const lines = raw.split("\n").slice(1).filter(Boolean);
-
-    for (const line of lines) {
-      const [date, fullPriceStr, discountedPriceStr, currency, titleJson, url] =
-        line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
-
-      if (!date || !fullPriceStr || !discountedPriceStr) continue;
-
-      itemsFromCsv.push({
-        date,
-        fullPrice: Number(fullPriceStr),
-        discountedPrice: Number(discountedPriceStr),
-        currency,
-        title: titleJson ? JSON.parse(titleJson) : "",
-        url: url || "",
-      });
-    }
-  }
-
-  if (supabase && _userId) {
+  // Fonte de verdade: Supabase (quando configurado e com usuário autenticado).
+  if (supabase && userId) {
     const { data, error } = await supabase
       .from("prices")
       .select("*")
-      .eq("user_id", _userId)
+      .eq("user_id", userId)
       .eq("tracked_product_id", productId)
       .order("date", { ascending: true });
 
@@ -161,5 +178,10 @@ export async function getPriceHistory(
     }
   }
 
-  return itemsFromCsv;
+  // Fallback local/demo (Supabase ausente ou USE_CSV_FALLBACK=true).
+  if (csvEnabled()) {
+    return readPricesFromCsv(productId);
+  }
+
+  return [];
 }

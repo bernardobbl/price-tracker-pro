@@ -75,16 +75,16 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
-### Fase 1 — Estabilizar a base de dados (fonte única de verdade)
+### Fase 1 — Estabilizar a base de dados (fonte única de verdade) ✅ CONCLUÍDA
 **Meta:** Supabase como única persistência; remover CSV do fluxo de produção.
 
-- [ ] Remover a escrita/leitura em CSV de `priceService.ts` (ou isolar atrás de uma flag `USE_CSV_FALLBACK=false` desligada por padrão).
-- [ ] `getPriceHistory` e `trackAndStorePrice` operam só via Supabase; CSV vira opcional para dev offline.
-- [ ] Garantir que o `schema.sql` roda limpo num projeto novo; documentar a ordem (migration_drop → schema).
-- [ ] Adicionar índice/constraint que faltar e revisar RLS (já está bom).
-- [ ] Criar um **seed script** (`backend/scripts/seed.ts`) que popula produtos + histórico fake para a demo pública.
+- [x] Isolar a escrita/leitura em CSV de `priceService.ts` atrás de `csvEnabled()` → só roda quando o Supabase não está configurado ou com `USE_CSV_FALLBACK=true`. Desligado por padrão em produção.
+- [x] `getPriceHistory` e `trackAndStorePrice` operam via Supabase como fonte de verdade; CSV vira apenas fallback dev/offline.
+- [x] `schema.sql` revisado — é idempotente (`if not exists` / `drop policy if exists`); ordem documentada no README (migration_drop → schema).
+- [x] Índices e RLS revisados — já cobrem os acessos por usuário; nada faltando.
+- [x] Criado **seed script** (`backend/scripts/seed.ts` + `npm run seed`): cria usuário demo, 3 produtos e ~30 dias de histórico com tendência de queda.
 
-**DoD:** subir o backend num ambiente novo, cadastrar produto, rastrear preço e ver histórico — tudo persistido no Supabase, sem depender de arquivo local.
+**DoD:** ✅ Com Supabase configurado, todo o histórico é lido/gravado no banco; CSV não roda. Verificação **rodando** pendente (faremos junto com a demo visual).
 
 ---
 
@@ -206,7 +206,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 ## 5. Ordem sugerida de execução (checklist macro)
 
 - [x] Fase 0 — Higiene do repo
-- [ ] Fase 1 — Fonte única de verdade (Supabase, tira CSV)
+- [x] Fase 1 — Fonte única de verdade (Supabase, tira CSV)
 - [ ] Fase 2 — Scraping robusto e fora da request
 - [ ] Fase 3 — Validação, tipos, logger, cliente HTTP unificado
 - [ ] Fase 4 — Testes
