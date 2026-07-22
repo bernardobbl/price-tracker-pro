@@ -293,7 +293,31 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
-## 8. Anexo: por que usei Docker (para entender depois)
+## 8. Anexo: hospedagem grátis, "sono" e keep-alive (para entender depois)
+
+O deploy tem **3 peças**, cada uma com um comportamento no plano **grátis**:
+
+| Peça | Onde | Comportamento grátis |
+|---|---|---|
+| **Frontend** (React) | Vercel/Netlify | ✅ Sempre no ar, instantâneo. Sem sono. |
+| **Banco + Auth** (Supabase) | Supabase | ⏸️ Pausa após **~7 dias sem uso** → resolvido com **keep-alive**. |
+| **Backend** (Express) | Render/Railway/Fly | 😴 "Dorme" após ~15 min parado → 1ª visita leva **~30–60s** pra acordar. |
+
+**Keep-alive (Supabase não pausar):** um **GitHub Action agendado (cron)** — grátis e ilimitado em repositório
+público — faz uma query pequena no Supabase a cada poucos dias. Isso zera o contador de inatividade → nunca pausa.
+Roda na nuvem, sem depender do Mac ligado, **sem custo**.
+
+**Cold start do backend (~30–60s):** é **normal** em free tier — o serviço "dorme" e acorda na 1ª requisição.
+**Não é a única opção.** Formas de reduzir (todas grátis), a decidir na Fase 7:
+- Um 2º keep-alive que "cutuca" o backend de tempos em tempos (mantém acordado); ou
+- Reescrever o backend como **funções serverless na Vercel** (acordam em ~1s, tudo numa plataforma só) — mais trabalho.
+
+**Resumo honesto:** dá para ter o projeto **sempre acessível pela URL, 100% grátis, sem manutenção manual**.
+O único porém é a possível espera de ~30–60s na 1ª carga após inatividade (aceitável para portfólio).
+
+---
+
+## 9. Anexo: por que usei Docker (para entender depois)
 
 **O problema:** o CI do GitHub roda em **Linux x64**. Meu ambiente de dev (e o do Bernardo) é
 **macOS ARM64** (Apple Silicon). Um bug do npm (#4828) fazia o `npm ci` não instalar as dependências
