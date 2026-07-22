@@ -180,10 +180,7 @@ function App() {
   const latest = history[history.length - 1];
   const stats = computePriceStats(history);
   const selectedProduct = products.find((p) => p.id === selectedProductId);
-  const listingUrl =
-    selectedProduct?.marketplace === "mercado-livre"
-      ? `https://lista.mercadolivre.com.br/${encodeURIComponent(selectedProduct.searchQuery)}`
-      : latest?.url;
+  const listingUrl = latest?.url;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,7 +197,7 @@ function App() {
       setCreateError("Digite o nome do produto.");
       return;
     }
-    // Gera ID automático: "PlayStation 5" → "playstation-5"
+    // Gera ID automático: "A Light in the Attic" → "a-light-in-the-attic"
     const id = name
       .toLowerCase()
       .normalize("NFD")
@@ -209,7 +206,7 @@ function App() {
       .replace(/^-|-$/g, "");
     try {
       setCreating(true);
-      const created = await createProduct({ id, name, searchQuery: name, marketplace: "mercado-livre" });
+      const created = await createProduct({ id, name, searchQuery: name, marketplace: "books-to-scrape" });
       const updatedProducts = [...products, created];
       setProducts(updatedProducts);
       setSelectedProductId(created.id);
@@ -322,7 +319,7 @@ function App() {
         <header className="header">
           <div className="header-brand">
             <h1>Price Tracker Pro</h1>
-            <p>Monitore preços do Mercado Livre</p>
+            <p>Rastreie preços de livros (Books to Scrape)</p>
           </div>
         </header>
 
@@ -404,7 +401,7 @@ function App() {
       <header className="header">
         <div className="header-brand">
           <h1>Price Tracker Pro</h1>
-          <p>Monitore preços do Mercado Livre</p>
+          <p>Rastreie preços de livros (Books to Scrape)</p>
         </div>
         {supabase && user && (
           <div className="auth-row auth-row--logged">
@@ -588,11 +585,11 @@ function App() {
             <h2>Buscar produto</h2>
             <form className="form" onSubmit={handleSearch}>
               <label>
-                Pesquisar no Mercado Livre:
+                Pesquisar livros:
                 <input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Ex: PlayStation 5, iPhone 15..."
+                  placeholder="Ex: light, velvet, the..."
                 />
               </label>
               <button type="submit" disabled={searchLoading || !searchQuery.trim()}>
@@ -621,7 +618,7 @@ function App() {
                 <input
                   value={newProductName}
                   onChange={(e) => setNewProductName(e.target.value)}
-                  placeholder="Ex: PlayStation 5, iPhone 15, RTX 4070..."
+                  placeholder="Ex: A Light in the Attic, Soumission..."
                 />
               </label>
               <button type="submit" disabled={creating}>

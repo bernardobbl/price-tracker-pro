@@ -3,8 +3,13 @@
 [![CI](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
-Rastreador de preços do Mercado Livre com histórico, estatísticas e **alertas por email**
-quando o preço cai abaixo de um valor desejado.
+Rastreador de preços de livros ([Books to Scrape](https://books.toscrape.com)) com histórico,
+estatísticas e **alertas por email** quando o preço cai abaixo de um valor desejado.
+
+> **Nota sobre a fonte de dados:** o projeto começou raspando o Mercado Livre, mas eles passaram a
+> bloquear scraping (anti-bot) e a exigir OAuth na API. Para manter uma demo **sempre no ar e confiável**,
+> a fonte foi migrada para o **Books to Scrape** — um sandbox oficial feito para praticar web scraping.
+> Como o catálogo tem preços estáticos, o histórico da demo usa uma pequena variação simulada (via `seed`).
 
 - **Backend:** Node.js + TypeScript + Express, web scraping (Axios + Cheerio), cron (`node-cron`)
 - **Frontend:** React + Vite + TypeScript + Chart.js
@@ -85,7 +90,7 @@ npm run dev               # dashboard em http://localhost:5173
 ## Como funciona
 
 1. Usuário faz login (Supabase Auth) e cadastra um produto pelo nome.
-2. O backend faz scraping do preço no Mercado Livre e grava o histórico.
+2. O backend faz scraping do preço no Books to Scrape e grava o histórico.
 3. Um cron diário atualiza os preços dos produtos monitorados.
 4. O dashboard mostra preço atual, menor/maior/médio, variação e o gráfico de evolução.
 5. O usuário define um alerta; quando o preço cai abaixo do alvo, recebe um email.

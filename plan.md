@@ -257,20 +257,19 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 **Validado ao vivo:** 20 itens/página, com título, preço (`.price_color`), estoque e link para a página de detalhe.
 Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pequena.
 
-### O que muda (checklist da migração)
-- [ ] Criar `backend/src/scrapers/booksToScrapeScraper.ts` (substitui o `mercadoLivreScraper.ts`), com parsers puros:
-  - Lista: `article.product_pod` → título (`h3 a[title]`), preço (`.price_color`), link (`h3 a[href]`), estoque (`.availability`).
-  - Detalhe: página do livro → preço (`.price_color`), disponibilidade, rating.
-- [ ] **Busca:** o site não tem busca nativa → adaptar `searchBooks(q)` para raspar as páginas do catálogo
-  (`catalogue/page-N.html`) e **filtrar por título** que contenha `q` (com um limite de páginas).
-- [ ] **Preço/moeda:** exibir em **£** (como raspado) — honesto. `fullPrice = discountedPrice` (o site não tem desconto).
-- [ ] **Preços estáticos → histórico interessante:** o scrape pega o preço **real**; o `seed` e o job diário
-  geram o histórico com **pequena variação simulada** em cima do preço real (documentar no README).
-- [ ] Atualizar `scheduleDailyPriceJob`, `priceService`, rota `/api/track` e `/api/search` para o novo scraper
-  (a interface `ScrapedPriceResult` pode ser mantida quase igual → mudança mínima nos consumidores).
-- [ ] Atualizar **fixtures e testes** (`test/fixtures/` + `scraper.test.ts`) para o HTML do Books to Scrape.
-- [ ] Atualizar **textos da UI** e do README: "Mercado Livre" → "Books to Scrape" (rastreador de preços de livros).
-- [ ] Manter **intacto** todo o resto: auth, Supabase/RLS, alertas por email, cron, gráficos, CI, deploy.
+### O que muda (checklist da migração) ✅ CONCLUÍDA
+- [x] Criado `backend/src/scrapers/booksToScrapeScraper.ts` (substitui o `mercadoLivreScraper.ts`), com parsers puros
+  (`parseCatalogueListing`, `parseBookDetail`, `parseMoney`) + orquestradores (`searchBooks`, `scrapeBookPrice`).
+- [x] **Busca:** `searchBooks(q)` varre as páginas do catálogo (`catalogue/page-N.html`) e filtra por título.
+- [x] **Preço/moeda:** em **£** (como raspado); `fullPrice = discountedPrice` (sem desconto). `parseMoney` robusto a lixo de encoding.
+- [x] **Preços estáticos → histórico:** scrape pega o preço **real**; o `seed` gera ~30 dias com variação simulada (documentado no README).
+- [x] Atualizados `app.ts` (`/api/track`), `searchRoute`, `scheduleDailyPriceJob`, `priceService`, `productService`, schema e `seed`.
+- [x] **Fixtures e testes** trocados para o HTML do Books to Scrape (`booksListing.html`, `booksDetail.html`, `scraper.test.ts`).
+- [x] **UI e READMEs** atualizados: "Mercado Livre" → "Books to Scrape" (rastreador de preços de livros).
+- [x] Resto **intacto**: auth, Supabase/RLS, alertas, cron, gráficos, CI, deploy.
+
+**Validado ao vivo:** `/api/search?q=light` retorna livros reais; track de "A Light in the Attic" gravou **£51.77** no Supabase
+(via app no navegador). `tsc`/lint/testes/build limpos nos dois projetos.
 
 > **Alternativa registrada:** `dummyjson.com` (API JSON com busca e desconto) — descartada por ser
 > consumo de API, não scraping (perderia a skill principal do projeto). Fica como plano B.
