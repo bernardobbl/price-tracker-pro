@@ -285,40 +285,46 @@ no wordmark/preço/títulos, ícones de verdade, números tabulares. Zero gradie
 fechar as poucas pendências técnicas de verdade e tirar as menções obsoletas. **Sem pressa** — é higiene
 e robustez antes do deploy.
 
-**Passo 1 — Reconciliar a Seção 1 item-a-item (doc)**
-Confirmar no código e atualizar o status de cada um dos 14 itens originais. Mapa esperado (verificar, não confiar):
+**Passo 1 — Reconciliar a Seção 1 item-a-item (doc)** ✅ verificado no código
+Status real de cada um dos 14 itens originais (confirmado, não só esperado):
 
-- [ ] **#1 destaque de preço** → resolvido (Fase 0/6): preço atual é o herói. _Confirmar._
-- [ ] **#2 persistência dupla CSV+Supabase** → resolvido (Fase 1): CSV atrás de fallback. _Confirmar._
-- [ ] **#3 scraping na request** → endurecido (Fase 2) e **fonte migrada p/ Books to Scrape** (6.5). Texto original
-  cita "Mercado Livre" → **desatualizado, reescrever**. _Avaliar se vale tirar o scraping da request (fila/bg)._
-- [ ] **#4 N+1 nos alertas** → **VERIFICAR**: `evaluateAlertImmediately` vs `evaluateAlertsForPrice` ainda têm
-  lógica duplicada e `auth.admin.getUserById` por alerta? Se sim, unificar + cachear o lookup de usuário. **(dívida real provável)**
-- [ ] **#5 validação Zod** → resolvido (Fase 3). _Confirmar._
-- [ ] **#6 tipos duplicados** → decisão deliberada de manter (Fase 3). _Só reconfirmar._
-- [ ] **#7 testes/CI/Docker/deploy** → testes+CI feitos (4/5); deploy é a Fase 7. _Confirmar._
-- [ ] **#8 CSVs commitados** → resolvido (Fase 0). _Confirmar que `backend/data/*.csv` segue fora do git._
-- [ ] **#9 `requireAuth` bypass sem Supabase** → **VERIFICAR/EXPLICITAR**: garantir que o bypass só ocorre em dev,
-  com log claro e nunca em produção (falhar fechado se faltar env em prod). **(dívida real provável)**
-- [ ] **#10 gestão de produto/alertas na UI** → resolvido (Fase 6). _Confirmar._
-- [ ] **#11 estatísticas** → resolvido (Fase 6/6.5). _Confirmar._
-- [ ] **#12 skeletons/estados/responsivo/tema** → resolvido (6/6.6); agora é **tema claro**, não dark. _Reescrever o texto._
-- [ ] **#13 README fraco** → segue aberto → é a **Fase 8**.
-- [ ] **#14 fetch cru no front** → resolvido (Fase 3). _Confirmar._
+- [x] **#1 destaque de preço** → resolvido (Fase 0/6): preço atual é o herói. ✅
+- [x] **#2 persistência dupla CSV+Supabase** → resolvido (Fase 1): CSV atrás de fallback. ✅
+- [x] **#3 scraping na request** → endurecido (Fase 2), **fonte migrada p/ Books to Scrape** (6.5); menção a
+  "Mercado Livre" já removida do código. Decisão de manter síncrono registrada no Passo 3. ✅
+- [x] **#4 N+1 nos alertas** → **era dívida real** (confirmado: duplicação + `getUserById` no loop). **Resolvido**
+  no Passo 2 (trilha única + cache). ✅
+- [x] **#5 validação Zod** → resolvido (Fase 3). ✅
+- [x] **#6 tipos duplicados** → decisão deliberada de manter (Fase 3). ✅
+- [x] **#7 testes/CI/Docker/deploy** → testes+CI feitos; deploy é a Fase 7. ✅ (Docker não é necessário → não fazer.)
+- [x] **#8 CSVs commitados** → resolvido (Fase 0); `git ls-files 'backend/data/*.csv'` = vazio. ✅
+- [x] **#9 `requireAuth` bypass** → **era dívida real** (bypass total sem Supabase). **Resolvido** no Passo 2
+  (fail-closed em produção). ✅
+- [x] **#10 gestão de produto/alertas na UI** → resolvido (Fase 6). ✅
+- [x] **#11 estatísticas** → resolvido (Fase 6/6.5). ✅
+- [x] **#12 skeletons/estados/responsivo/tema** → resolvido (6/6.6); agora é **tema claro editorial**. ✅
+- [ ] **#13 README fraco** → segue aberto → é a **Fase 8** (único item da Seção 1 ainda em aberto).
+- [x] **#14 fetch cru no front** → resolvido (Fase 3). ✅
 
-**Passo 2 — Fechar as pendências técnicas reais**
-- [ ] **N+1/duplicação nos alertas (#4)**: unificar as duas trilhas de avaliação de alerta e evitar `getUserById`
-  por alerta (buscar em lote ou cachear). Cobrir com teste.
-- [ ] **`requireAuth` explícito (#9)**: bypass só em dev com aviso; em produção, **falhar fechado** se faltar
-  Supabase/env. Documentar o comportamento.
-- [ ] **Auditoria de contraste AA (F1, da Fase 6.6)**: rodar checagem de contraste no tema claro índigo
-  (texto, foco, hover, chips de sinal) e corrigir o que não passar em WCAG AA.
-- [ ] **Caça a menções obsoletas**: grep por "Mercado Livre"/"mercadoLivre" em código, comentários, READMEs e
-  plan.md → trocar por Books to Scrape onde for descrição atual (preservar o registro histórico da migração).
+**Passo 2 — Fechar as pendências técnicas reais** ✅
+- [x] **N+1/duplicação nos alertas (#4)**: unificada a trilha de notificação (`sendAlertEmailAndMark`) usada
+  pela avaliação imediata e pela pós-scraping; `getUserById` agora passa por **cache de email por usuário**
+  (`getUserEmail`), eliminando o N+1. Coberto por teste (`test/alertNotify.test.ts`, mock do Supabase).
+- [x] **`requireAuth` explícito (#9)**: bypass só ocorre **fora de produção** e com `logger.warn`; em produção
+  (`NODE_ENV=production`) sem Supabase **falha fechado** (503 `AUTH_UNAVAILABLE`). Erros do middleware
+  padronizados via `sendError`.
+- [x] **Auditoria de contraste AA (F1)**: calculei os ratios WCAG de todos os pares do tema. Ajustei
+  `--muted` (#6e7180→#5c5f70) e `--faint` (#a2a4b0→#686b7e) para passarem AA sobre o papel (5.68 / 4.73).
+  Verificado que chips de sinal já usam variantes `-deep` (passam) e que `--camel`/`--warn` só aparecem em
+  gráfico/fundo (não-texto, 3:1 ok).
+- [x] **Caça a menções obsoletas**: grep confirmou **zero** "Mercado Livre" no código/UI; nos READMEs só resta
+  no **registro histórico da migração** (correto manter).
 
-**Passo 3 — (opcional, avaliar) tirar o scraping da request (#3)**
-- [ ] Decidir se o `POST /api/track` vira **enfileiramento + processamento em background** (hoje é síncrono com
-  timeout). Para a escala atual pode não valer a pena; registrar a decisão.
+**Passo 3 — (avaliado) tirar o scraping da request (#3)** ✅ decisão registrada
+- [x] **Decisão: manter `POST /api/track` síncrono.** Para a escala atual (poucos produtos, `fetchHtml` já tem
+  timeout + retry, e a fonte Books to Scrape é rápida e estável) o custo de fila/worker em background não se
+  justifica. O job pesado (vários produtos) já roda **fora da request** no cron. Revisitar só se houver muitos
+  produtos por usuário ou a fonte ficar lenta.
 
 **DoD:** Seção 1 reconciliada e honesta (sem "Mercado Livre" solto), #4 e #9 fechados com teste, contraste AA
 auditado, e `lint`/`type-check`/`test`/`build` verdes. Aí sim seguir limpo para a Fase 7 (deploy).
@@ -381,7 +387,7 @@ auditado, e `lint`/`type-check`/`test`/`build` verdes. Aí sim seguir limpo para
 - [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
 - [x] Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
-- [ ] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
+- [x] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
 
