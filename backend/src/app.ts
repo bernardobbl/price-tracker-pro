@@ -1,10 +1,10 @@
 import express from "express";
 import cors from "cors";
 import { getPriceHistory, trackAndStorePrice } from "./services/priceService";
-import { createProduct, getProductById, listProducts } from "./services/productService";
+import { createProduct, deleteProduct, getProductById, listProducts } from "./services/productService";
 import type { AuthenticatedRequest } from "./middleware/authMiddleware";
 import { requireAuth } from "./middleware/authMiddleware";
-import { createOrUpdateAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
+import { createOrUpdateAlert, deleteAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 import searchRouter from "./routes/searchRoute";
 import { scrapeMercadoLivrePrice } from "./scrapers/mercadoLivreScraper";
 import { asyncHandler } from "./lib/asyncHandler";
@@ -57,6 +57,16 @@ app.post(
 
     const product = await createProduct({ id, name, searchQuery, marketplace, userId });
     return res.status(201).json(product);
+  })
+);
+
+app.delete(
+  "/api/products/:productId",
+  requireAuth,
+  validate(productParamsSchema, "params"),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    await deleteProduct(req.params.productId, req.user?.id);
+    res.status(204).send();
   })
 );
 
@@ -143,6 +153,18 @@ app.get(
 
     const alerts = await listAlertsByUser(userId);
     return res.json(alerts);
+  })
+);
+
+app.delete(
+  "/api/alerts/:alertId",
+  requireAuth,
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) return sendError(res, 401, "UNAUTHENTICATED", "Usuário não autenticado.");
+
+    await deleteAlert(req.params.alertId, userId);
+    res.status(204).send();
   })
 );
 

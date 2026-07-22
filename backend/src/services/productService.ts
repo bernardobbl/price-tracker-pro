@@ -145,3 +145,23 @@ export async function createProduct(input: CreateProductInput): Promise<StoredPr
 
   return mapRowToProduct(data);
 }
+
+/**
+ * Remove um produto do usuário. O banco faz cascade em preços e alertas (FK).
+ */
+export async function deleteProduct(id: string, userId?: string | null): Promise<void> {
+  if (!supabase) {
+    const idx = FALLBACK_PRODUCTS.findIndex((p) => p.id === id);
+    if (idx >= 0) FALLBACK_PRODUCTS.splice(idx, 1);
+    return;
+  }
+
+  let query = supabase.from("tracked_products").delete().eq("id", id);
+  if (userId) query = query.eq("user_id", userId);
+
+  const { error } = await query;
+  if (error) {
+    logger.error({ err: error.message }, "[Supabase] Erro ao excluir produto");
+    throw new Error("Erro ao excluir produto");
+  }
+}

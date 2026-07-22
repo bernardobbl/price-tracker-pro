@@ -21,4 +21,9 @@ describe("API", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("VALIDATION_ERROR");
   });
+
+  it("DELETE /api/products/:id responde 204 (idempotente)", async () => {
+    const res = await request(app).delete("/api/products/produto-inexistente");
+    expect(res.status).toBe(204);
+  });
 });

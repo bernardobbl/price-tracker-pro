@@ -117,6 +117,21 @@ export async function evaluateAlertImmediately(params: {
   }
 }
 
+export async function deleteAlert(alertId: string, userId: string): Promise<void> {
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from("alerts")
+    .delete()
+    .eq("id", alertId)
+    .eq("user_id", userId);
+
+  if (error) {
+    logger.error({ err: error.message }, "[Alerts] Erro ao excluir alerta");
+    throw new Error("Erro ao excluir alerta");
+  }
+}
+
 export async function listAlertsByUser(userId: string) {
   if (!supabase) {
     return [];
