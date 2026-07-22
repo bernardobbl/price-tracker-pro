@@ -230,5 +230,36 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
+## 7. Registro de execução (o que foi feito e por quê)
+
+> Resumo cronológico das fases já concluídas — serve de "diário de bordo" do projeto
+> e ajuda a contar a história das decisões no README/LinkedIn.
+
+### ✅ Fase 0 — Higiene do repositório
+- **Removi 11 CSVs de dados** do versionamento e os ignorei (`backend/data/*.csv`). _Por quê:_ eram dados de scraping que poluíam o repo e não devem ser versionados.
+- **Removi o `package-lock.json` órfão** da raiz (não havia `package.json` correspondente).
+- **Reescrevi o `.gitignore`** (env, dist, logs, arquivos de OS) e **criei `LICENSE` (MIT) + `.nvmrc`** e `engines: node >=20`. _Por quê:_ deixar claro como rodar e proteger segredos.
+- **Reescrevi o `README`** com passos reais de setup e completei o `.env.example`. _Por quê:_ qualquer pessoa consegue subir o projeto do zero.
+
+### ✅ Correção de bug — destaque de preço (item da Fase 6, adiantado)
+- O número em destaque mostrava a **média** (rotulada de forma confusa). Agora o **preço atual é o herói** e a média/menor/maior/variação viraram **cards de estatística**, com badge "Menor preço!". _Por quê:_ era um erro de correção que confundia o usuário — inaceitável num rastreador de preços.
+
+### ✅ Fase 1 — Supabase como fonte única de verdade
+- O **Supabase virou a fonte primária** de leitura/escrita de preços; o **CSV ficou isolado** atrás de `csvEnabled()` (só roda sem Supabase ou com `USE_CSV_FALLBACK=true`). _Por quê:_ o filesystem de deploy é efêmero — dados em CSV se perderiam em produção.
+- Criei o **`scripts/seed.ts` (`npm run seed`)**: usuário demo + 3 produtos + ~30 dias de histórico com tendência de queda. _Por quê:_ a demo pública precisa abrir já com dados bonitos.
+
+### ✅ Fase 2 — Scraping robusto e fora da request
+- Criei o **`httpClient.ts`** com **timeout, retry com backoff e User-Agent rotativo**, e um erro estruturado **`ScrapeError`**. _Por quê:_ scraping é frágil; precisa resistir a falhas e não travar a API.
+- Quebrei o scraper em **parsers puros e testáveis** (`parseListingPrice`, `parseDetailPrice`, `parseSearchResults`). _Por quê:_ testar parsing sem depender da rede.
+- Adicionei **rate-limit no cron** (2s entre produtos) e mapeei os erros de scraping para **404/502** nas rotas. _Por quê:_ não ser bloqueado e dar mensagens claras ao front.
+
+### ✅ Fase 3 — Qualidade de código
+- **Validação com Zod** em todas as rotas via middleware `validate()`. _Por quê:_ nunca confiar na entrada do cliente.
+- **Erros padronizados** `{ error: { code, message } }` + **error handler central** + `asyncHandler`. _Por quê:_ respostas consistentes e rotas limpas sem try/catch repetido.
+- **Logger pino** no lugar de todos os `console.*`. _Por quê:_ logs estruturados, prontos para produção.
+- **Todo `fetch` do front unificado** em `api/client.ts`. _Por quê:_ uma única camada de acesso à API, fácil de manter.
+
+---
+
 ### Notas de escopo
 Não vamos inflar o produto com marketplaces novos, mobile app ou ML de previsão de preço agora — isso entra em **"Próximos passos"** no README (mostra visão sem gastar tempo). O foco do 10x é **confiabilidade + acabamento + apresentação**, que é exatamente o que faz um projeto de portfólio se destacar.
