@@ -293,5 +293,32 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
+## 8. Anexo: por que usei Docker (para entender depois)
+
+**O problema:** o CI do GitHub roda em **Linux x64**. Meu ambiente de dev (e o do Bernardo) é
+**macOS ARM64** (Apple Silicon). Um bug do npm (#4828) fazia o `npm ci` não instalar as dependências
+nativas opcionais corretas por **arquitetura** — o erro só aparecia no Linux x64, nunca no Mac.
+
+**O que é Docker / container (simples):** um **container** é uma "caixa" isolada que roda um mini-Linux
+**dentro** do Docker, totalmente **separada** do macOS — como uma máquina virtual leve e descartável.
+O que roda lá dentro **não altera o Mac** (nem arquivos do sistema, nem configurações, nem o OS).
+
+**Por que usei:** para **reproduzir o ambiente exato do CI** (`--platform linux/amd64`, imagem `node:20`)
+e testar a correção do lockfile **sem tocar na máquina local**. Foi como "abrir um Linux x64 temporário"
+só para gerar/validar os lockfiles.
+
+**Efeitos colaterais no Mac (inofensivos e reversíveis):**
+- O **Docker Desktop** ficou aberto (estava instalado; só foi iniciado). Pode fechar em Docker → *Quit*.
+- **~6,4 GB de imagens** (`node:20/22/24`) ficaram no cache do Docker. Para liberar o espaço quando quiser:
+  - `docker image rm node:20 node:22 node:24` (remove só essas imagens), ou
+  - `docker system prune -a` (limpa tudo que não está em uso — mais agressivo).
+- **Nada mais foi alterado.** O `node_modules` local foi reinstalado com os binários ARM corretos
+  (`npm ci`), então o desenvolvimento no Mac segue normal.
+
+**Regra de bolso para o futuro:** gere os `package-lock.json` no **mesmo SO/arquitetura do CI**
+(ou deixe o próprio CI gerar), e valide o **pipeline inteiro** (build + test), não só o `npm ci`.
+
+---
+
 ### Notas de escopo
 Não vamos inflar o produto com marketplaces novos, mobile app ou ML de previsão de preço agora — isso entra em **"Próximos passos"** no README (mostra visão sem gastar tempo). O foco do 10x é **confiabilidade + acabamento + apresentação**, que é exatamente o que faz um projeto de portfólio se destacar.
