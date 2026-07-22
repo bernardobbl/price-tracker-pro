@@ -9,7 +9,17 @@ import { requireAuth } from "./middleware/authMiddleware";
 import { createOrUpdateAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 import searchRouter from "./routes/searchRoute";
 import { scrapeMercadoLivrePrice } from "./scrapers/mercadoLivreScraper";
-import { ScrapeError } from "./scrapers/httpClient";
+import { logger } from "./lib/logger";
+import { asyncHandler } from "./lib/asyncHandler";
+import { sendError } from "./lib/httpError";
+import { validate } from "./middleware/validate";
+import { errorHandler } from "./middleware/errorHandler";
+import {
+  createAlertSchema,
+  createProductSchema,
+  productParamsSchema,
+  trackParamsSchema,
+} from "./schemas/requestSchemas";
 
 const app = express();
 app.use(cors({
@@ -27,49 +37,47 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/api/products", requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const userId = req.user?.id;
-    const products = await listProducts(userId);
+app.get(
+  "/api/products",
+  requireAuth,
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    const products = await listProducts(req.user?.id);
     res.json(products);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Erro ao listar produtos" });
-  }
-});
+  })
+);
 
-app.post("/api/products", requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
+app.post(
+  "/api/products",
+  requireAuth,
+  validate(createProductSchema),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
     const userId = req.user?.id;
     const { id, name, searchQuery, marketplace } = req.body;
 
-    if (!id || !name || !searchQuery) {
-      return res.status(400).json({ error: "Campos obrigatórios: id, name, searchQuery" });
-    }
-
     const existing = await getProductById(id, userId);
     if (existing) {
-      return res.status(409).json({ error: "Já existe um produto com esse id" });
+      return sendError(res, 409, "PRODUCT_EXISTS", "Já existe um produto com esse id.");
     }
 
     const product = await createProduct({ id, name, searchQuery, marketplace, userId });
-    res.status(201).json(product);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Erro ao cadastrar produto" });
-  }
-});
+    return res.status(201).json(product);
+  })
+);
 
-app.post("/api/track/:productId", requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
+app.post(
+  "/api/track/:productId",
+  requireAuth,
+  validate(trackParamsSchema, "params"),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
     const userId = req.user?.id;
     const { productId } = req.params;
 
     const product = await getProductById(productId, userId);
     if (!product) {
-      return res.status(404).json({ error: "Produto não encontrado." });
+      return sendError(res, 404, "PRODUCT_NOT_FOUND", "Produto não encontrado.");
     }
 
+    // Erros de scraping (ScrapeError) são mapeados pelo errorHandler central.
     const scraped = await scrapeMercadoLivrePrice(product.searchQuery);
 
     const record = await trackAndStorePrice({
@@ -86,43 +94,28 @@ app.post("/api/track/:productId", requireAuth, async (req: AuthenticatedRequest,
     });
 
     return res.status(201).json(record);
-  } catch (error) {
-    console.error("[/api/track] Erro ao rastrear preço:", error);
+  })
+);
 
-    if (error instanceof ScrapeError) {
-      if (error.code === "PRICE_NOT_FOUND") {
-        return res.status(404).json({ error: "Nenhum preço encontrado para esse produto no Mercado Livre." });
-      }
-      // FETCH_FAILED / PARSE_FAILED: falha externa temporária
-      return res.status(502).json({ error: "Não foi possível consultar o Mercado Livre agora. Tente novamente em instantes." });
-    }
-
-    return res.status(500).json({ error: "Erro ao registrar preço" });
-  }
-});
-
-app.get("/api/prices/:productId", requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const userId = req.user?.id;
-    const { productId } = req.params;
-    const history = await getPriceHistory(productId, userId);
+app.get(
+  "/api/prices/:productId",
+  requireAuth,
+  validate(productParamsSchema, "params"),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    const history = await getPriceHistory(req.params.productId, req.user?.id);
     res.json(history);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Erro ao buscar histórico de preços" });
-  }
-});
+  })
+);
 
-app.post("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
+app.post(
+  "/api/alerts",
+  requireAuth,
+  validate(createAlertSchema),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: "Usuário não autenticado" });
+    if (!userId) return sendError(res, 401, "UNAUTHENTICATED", "Usuário não autenticado.");
 
     const { productId, thresholdPrice, currency, channel, enabled, currentPrice, productName, productUrl } = req.body;
-
-    if (!productId || typeof thresholdPrice !== "number") {
-      return res.status(400).json({ error: "Campos obrigatórios: productId e thresholdPrice (number)" });
-    }
 
     const alert = await createOrUpdateAlert({
       userId, productId, thresholdPrice, currency,
@@ -142,26 +135,25 @@ app.post("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     return res.status(201).json(alert);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Erro ao criar/atualizar alerta" });
-  }
-});
+  })
+);
 
-app.get("/api/alerts", requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
+app.get(
+  "/api/alerts",
+  requireAuth,
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: "Usuário não autenticado" });
+    if (!userId) return sendError(res, 401, "UNAUTHENTICATED", "Usuário não autenticado.");
 
     const alerts = await listAlertsByUser(userId);
     return res.json(alerts);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Erro ao listar alertas" });
-  }
-});
+  })
+);
+
+// Error handler central (deve ser o último middleware)
+app.use(errorHandler);
 
 app.listen(PORT, () => {
-  console.log(`Backend rodando na porta ${PORT}`);
+  logger.info(`Backend rodando na porta ${PORT}`);
   scheduleDailyPriceJob();
 });

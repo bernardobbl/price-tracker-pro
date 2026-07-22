@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { supabase } from "../config/supabaseClient";
+import { logger } from "../lib/logger";
 
 export interface AuthenticatedUser {
   id: string;
@@ -42,7 +43,7 @@ export async function requireAuth(
 
     return next();
   } catch (err) {
-    console.error("[Auth] Erro ao validar token:", err);
+    logger.error({ err }, "[Auth] Erro ao validar token");
     return res.status(500).json({ error: "Erro ao validar autenticação." });
   }
 }

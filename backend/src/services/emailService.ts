@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { logger } from "../lib/logger";
 
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
@@ -10,7 +11,7 @@ let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter() {
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !EMAIL_FROM) {
-    console.warn(
+    logger.warn(
       "[Email] Variáveis SMTP_HOST, SMTP_USER, SMTP_PASS ou EMAIL_FROM não configuradas. Emails não serão enviados."
     );
     return null;

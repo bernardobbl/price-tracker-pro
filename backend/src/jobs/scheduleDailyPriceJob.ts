@@ -3,6 +3,7 @@ import { trackAndStorePrice } from "../services/priceService";
 import { listProducts } from "../services/productService";
 import { scrapeMercadoLivrePrice } from "../scrapers/mercadoLivreScraper";
 import { sleep } from "../scrapers/httpClient";
+import { logger } from "../lib/logger";
 
 // Intervalo entre produtos no job diário, para não sobrecarregar o Mercado Livre.
 const DELAY_BETWEEN_PRODUCTS_MS = 2_000;
@@ -10,7 +11,7 @@ const DELAY_BETWEEN_PRODUCTS_MS = 2_000;
 export function scheduleDailyPriceJob() {
   // Executa todo dia às 09:00 da manhã
   cron.schedule("0 9 * * *", async () => {
-    console.log("[CRON] Rodando job diário de preços...");
+    logger.info("[CRON] Rodando job diário de preços...");
     const products = await listProducts();
 
     for (let i = 0; i < products.length; i++) {
@@ -27,7 +28,7 @@ export function scheduleDailyPriceJob() {
           url: scraped.url,
         });
       } catch (error) {
-        console.error(`[CRON] Erro ao rastrear ${product.id}`, error);
+        logger.error({ err: error }, `[CRON] Erro ao rastrear ${product.id}`);
       }
 
       // Rate-limit: aguarda entre produtos (menos no último).
@@ -37,6 +38,6 @@ export function scheduleDailyPriceJob() {
     }
   });
 
-  console.log("[CRON] Job diário agendado (0 9 * * *).");
+  logger.info("[CRON] Job diário agendado (0 9 * * *).");
 }
 

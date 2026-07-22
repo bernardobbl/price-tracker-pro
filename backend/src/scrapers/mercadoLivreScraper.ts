@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchHtml, ScrapeError } from "./httpClient";
+import { logger } from "../lib/logger";
 
 export interface ScrapedPriceResult {
   // Preço principal exibido (geralmente com desconto)
@@ -149,9 +150,9 @@ export async function scrapeMercadoLivrePrice(searchQuery: string): Promise<Scra
       if (detail.price != null) result.price = detail.price;
       if (detail.originalPrice != null) result.originalPrice = detail.originalPrice;
     } catch (err) {
-      console.warn(
-        "[Scraper] Falha ao ler página de anúncio, usando preço da lista.",
-        err instanceof Error ? err.message : err
+      logger.warn(
+        { err: err instanceof Error ? err.message : err },
+        "[Scraper] Falha ao ler página de anúncio, usando preço da lista."
       );
     }
   }

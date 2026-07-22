@@ -1,5 +1,6 @@
 import { supabase } from "../config/supabaseClient";
 import { sendPriceAlertEmail } from "./emailService";
+import { logger } from "../lib/logger";
 
 export interface CreateOrUpdateAlertInput {
   userId: string;
@@ -38,7 +39,7 @@ export async function createOrUpdateAlert(input: CreateOrUpdateAlertInput) {
     .maybeSingle();
 
   if (error) {
-    console.error("[Alerts] Erro ao criar/atualizar alerta:", error.message);
+    logger.error({ err: error.message }, "[Alerts] Erro ao criar/atualizar alerta");
     throw new Error("Erro ao salvar alerta de preço");
   }
 
@@ -67,11 +68,11 @@ export async function evaluateAlertImmediately(params: {
 
   const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
   if (userError) {
-    console.error("[Alerts] Erro ao buscar usuário para email imediato:", userError.message);
+    logger.error({ err: userError.message }, "[Alerts] Erro ao buscar usuário para email imediato");
     return false;
   }
   if (!userData?.user?.email) {
-    console.warn("[Alerts] Usuário sem email cadastrado");
+    logger.warn("[Alerts] Usuário sem email cadastrado");
     return false;
   }
 
@@ -89,10 +90,10 @@ export async function evaluateAlertImmediately(params: {
       .from("alerts")
       .update({ triggered: true, last_notified_at: new Date().toISOString() })
       .eq("id", alertId);
-    console.log("[Alerts] Email enviado imediatamente (threshold já atingido)");
+    logger.info("[Alerts] Email enviado imediatamente (threshold já atingido)");
     return true;
   } catch (err) {
-    console.error("[Alerts] Falha ao enviar email de alerta imediato:", err);
+    logger.error({ err }, "[Alerts] Falha ao enviar email de alerta imediato");
     return false;
   }
 }
@@ -109,7 +110,7 @@ export async function listAlertsByUser(userId: string) {
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("[Alerts] Erro ao listar alertas:", error.message);
+    logger.error({ err: error.message }, "[Alerts] Erro ao listar alertas");
     return [];
   }
 
@@ -137,7 +138,7 @@ export async function evaluateAlertsForPrice(params: EvaluateAlertsParams) {
     .eq("enabled", true);
 
   if (error) {
-    console.error("[Alerts] Erro ao buscar alertas para avaliação:", error.message);
+    logger.error({ err: error.message }, "[Alerts] Erro ao buscar alertas para avaliação");
     return;
   }
 
@@ -159,12 +160,12 @@ export async function evaluateAlertsForPrice(params: EvaluateAlertsParams) {
       );
 
       if (userError) {
-        console.error("[Alerts] Erro ao buscar usuário para envio de email:", userError.message);
+        logger.error({ err: userError.message }, "[Alerts] Erro ao buscar usuário para envio de email");
         continue;
       }
 
       if (!userData?.user?.email) {
-        console.warn("[Alerts] Usuário sem email cadastrado, alertId:", alert.id);
+        logger.warn({ alertId: alert.id }, "[Alerts] Usuário sem email cadastrado");
         continue;
       }
 
@@ -188,10 +189,10 @@ export async function evaluateAlertsForPrice(params: EvaluateAlertsParams) {
           .eq("id", alert.id);
 
         if (updateError) {
-          console.error("[Alerts] Erro ao marcar alerta como disparado:", updateError.message);
+          logger.error({ err: updateError.message }, "[Alerts] Erro ao marcar alerta como disparado");
         }
       } catch (err) {
-        console.error("[Alerts] Falha ao enviar email de alerta:", err);
+        logger.error({ err }, "[Alerts] Falha ao enviar email de alerta");
         // Não marca como triggered para permitir nova tentativa na próxima verificação
       }
     }
@@ -205,7 +206,7 @@ export async function evaluateAlertsForPrice(params: EvaluateAlertsParams) {
         .eq("id", alert.id);
 
       if (resetError) {
-        console.error("[Alerts] Erro ao resetar alerta:", resetError.message);
+        logger.error({ err: resetError.message }, "[Alerts] Erro ao resetar alerta");
       }
     }
   }

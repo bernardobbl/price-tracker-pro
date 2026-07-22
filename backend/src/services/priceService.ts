@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { supabase } from "../config/supabaseClient";
 import { evaluateAlertsForPrice } from "./alertService";
+import { logger } from "../lib/logger";
 
 export interface ProductToTrack {
   id: string;
@@ -133,7 +134,7 @@ export async function trackAndStorePrice(product: ProductToTrack) {
     });
 
     if (error) {
-      console.error("[Supabase] Erro ao inserir registro:", error.message);
+      logger.error({ err: error.message }, "[Supabase] Erro ao inserir registro");
     }
   }
 
@@ -146,7 +147,7 @@ export async function trackAndStorePrice(product: ProductToTrack) {
     url: record.url,
   });
 
-  console.log(`[PriceService] Preço registrado para ${product.id}: R$ ${product.price}`);
+  logger.info(`[PriceService] Preço registrado para ${product.id}: R$ ${product.price}`);
 
   return record;
 }
@@ -165,7 +166,7 @@ export async function getPriceHistory(
       .order("date", { ascending: true });
 
     if (error) {
-      console.error("[Supabase] Erro ao buscar histórico:", error.message);
+      logger.error({ err: error.message }, "[Supabase] Erro ao buscar histórico");
     } else if (data) {
       return data.map((row) => ({
         date: row.date,

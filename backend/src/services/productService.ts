@@ -1,4 +1,5 @@
 import { supabase } from "../config/supabaseClient";
+import { logger } from "../lib/logger";
 
 export interface CreateProductInput {
   id: string;
@@ -60,7 +61,7 @@ export async function listProducts(userId?: string | null): Promise<StoredProduc
   const { data, error } = await (userId ? query.eq("user_id", userId) : query);
 
   if (error) {
-    console.error("[Supabase] Erro ao listar produtos:", error.message);
+    logger.error({ err: error.message }, "[Supabase] Erro ao listar produtos");
     return FALLBACK_PRODUCTS;
   }
 
@@ -93,7 +94,7 @@ export async function getProductById(
   const { data, error } = await query.maybeSingle();
 
   if (error) {
-    console.error("[Supabase] Erro ao buscar produto:", error.message);
+    logger.error({ err: error.message }, "[Supabase] Erro ao buscar produto");
     return null;
   }
 
@@ -134,7 +135,7 @@ export async function createProduct(input: CreateProductInput): Promise<StoredPr
     .maybeSingle();
 
   if (error) {
-    console.error("[Supabase] Erro ao criar produto:", error.message);
+    logger.error({ err: error.message }, "[Supabase] Erro ao criar produto");
     throw new Error("Erro ao cadastrar produto para rastreamento");
   }
 
