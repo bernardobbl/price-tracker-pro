@@ -12,6 +12,8 @@ export interface ScrapedPriceResult {
 export interface SearchResultItem {
   title: string;
   url: string;
+  price: number;
+  currency: string;
 }
 
 const CATALOGUE_BASE = "https://books.toscrape.com/catalogue";
@@ -100,7 +102,12 @@ export async function searchBooks(
 
     for (const item of items) {
       if (!q || item.title.toLowerCase().includes(q)) {
-        results.push({ title: item.title, url: item.url });
+        results.push({
+          title: item.title,
+          url: item.url,
+          price: item.price,
+          currency: item.currency
+        });
         if (results.length >= limit) break;
       }
     }
