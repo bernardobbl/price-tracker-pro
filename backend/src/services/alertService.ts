@@ -2,6 +2,25 @@ import { supabase } from "../config/supabaseClient";
 import { sendPriceAlertEmail } from "./emailService";
 import { logger } from "../lib/logger";
 
+export type AlertAction = "notify" | "reset" | "none";
+
+/**
+ * Decide o que fazer com um alerta dado o preço atual (lógica pura, testável).
+ * - "notify": preço atingiu o alvo e o alerta ainda não foi disparado
+ * - "reset":  preço voltou a subir acima do alvo → rearmar o alerta
+ * - "none":   nada a fazer (ou threshold inválido)
+ */
+export function decideAlertAction(
+  currentPrice: number,
+  threshold: number,
+  alreadyTriggered: boolean
+): AlertAction {
+  if (Number.isNaN(threshold)) return "none";
+  if (currentPrice <= threshold && !alreadyTriggered) return "notify";
+  if (currentPrice > threshold && alreadyTriggered) return "reset";
+  return "none";
+}
+
 export interface CreateOrUpdateAlertInput {
   userId: string;
   productId: string;
@@ -147,14 +166,10 @@ export async function evaluateAlertsForPrice(params: EvaluateAlertsParams) {
   for (const alert of alerts) {
     const threshold = Number(alert.threshold_price);
     const alreadyTriggered = alert.triggered as boolean;
+    const action = decideAlertAction(currentPrice, threshold, alreadyTriggered);
 
-    if (Number.isNaN(threshold)) {
-      // ignora alertas inválidos
-      continue;
-    }
-
-    // Regra anti-spam simples
-    if (currentPrice <= threshold && !alreadyTriggered) {
+    // Regra anti-spam: só notifica uma vez até o preço voltar a subir.
+    if (action === "notify") {
       const { data: userData, error: userError } = await supabase.auth.admin.getUserById(
         alert.user_id
       );
@@ -197,7 +212,7 @@ export async function evaluateAlertsForPrice(params: EvaluateAlertsParams) {
       }
     }
 
-    if (currentPrice > threshold && alreadyTriggered) {
+    if (action === "reset") {
       const { error: resetError } = await supabase
         .from("alerts")
         .update({
