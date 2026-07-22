@@ -1,5 +1,8 @@
 # Price Tracker Pro
 
+[![CI](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+
 Rastreador de preços do Mercado Livre com histórico, estatísticas e **alertas por email**
 quando o preço cai abaixo de um valor desejado.
 

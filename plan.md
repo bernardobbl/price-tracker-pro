@@ -129,15 +129,16 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
-### Fase 5 — CI/CD
+### Fase 5 — CI/CD ✅ CONCLUÍDA (deploy automático fica na Fase 7)
 **Meta:** cada push roda lint + type-check + testes; deploy automatizado.
 
-- [ ] Criar `.github/workflows/ci.yml`: matrix backend/frontend → `install`, `lint`, `type-check`, `test`, `build`.
-- [ ] Badge de status do CI no README.
-- [ ] (Opcional) `dependabot.yml` para atualizar dependências.
-- [ ] Configurar deploy automático a partir da branch `main` (ver Fase 7).
+- [x] `.github/workflows/ci.yml`: **matrix** backend/frontend → `npm ci`, `lint`, `type-check`, `test`, `build`, com cache de npm. Roda em push/PR na `main`.
+- [x] **Badge de CI** (+ badge de licença) no topo do README.
+- [x] `dependabot.yml` (npm backend/frontend + github-actions, semanal).
+- [x] _Extra:_ sincronizei os `package-lock.json` (estavam faltando deps nativas) e validei o pipeline **localmente com `npm ci`** — verde nos dois projetos, então o CI abre verde no primeiro push.
+- [ ] Deploy automático a partir da `main` → configurado na **Fase 7** (junto com os hosts).
 
-**DoD:** PR abre com checks verdes; merge em `main` dispara build/deploy.
+**DoD:** ✅ Pipeline completo roda e passa localmente (equivalente ao CI); PRs abrirão com checks verdes.
 
 ---
 
@@ -211,7 +212,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [x] Fase 2 — Scraping robusto e fora da request
 - [x] Fase 3 — Validação, tipos, logger, cliente HTTP unificado
 - [x] Fase 4 — Testes
-- [ ] Fase 5 — CI
+- [x] Fase 5 — CI
 - [ ] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
@@ -263,6 +264,11 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - **Vitest** nos dois projetos, com **29 testes** verdes. _Por quê:_ confiança para evoluir sem quebrar e sinal de maturidade no portfólio.
 - Extraí duas funções puras para testar a lógica com facilidade: **`decideAlertAction`** (regra de alerta/anti-spam no backend) e **`computePriceStats`** (estatísticas de preço no frontend). _Por quê:_ lógica pura é trivial de testar e deixa o código mais limpo.
 - Testes de **parser** (com fixtures de HTML), **schemas Zod**, **integração de rotas** (supertest) e **componente** (`PriceChart`). Separei `app.ts`/`index.ts` para deixar o app testável. _Por quê:_ cobrir as partes que mais quebram.
+
+### ✅ Fase 5 — CI/CD
+- **GitHub Actions** (`.github/workflows/ci.yml`) com matrix backend/frontend rodando `npm ci` + lint + type-check + test + build a cada push/PR. _Por quê:_ garante que nada quebra ao evoluir e mostra disciplina de engenharia no portfólio.
+- **Badges** de CI e licença no README + **Dependabot** semanal. _Por quê:_ profissionalismo e dependências atualizadas.
+- Validei o pipeline localmente com `npm ci` (corrigindo os lockfiles) para o CI já abrir verde. _Por quê:_ um CI vermelho no primeiro push passa má impressão.
 
 ---
 
