@@ -171,9 +171,19 @@ function App() {
   };
 
   const latest = history[history.length - 1];
-  const avgPrice = history.length > 1
-    ? history.reduce((sum, item) => sum + item.discountedPrice, 0) / history.length
+  const prices = history.map((item) => item.discountedPrice);
+  const minPrice = prices.length ? Math.min(...prices) : null;
+  const maxPrice = prices.length ? Math.max(...prices) : null;
+  const avgPrice = prices.length
+    ? prices.reduce((sum, p) => sum + p, 0) / prices.length
     : null;
+  const previousPrice = history.length > 1 ? history[history.length - 2].discountedPrice : null;
+  const priceChangePct =
+    previousPrice && previousPrice > 0 && latest
+      ? ((latest.discountedPrice - previousPrice) / previousPrice) * 100
+      : null;
+  const isLowestEver =
+    latest != null && minPrice != null && latest.discountedPrice <= minPrice;
   const selectedProduct = products.find((p) => p.id === selectedProductId);
   const listingUrl =
     selectedProduct?.marketplace === "mercado-livre"
@@ -430,22 +440,13 @@ function App() {
 
           {latest && (
             <div className="summary">
-              <h2>{avgPrice !== null ? "Média de preço" : "Preço atual"}</h2>
+              <h2>Preço atual</h2>
               <p className="price">
-                {latest.currency}{" "}
-                {avgPrice !== null ? avgPrice.toFixed(2) : latest.discountedPrice.toFixed(2)}
+                {latest.currency} {latest.discountedPrice.toFixed(2)}
+                {isLowestEver && history.length > 1 && (
+                  <span className="price-badge">Menor preço!</span>
+                )}
               </p>
-
-              {avgPrice !== null && (
-                <p className="meta">
-                  Atual:{" "}
-                  <strong style={{ color: "#e5e7eb" }}>
-                    {latest.currency} {latest.discountedPrice.toFixed(2)}
-                  </strong>
-                  {" · "}
-                  Baseado em {history.length} registros
-                </p>
-              )}
 
               {latest.fullPrice > latest.discountedPrice && (
                 <p className="meta" style={{ marginTop: "0.25rem" }}>
@@ -458,8 +459,49 @@ function App() {
                 </p>
               )}
 
-              <p className="meta" style={{ marginTop: "0.35rem" }}>
-                {new Date(latest.date).toLocaleString("pt-BR")} •{" "}
+              {history.length > 1 && (
+                <div className="stat-grid">
+                  <div className="stat">
+                    <span className="stat-label">Menor</span>
+                    <span className="stat-value stat-value--low">
+                      {latest.currency} {minPrice?.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Médio</span>
+                    <span className="stat-value">
+                      {latest.currency} {avgPrice?.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Maior</span>
+                    <span className="stat-value stat-value--high">
+                      {latest.currency} {maxPrice?.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Variação</span>
+                    <span
+                      className={`stat-value ${
+                        priceChangePct == null || priceChangePct === 0
+                          ? ""
+                          : priceChangePct > 0
+                            ? "stat-value--high"
+                            : "stat-value--low"
+                      }`}
+                    >
+                      {priceChangePct == null
+                        ? "—"
+                        : `${priceChangePct > 0 ? "▲" : priceChangePct < 0 ? "▼" : ""} ${Math.abs(priceChangePct).toFixed(1)}%`}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <p className="meta" style={{ marginTop: "0.75rem" }}>
+                Atualizado em {new Date(latest.date).toLocaleString("pt-BR")}
+                {history.length > 1 && ` · ${history.length} registros`}
+                {" · "}
                 <a href={listingUrl ?? latest.url} target="_blank" rel="noreferrer">
                   Ver opções
                 </a>
