@@ -14,4 +14,14 @@ export interface TrackedProduct {
   marketplace: string;
 }
 
+export interface Alert {
+  id: string;
+  tracked_product_id: string;
+  threshold_price: number;
+  currency: string;
+  enabled: boolean;
+  triggered: boolean;
+  created_at: string;
+}
+
 

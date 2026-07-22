@@ -1,4 +1,4 @@
-import type { PriceHistoryItem, TrackedProduct } from "../types";
+import type { Alert, PriceHistoryItem, TrackedProduct } from "../types";
 import { supabase } from "../supabaseClient";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
@@ -148,5 +148,40 @@ export async function createAlert(payload: CreateAlertPayload): Promise<unknown>
   }
 
   return response.json();
+}
+
+export async function deleteProduct(productId: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/products/${encodeURIComponent(productId)}`, {
+    method: "DELETE",
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao excluir produto"));
+  }
+}
+
+export async function fetchAlerts(): Promise<Alert[]> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/alerts`, { headers });
+
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao buscar alertas"));
+  }
+
+  return response.json();
+}
+
+export async function deleteAlert(alertId: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/alerts/${encodeURIComponent(alertId)}`, {
+    method: "DELETE",
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao excluir alerta"));
+  }
 }
 

@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import {
   createAlert,
   createProduct,
+  deleteProduct,
   fetchPriceHistory,
   fetchProducts,
   searchProducts,
@@ -11,6 +12,9 @@ import {
 } from "./api/client";
 import type { PriceHistoryItem, TrackedProduct } from "./types";
 import { PriceChart } from "./components/PriceChart";
+import { ToastContainer } from "./components/Toast";
+import { useToasts } from "./hooks/useToasts";
+import { useAlerts } from "./hooks/useAlerts";
 import { computePriceStats } from "./lib/priceStats";
 import { supabase } from "./supabaseClient";
 
@@ -34,7 +38,10 @@ function App() {
   const [alertThreshold, setAlertThreshold] = useState("");
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
-  const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+
+  const { toasts, push, remove: removeToast } = useToasts();
+  const { alerts, reload: reloadAlerts, remove: removeAlert } = useAlerts(Boolean(supabase && user));
 
   // ── Busca livre ──────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -210,6 +217,7 @@ function App() {
       // Dispara scraping imediato no backend
       await trackPriceNow(created.id);
       await loadData(created.id);
+      push("success", `"${created.name}" cadastrado e rastreado!`);
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : "Erro ao cadastrar produto");
     } finally {
@@ -217,10 +225,42 @@ function App() {
     }
   };
 
+  const handleDeleteProduct = async (product: TrackedProduct) => {
+    setDeletingProductId(product.id);
+    try {
+      await deleteProduct(product.id);
+      const remaining = products.filter((p) => p.id !== product.id);
+      setProducts(remaining);
+      if (selectedProductId === product.id) {
+        const next = remaining[0]?.id ?? "";
+        setSelectedProductId(next);
+        if (next) {
+          void loadData(next);
+        } else {
+          setHistory([]);
+        }
+      }
+      await reloadAlerts();
+      push("success", `"${product.name}" removido.`);
+    } catch (err: unknown) {
+      push("error", err instanceof Error ? err.message : "Erro ao excluir produto");
+    } finally {
+      setDeletingProductId(null);
+    }
+  };
+
+  const handleDeleteAlert = async (alertId: string) => {
+    try {
+      await removeAlert(alertId);
+      push("success", "Alerta removido.");
+    } catch (err: unknown) {
+      push("error", err instanceof Error ? err.message : "Erro ao excluir alerta");
+    }
+  };
+
   const handleCreateAlert = async (e: React.FormEvent) => {
     e.preventDefault();
     setAlertError(null);
-    setAlertSuccess(null);
 
     if (!supabase) {
       setAlertError("Alertas requerem Supabase configurado.");
@@ -256,7 +296,9 @@ function App() {
         productUrl: latest.url
       });
 
-      setAlertSuccess("Alerta salvo com sucesso! Você será avisado por email.");
+      setAlertThreshold("");
+      await reloadAlerts();
+      push("success", "Alerta salvo! Você será avisado por email.");
     } catch (err: unknown) {
       setAlertError(err instanceof Error ? err.message : "Erro ao salvar alerta");
     } finally {
@@ -391,12 +433,26 @@ function App() {
                 ))}
               </select>
             </label>
-            <button type="submit" disabled={loading || !selectedProductId}>
-              {loading ? "Carregando..." : "Buscar histórico"}
-            </button>
+            <div className="form-actions">
+              <button type="submit" disabled={loading || !selectedProductId}>
+                {loading ? "Carregando..." : "Buscar histórico"}
+              </button>
+              {supabase && user && selectedProduct && (
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => handleDeleteProduct(selectedProduct)}
+                  disabled={deletingProductId === selectedProduct.id}
+                >
+                  {deletingProductId === selectedProduct.id ? "Removendo..." : "Excluir produto"}
+                </button>
+              )}
+            </div>
           </form>
 
           {error && <p className="error">{error}</p>}
+
+          {loading && <div className="skeleton skeleton--summary" aria-hidden="true" />}
 
           {!loading && selectedProductId && history.length === 0 && (
             <p className="muted" style={{ marginTop: "1rem" }}>
@@ -496,9 +552,35 @@ function App() {
                     </div>
                   </div>
                   {alertError && <p className="error">{alertError}</p>}
-                  {alertSuccess && <p className="success">{alertSuccess}</p>}
                 </form>
               )}
+            </div>
+          )}
+
+          {supabase && user && alerts.length > 0 && (
+            <div className="summary" style={{ marginTop: "1.5rem" }}>
+              <h2>Alertas ativos</h2>
+              <ul className="alert-list">
+                {alerts.map((a) => (
+                  <li key={a.id} className="alert-item">
+                    <div className="alert-item-info">
+                      <span className="alert-item-product">{a.tracked_product_id}</span>
+                      <span className="alert-item-threshold">
+                        abaixo de {a.currency} {Number(a.threshold_price).toFixed(2)}
+                        {a.triggered && <span className="alert-badge">disparado</span>}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-icon-danger"
+                      onClick={() => handleDeleteAlert(a.id)}
+                      aria-label={`Remover alerta de ${a.tracked_product_id}`}
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -552,10 +634,15 @@ function App() {
 
         <section className="card">
           <h2>Evolução de preço</h2>
-          <PriceChart data={history} />
+          {loading ? (
+            <div className="skeleton skeleton--chart" aria-hidden="true" />
+          ) : (
+            <PriceChart data={history} />
+          )}
         </section>
       </main>
 
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }

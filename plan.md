@@ -147,16 +147,17 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 - [x] **Corrigir o bug do destaque**: preço **atual** como herói; média/menor/maior como cards secundários. _(feito antecipadamente na Fase 0 por ser bug de correção.)_
 - [x] Adicionar **cards de estatística**: Menor · Médio · Maior · Variação % (▲/▼ vs. registro anterior) + badge "Menor preço!". _(Data da última coleta já exibida no rodapé do card.)_
-- [ ] Tela de **gerenciar produtos**: listar, selecionar, **excluir** produto (endpoint `DELETE /api/products/:id` + RLS já cobre).
-- [ ] Tela/lista de **alertas**: ver alertas ativos, editar threshold, **remover** alerta (`GET`/`DELETE /api/alerts`).
-- [ ] **Estados vazios e skeletons** bonitos (nada de "Aguardando primeiro rastreamento..." solto).
-- [ ] **Responsividade** real (mobile → desktop) e **toggle dark/light** (opcional, mas impressiona).
-- [ ] Toasts para sucesso/erro no lugar de `<p className="error">` espalhados.
-- [ ] Acessibilidade básica: labels, foco, contraste, `aria-*` nos controles.
-- [ ] Usar a skill **ui-ux-pro-max** para revisar layout, paleta e tipografia (dashboard/SaaS).
-- [ ] Favicon, título e meta tags decentes (`index.html`).
+- [x] **Gerenciar produtos**: botão **excluir produto** (`DELETE /api/products/:id` + cascade no banco; seleção troca para o próximo produto automaticamente).
+- [x] **Lista de alertas ativos**: ver + **remover** (`GET`/`DELETE /api/alerts/:id`). Editar threshold = re-salvar pelo formulário (upsert). Hook `useAlerts` (adiado da Fase 3) criado.
+- [x] **Skeletons** (resumo e gráfico) durante o loading + estado vazio.
+- [x] **Responsividade**: grid single-column no mobile, stat-grid 2 colunas, header com wrap, toasts com largura limitada.
+- [x] **Toasts** de sucesso/erro (criar/excluir produto, salvar/excluir alerta) via `useToasts` + `ToastContainer`.
+- [~] Acessibilidade **básica**: `aria-label` nos botões de ícone, `role="status"`/`aria-live` nos toasts, labels nos inputs. (Auditoria completa fica para depois.)
+- [ ] Skill **ui-ux-pro-max** para revisar paleta/tipografia — **opcional, não feito** (o design atual já está coeso).
+- [x] **Favicon** (SVG inline), `title` descritivo e `meta description`/`theme-color` no `index.html`.
+- [~] **Toggle dark/light**: **não feito** — o dark theme atual já está bom; adiar (baixo ROI agora).
 
-**DoD:** abrir no celular e no desktop, criar produto, ver stats e gráfico, gerenciar alertas — tudo fluido e sem número enganoso.
+**DoD:** ✅ criar/excluir produto, ver stats e gráfico, gerenciar alertas, feedback por toast, skeletons e layout responsivo. Verificação **visual rodando** pendente (fazer com o Supabase real).
 
 ---
 
@@ -213,7 +214,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [x] Fase 3 — Validação, tipos, logger, cliente HTTP unificado
 - [x] Fase 4 — Testes
 - [x] Fase 5 — CI
-- [ ] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
+- [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
 
@@ -269,6 +270,12 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - **GitHub Actions** (`.github/workflows/ci.yml`) com matrix backend/frontend rodando `npm ci` + lint + type-check + test + build a cada push/PR. _Por quê:_ garante que nada quebra ao evoluir e mostra disciplina de engenharia no portfólio.
 - **Badges** de CI e licença no README + **Dependabot** semanal. _Por quê:_ profissionalismo e dependências atualizadas.
 - Validei o pipeline localmente com `npm ci` (corrigindo os lockfiles) para o CI já abrir verde. _Por quê:_ um CI vermelho no primeiro push passa má impressão.
+
+### ✅ Fase 6 — UI/UX 10x
+- **Gestão de produtos e alertas**: excluir produto (com cascade no banco) e listar/remover alertas ativos, com novos endpoints `DELETE`. _Por quê:_ um rastreador de verdade deixa o usuário no controle.
+- **Toasts** de feedback (`useToasts`/`ToastContainer`) no lugar de mensagens soltas, **skeletons** de loading e **estados vazios**. _Por quê:_ sensação de produto, não de protótipo.
+- **Hooks** `useAlerts` e `useToasts` (o de alerts estava adiado da Fase 3). _Por quê:_ organizar a lógica de UI fora do `App`.
+- **Polish**: favicon SVG, `title`/`meta description`, responsividade e `aria-*` básicos. _Por quê:_ primeira impressão e acessibilidade.
 
 ---
 
