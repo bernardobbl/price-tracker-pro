@@ -246,6 +246,37 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
+## 6.5. Migração da fonte de dados: Mercado Livre → Books to Scrape
+
+> **Por que:** o Mercado Livre passou a **bloquear scraping** (redireciona para uma página de
+> "account-verification" / anti-bot) e a **API oficial exige OAuth** (403 sem token). Isso quebraria a
+> demo no deploy (IP de servidor é bloqueado ainda mais). Decisão: **manter a ideia** (rastreador de
+> preços com **web scraping real**) e trocar a fonte para **[books.toscrape.com](https://books.toscrape.com)**
+> — um sandbox oficial feito para scraping, estável, sem bot e sem auth.
+
+**Validado ao vivo:** 20 itens/página, com título, preço (`.price_color`), estoque e link para a página de detalhe.
+Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pequena.
+
+### O que muda (checklist da migração)
+- [ ] Criar `backend/src/scrapers/booksToScrapeScraper.ts` (substitui o `mercadoLivreScraper.ts`), com parsers puros:
+  - Lista: `article.product_pod` → título (`h3 a[title]`), preço (`.price_color`), link (`h3 a[href]`), estoque (`.availability`).
+  - Detalhe: página do livro → preço (`.price_color`), disponibilidade, rating.
+- [ ] **Busca:** o site não tem busca nativa → adaptar `searchBooks(q)` para raspar as páginas do catálogo
+  (`catalogue/page-N.html`) e **filtrar por título** que contenha `q` (com um limite de páginas).
+- [ ] **Preço/moeda:** exibir em **£** (como raspado) — honesto. `fullPrice = discountedPrice` (o site não tem desconto).
+- [ ] **Preços estáticos → histórico interessante:** o scrape pega o preço **real**; o `seed` e o job diário
+  geram o histórico com **pequena variação simulada** em cima do preço real (documentar no README).
+- [ ] Atualizar `scheduleDailyPriceJob`, `priceService`, rota `/api/track` e `/api/search` para o novo scraper
+  (a interface `ScrapedPriceResult` pode ser mantida quase igual → mudança mínima nos consumidores).
+- [ ] Atualizar **fixtures e testes** (`test/fixtures/` + `scraper.test.ts`) para o HTML do Books to Scrape.
+- [ ] Atualizar **textos da UI** e do README: "Mercado Livre" → "Books to Scrape" (rastreador de preços de livros).
+- [ ] Manter **intacto** todo o resto: auth, Supabase/RLS, alertas por email, cron, gráficos, CI, deploy.
+
+> **Alternativa registrada:** `dummyjson.com` (API JSON com busca e desconto) — descartada por ser
+> consumo de API, não scraping (perderia a skill principal do projeto). Fica como plano B.
+
+---
+
 ## 7. Registro de execução (o que foi feito e por quê)
 
 > Resumo cronológico das fases já concluídas — serve de "diário de bordo" do projeto
