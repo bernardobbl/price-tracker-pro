@@ -19,11 +19,14 @@ interface SeedProduct {
   endPrice: number;
 }
 
+// Livros reais do books.toscrape.com; startPrice simula um histórico caindo até o preço atual.
 const PRODUCTS: SeedProduct[] = [
-  { id: "playstation-5", name: "PlayStation 5", searchQuery: "PlayStation 5", startPrice: 4299.9, endPrice: 3599.9 },
-  { id: "iphone-15", name: "iPhone 15", searchQuery: "iPhone 15", startPrice: 5999.9, endPrice: 5199.9 },
-  { id: "rtx-4070", name: "RTX 4070", searchQuery: "RTX 4070", startPrice: 4899.9, endPrice: 4199.9 },
+  { id: "a-light-in-the-attic", name: "A Light in the Attic", searchQuery: "A Light in the Attic", startPrice: 58.9, endPrice: 51.77 },
+  { id: "tipping-the-velvet", name: "Tipping the Velvet", searchQuery: "Tipping the Velvet", startPrice: 60.0, endPrice: 53.74 },
+  { id: "soumission", name: "Soumission", searchQuery: "Soumission", startPrice: 55.0, endPrice: 50.1 },
 ];
+
+const CURRENCY = "£";
 
 const DAYS = 30;
 
@@ -71,9 +74,9 @@ function buildPriceSeries(product: SeedProduct, userId: string) {
       date: new Date(now - i * dayMs).toISOString(),
       full_price: full,
       discounted_price: discounted,
-      currency: "R$",
+      currency: CURRENCY,
       title: `${product.name} (demo)`,
-      url: `https://lista.mercadolivre.com.br/${encodeURIComponent(product.searchQuery)}`,
+      url: "https://books.toscrape.com/",
     });
   }
 
@@ -96,7 +99,7 @@ async function main() {
         id: product.id,
         name: product.name,
         search_query: product.searchQuery,
-        marketplace: "mercado-livre",
+        marketplace: "books-to-scrape",
       },
       { onConflict: "user_id,id" }
     );

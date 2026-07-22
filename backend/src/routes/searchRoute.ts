@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { searchMercadoLivre } from "../scrapers/mercadoLivreScraper";
+import { searchBooks } from "../scrapers/booksToScrapeScraper";
 import { asyncHandler } from "../lib/asyncHandler";
 import { validate } from "../middleware/validate";
 import { searchQuerySchema } from "../schemas/requestSchemas";
@@ -12,7 +12,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const q = req.query.q as string;
     // Erros de scraping (ScrapeError) são tratados pelo errorHandler central.
-    const results = await searchMercadoLivre(q, 10);
+    const results = await searchBooks(q, 10);
     res.json(results);
   })
 );

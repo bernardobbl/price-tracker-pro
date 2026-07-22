@@ -4,7 +4,7 @@
 
 - Node.js + TypeScript
 - Express (API REST)
-- Axios + Cheerio (web scraping Mercado Livre)
+- Axios + Cheerio (web scraping Books to Scrape)
 - node-cron (agendamento diário)
 - Supabase (persistência remota opcional)
 - CSV local (persistência simples)
@@ -38,7 +38,7 @@ npm run dev
 ### Job diário
 
 O arquivo `src/jobs/scheduleDailyPriceJob.ts` agenda um job diário às 09:00 que:
-- Faz scraping do Mercado Livre para cada produto em `PRODUCTS_TO_TRACK`
+- Faz scraping do Books to Scrape para cada produto em `PRODUCTS_TO_TRACK`
 - Salva o registro do dia em:
   - CSV local em `backend/data/prices_<productId>.csv`
   - Tabela `prices` no Supabase (se configurado)

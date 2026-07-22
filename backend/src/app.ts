@@ -6,7 +6,7 @@ import type { AuthenticatedRequest } from "./middleware/authMiddleware";
 import { requireAuth } from "./middleware/authMiddleware";
 import { createOrUpdateAlert, deleteAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 import searchRouter from "./routes/searchRoute";
-import { scrapeMercadoLivrePrice } from "./scrapers/mercadoLivreScraper";
+import { scrapeBookPrice } from "./scrapers/booksToScrapeScraper";
 import { asyncHandler } from "./lib/asyncHandler";
 import { sendError } from "./lib/httpError";
 import { validate } from "./middleware/validate";
@@ -84,13 +84,13 @@ app.post(
     }
 
     // Erros de scraping (ScrapeError) são mapeados pelo errorHandler central.
-    const scraped = await scrapeMercadoLivrePrice(product.searchQuery);
+    const scraped = await scrapeBookPrice(product.searchQuery);
 
     const record = await trackAndStorePrice({
       id: product.id,
       name: product.name,
       searchQuery: product.searchQuery,
-      marketplace: "mercado-livre",
+      marketplace: "books-to-scrape",
       user_id: userId,
       price: scraped.price,
       originalPrice: scraped.originalPrice,

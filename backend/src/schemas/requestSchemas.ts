@@ -4,7 +4,7 @@ export const createProductSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   searchQuery: z.string().min(1),
-  marketplace: z.literal("mercado-livre").optional(),
+  marketplace: z.literal("books-to-scrape").optional(),
 });
 
 export const createAlertSchema = z.object({

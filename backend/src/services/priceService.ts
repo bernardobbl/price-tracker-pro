@@ -8,7 +8,7 @@ export interface ProductToTrack {
   id: string;
   name: string;
   searchQuery: string;
-  marketplace: "mercado-livre";
+  marketplace: "books-to-scrape";
   user_id?: string;
 
   // Dados vindos do scraper
@@ -97,7 +97,7 @@ function appendToCsv(productId: string, item: PriceHistoryItem) {
  * 🔹 Agora recebe o preço já buscado pelo frontend (não faz scraping no backend)
  */
 export async function trackAndStorePrice(product: ProductToTrack) {
-  if (product.marketplace !== "mercado-livre") {
+  if (product.marketplace !== "books-to-scrape") {
     throw new Error("Marketplace não suportado ainda.");
   }
 
@@ -147,7 +147,7 @@ export async function trackAndStorePrice(product: ProductToTrack) {
     url: record.url,
   });
 
-  logger.info(`[PriceService] Preço registrado para ${product.id}: R$ ${product.price}`);
+  logger.info(`[PriceService] Preço registrado para ${product.id}: ${product.currency} ${product.price}`);
 
   return record;
 }

@@ -5,7 +5,7 @@ export interface CreateProductInput {
   id: string;
   name: string;
   searchQuery: string;
-  marketplace?: "mercado-livre";
+  marketplace?: "books-to-scrape";
   userId?: string;
 }
 
@@ -14,17 +14,17 @@ export interface StoredProduct {
   id: string;
   name: string;
   searchQuery: string;
-  marketplace: "mercado-livre";
+  marketplace: "books-to-scrape";
   user_id?: string;
 }
 
 // 🔹 Fallback em memória (caso Supabase esteja ausente)
 const FALLBACK_PRODUCTS: StoredProduct[] = [
   {
-    id: "ps5",
-    name: "PlayStation 5",
-    searchQuery: "PlayStation 5",
-    marketplace: "mercado-livre"
+    id: "the-black-maria",
+    name: "The Black Maria",
+    searchQuery: "The Black Maria",
+    marketplace: "books-to-scrape"
   }
 ];
 
@@ -40,7 +40,7 @@ function mapRowToProduct(row: {
     id: row.id,
     name: row.name,
     searchQuery: row.search_query,
-    marketplace: row.marketplace as "mercado-livre",
+    marketplace: row.marketplace as "books-to-scrape",
     user_id: row.user_id
   };
 }
@@ -107,7 +107,7 @@ export async function getProductById(
  * Cria um novo produto rastreável
  */
 export async function createProduct(input: CreateProductInput): Promise<StoredProduct> {
-  const marketplace: "mercado-livre" = input.marketplace ?? "mercado-livre";
+  const marketplace: "books-to-scrape" = input.marketplace ?? "books-to-scrape";
 
   if (!supabase) {
     const product: StoredProduct = {

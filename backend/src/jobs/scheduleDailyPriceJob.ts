@@ -1,11 +1,11 @@
 import cron from "node-cron";
 import { trackAndStorePrice } from "../services/priceService";
 import { listProducts } from "../services/productService";
-import { scrapeMercadoLivrePrice } from "../scrapers/mercadoLivreScraper";
+import { scrapeBookPrice } from "../scrapers/booksToScrapeScraper";
 import { sleep } from "../scrapers/httpClient";
 import { logger } from "../lib/logger";
 
-// Intervalo entre produtos no job diário, para não sobrecarregar o Mercado Livre.
+// Intervalo entre produtos no job diário, para não sobrecarregar a fonte.
 const DELAY_BETWEEN_PRODUCTS_MS = 2_000;
 
 export function scheduleDailyPriceJob() {
@@ -17,10 +17,10 @@ export function scheduleDailyPriceJob() {
     for (let i = 0; i < products.length; i++) {
       const product = products[i];
       try {
-        const scraped = await scrapeMercadoLivrePrice(product.searchQuery);
+        const scraped = await scrapeBookPrice(product.searchQuery);
         await trackAndStorePrice({
           ...product,
-          marketplace: "mercado-livre",
+          marketplace: "books-to-scrape",
           price: scraped.price,
           originalPrice: scraped.originalPrice,
           currency: scraped.currency,
