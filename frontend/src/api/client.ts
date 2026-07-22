@@ -36,6 +36,8 @@ async function extractError(response: Response, fallback: string): Promise<strin
 export interface SearchResultItem {
   title: string;
   url: string;
+  price: number;
+  currency: string;
 }
 
 export async function fetchProducts(): Promise<TrackedProduct[]> {

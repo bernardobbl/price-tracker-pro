@@ -175,6 +175,57 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
+### Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
+**Meta:** o gráfico deixa de ser "uma linha" e vira uma **ferramenta de decisão** (comprar ou esperar);
+a busca deixa de ser lista de links e vira **resultado vivo**. Referências: Keepa (faixa min/max),
+CamelCamelCamel (filtros de período + simplicidade), Pricefy (busca em dashboard).
+
+> Princípio: os melhores trackers não vendem um gráfico, vendem uma **decisão**. Essa é a camada que falta.
+> Ordem dentro da fase: **maior impacto / menor esforço primeiro** (Frente A → B → C).
+
+**Frente A — Painel de inteligência de preço (o gráfico vira decisão)**
+- [x] **A1 · Deal score / sinal de compra**: card "Compre já / Espere" com score 0–100 derivado de
+  `computePriceStats` (posição do preço atual entre mínimo e média). Dado já existe — é regra simples, sem ML.
+  _(feito: `lib/dealSignal.ts` pura + testada; card renderizado no `App.tsx`.)_
+- [x] **A2 · Barra de posição min↔max**: barra horizontal mostrando onde o preço atual cai entre o menor
+  e o maior histórico. Comunica "é uma boa?" sem ler o gráfico. _(feito: barra com marcador + rótulos.)_
+- [x] **A3 · Gráfico repaginado** (`PriceChart.tsx`): área com **gradiente**, **linha tracejada da média**
+  e **tooltip rico** (data + preço/média). Mesma lib (Chart.js), muito mais vivo. _(faixa min/max sombreada
+  fica opcional pra depois — a linha da média já dá o contexto principal.)_
+- [x] **A4 · Filtros de período**: 30d / 90d / 6m / tudo (padrão CamelCamelCamel). _(feito: `filterByPeriod`
+  puro + testado, ancorado na data mais recente; controle segmentado recorta gráfico E estatísticas.)_
+- [x] **A5 · Tendência leve**: rótulo "↘ Caindo / ↗ Subindo / → Estável" via **média móvel** simples (sem ML).
+  _(feito: `computeTrend` em `lib/priceInsights.ts`, testado.)_
+- [x] **A6 · Cards secundários repaginados**: Menor · Média · Maior · Variação + **Tendência** + **Volatilidade**
+  (`computeVolatility`: Baixa/Média/Alta pela amplitude relativa). _(feito: stat-grid com 6 cards.)_
+
+**Frente B — Busca viva (unir buscar + rastrear)**
+- [x] **B1 · Resultado rico**: cada item da busca mostra o **preço atual** direto na linha. _(feito: backend
+  `searchBooks` agora devolve `price`/`currency`; front exibe por item.)_
+- [~] **B2 · Mini-sparkline por item**: **adiado deliberadamente** — itens da busca ainda **não são rastreados**,
+  logo não têm histórico pra desenhar. Sparkline faz sentido nos **cards de produto rastreado** (fica pra um
+  próximo passo, quando o histórico de cada produto for carregado na sidebar). Por ora o item mostra preço + status.
+- [x] **B3 · Botão "Rastrear" inline**: adiciona ao monitoramento sem sair da busca (`handleTrackFromSearch`:
+  cria produto + dispara scraping + seleciona). Mostra "✓ Rastreando" se já existe. _(maior ganho de UX.)_
+- [x] **B4 · Busca instantânea** com debounce (~350ms) via `useEffect`, com spinner. Submit manual removido.
+- [x] **B5 · Skeletons e estado vazio** na busca (linhas skeleton durante o loading + mensagem "nenhum encontrado").
+
+**Frente C — Design geral mais robusto e dinâmico**
+- [x] **C1 · Layout dashboard**: `App` reestruturado em **sidebar** (busca + produtos + alertas, sticky) +
+  **painel de detalhe** (preço/sinal/barra/período/stats/gráfico/alerta), no lugar da coluna única.
+- [x] **C2 · Cards de produto** clicáveis (nome + id + excluir inline, ativo destacado) substituindo o `<select>`.
+  _(thumbnail não se aplica ao Books to Scrape sem imagem; usei destaque + estado ativo.)_
+- [x] **C3 · Micro-animações**: **count-up** no preço (`useCountUp`, respeita `prefers-reduced-motion`),
+  fade-in do card de detalhe, transições em cards/hover.
+- [x] **C4 · Tokens de design** (`:root` com cor/raio) aplicados aos componentes novos. _(migração incremental:
+  o CSS legado segue funcionando; novos blocos usam os tokens.)_
+
+**DoD:** o card de detalhe mostra um **sinal de compra** claro e um gráfico com contexto (média + faixa);
+a busca permite **rastrear em 1 clique** com preço e sparkline por item; o layout parece um SaaS, não uma
+coluna de cards. Cada item vira 1 commit pequeno. Verificação: rodar o app com Supabase real e conferir visual.
+
+---
+
 ### Fase 7 — Deploy público (o marco final)
 **Meta:** link clicável funcionando, com dados de demo.
 
@@ -229,6 +280,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [x] Fase 4 — Testes
 - [x] Fase 5 — CI
 - [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
+- [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
 
@@ -320,6 +372,26 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
 - **Toasts** de feedback (`useToasts`/`ToastContainer`) no lugar de mensagens soltas, **skeletons** de loading e **estados vazios**. _Por quê:_ sensação de produto, não de protótipo.
 - **Hooks** `useAlerts` e `useToasts` (o de alerts estava adiado da Fase 3). _Por quê:_ organizar a lógica de UI fora do `App`.
 - **Polish**: favicon SVG, `title`/`meta description`, responsividade e `aria-*` básicos. _Por quê:_ primeira impressão e acessibilidade.
+
+### ✅ Fase 6.5 — Redesign de inteligência de preço e busca
+- **Sinal de compra (deal score)**: `lib/dealSignal.ts` (puro, testado) transforma as estatísticas num veredito
+  "Compre já / Bom preço / Preço mediano / Espere cair" com score 0–100 + **barra de posição** (menor↔maior).
+  _Por quê:_ os melhores trackers vendem uma **decisão**, não um gráfico — era a camada que faltava.
+- **Gráfico repaginado** (`PriceChart.tsx`): área com gradiente, linha da média tracejada e tooltip com data.
+  _Por quê:_ dar contexto imediato a cada ponto (padrão Keepa/CamelCamelCamel).
+- **Insights** (`lib/priceInsights.ts`, puro e testado): **filtro de período** (30d/90d/6m/tudo) que recorta
+  gráfico e stats, **tendência** por média móvel e **volatilidade** por amplitude relativa. _Por quê:_ leitura
+  rápida do momento sem depender do olho no gráfico.
+- **Busca viva**: backend passou a devolver **preço por item**; front reconstruiu a busca com **debounce**
+  (instantânea), **preço na linha**, **skeletons/estado vazio** e **botão "Rastrear" inline** (`handleTrackFromSearch`).
+  _Por quê:_ unir "buscar" e "cadastrar" era o maior atrito de UX.
+- **Layout dashboard**: `App` virou **sidebar** (busca + produtos como cards + alertas) + **painel de detalhe**,
+  com **count-up** no preço (`useCountUp`), fade-in e transições, e **tokens de design** (`:root`) nos componentes novos.
+  _Por quê:_ parecer um SaaS de verdade, não uma coluna de cards.
+- **Testes**: +7 (`dealSignal`) e +10 (`priceInsights`) no front. Total do projeto agora: **45 testes** (21 back + 24 front),
+  `lint`/`type-check`/`build` limpos nos dois lados.
+- **Decisão registrada (B2, sparkline):** adiado — itens da busca não são rastreados, logo não têm histórico.
+  Melhor lugar é o card de produto rastreado; entra quando o histórico por produto for carregado na sidebar.
 
 ---
 

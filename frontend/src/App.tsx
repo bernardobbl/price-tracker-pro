@@ -15,8 +15,27 @@ import { PriceChart } from "./components/PriceChart";
 import { ToastContainer } from "./components/Toast";
 import { useToasts } from "./hooks/useToasts";
 import { useAlerts } from "./hooks/useAlerts";
+import { useCountUp } from "./hooks/useCountUp";
 import { computePriceStats } from "./lib/priceStats";
+import { computeDealSignal } from "./lib/dealSignal";
+import {
+  filterByPeriod,
+  computeTrend,
+  computeVolatility,
+  PERIODS,
+  type Period
+} from "./lib/priceInsights";
 import { supabase } from "./supabaseClient";
+
+/** "A Light in the Attic" → "a-light-in-the-attic" */
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -39,32 +58,50 @@ function App() {
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<Period>("all");
 
   const { toasts, push, remove: removeToast } = useToasts();
   const { alerts, reload: reloadAlerts, remove: removeAlert } = useAlerts(Boolean(supabase && user));
 
-  // ── Busca livre ──────────────────────────────────────────────────────────
+  // ── Busca livre (instantânea, com debounce) ────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (!q) return;
+  const runSearch = useCallback(async (q: string) => {
+    const query = q.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearchError(null);
+      return;
+    }
     setSearchLoading(true);
     setSearchError(null);
-    setSearchResults([]);
     try {
-      const data = await searchProducts(q);
+      const data = await searchProducts(query);
       setSearchResults(data);
     } catch (err: unknown) {
       setSearchError(err instanceof Error ? err.message : "Erro inesperado na busca");
+      setSearchResults([]);
     } finally {
       setSearchLoading(false);
     }
-  };
+  }, []);
+
+  // Dispara a busca ~350ms após parar de digitar.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => void runSearch(q), 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery, runSearch]);
   // ────────────────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async (id: string) => {
@@ -177,16 +214,9 @@ function App() {
     await supabase.auth.signOut();
   };
 
-  const latest = history[history.length - 1];
-  const stats = computePriceStats(history);
-  const selectedProduct = products.find((p) => p.id === selectedProductId);
-  const listingUrl = latest?.url;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = selectedProductId.trim();
-    if (!trimmed) return;
-    void loadData(trimmed);
+  const selectProduct = (id: string) => {
+    setSelectedProductId(id);
+    void loadData(id);
   };
 
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -197,21 +227,13 @@ function App() {
       setCreateError("Digite o nome do produto.");
       return;
     }
-    // Gera ID automático: "A Light in the Attic" → "a-light-in-the-attic"
-    const id = name
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
+    const id = slugify(name);
     try {
       setCreating(true);
       const created = await createProduct({ id, name, searchQuery: name, marketplace: "books-to-scrape" });
-      const updatedProducts = [...products, created];
-      setProducts(updatedProducts);
+      setProducts((prev) => [...prev, created]);
       setSelectedProductId(created.id);
       setNewProductName("");
-      // Dispara scraping imediato no backend
       await trackPriceNow(created.id);
       await loadData(created.id);
       push("success", `"${created.name}" cadastrado e rastreado!`);
@@ -219,6 +241,38 @@ function App() {
       setCreateError(err instanceof Error ? err.message : "Erro ao cadastrar produto");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleTrackFromSearch = async (item: SearchResultItem) => {
+    const name = item.title.trim();
+    const id = slugify(name);
+    setTrackingId(id);
+    try {
+      let created = products.find((p) => p.id === id);
+      if (!created) {
+        try {
+          created = await createProduct({
+            id,
+            name,
+            searchQuery: name,
+            marketplace: "books-to-scrape"
+          });
+          setProducts((prev) => [...prev, created as TrackedProduct]);
+        } catch (err: unknown) {
+          const existing = products.find((p) => p.id === id);
+          if (!existing) throw err;
+          created = existing;
+        }
+      }
+      setSelectedProductId(created.id);
+      await trackPriceNow(created.id);
+      await loadData(created.id);
+      push("success", `"${created.name}" rastreado!`);
+    } catch (err: unknown) {
+      push("error", err instanceof Error ? err.message : "Erro ao rastrear produto");
+    } finally {
+      setTrackingId(null);
     }
   };
 
@@ -303,6 +357,16 @@ function App() {
     }
   };
 
+  // ── Derivados (recortados pelo período selecionado) ─────────────────────────
+  const latest = history[history.length - 1];
+  const viewHistory = filterByPeriod(history, period);
+  const stats = computePriceStats(viewHistory);
+  const deal = computeDealSignal(stats);
+  const trend = computeTrend(viewHistory);
+  const volatility = computeVolatility(stats);
+  const selectedProduct = products.find((p) => p.id === selectedProductId);
+  const animatedPrice = useCountUp(latest?.discountedPrice ?? 0);
+
   // Tela de loading
   if (authLoading) {
     return (
@@ -312,7 +376,7 @@ function App() {
     );
   }
 
-  // Tela de login (quando não autenticado e Supabase está ativo)
+  // Tela de login
   if (supabase && !user) {
     return (
       <div className="app">
@@ -396,6 +460,12 @@ function App() {
     );
   }
 
+  const canManage = Boolean(supabase && user);
+  const discountPct =
+    latest && latest.fullPrice > latest.discountedPrice
+      ? Math.round((1 - latest.discountedPrice / latest.fullPrice) * 100)
+      : 0;
+
   return (
     <div className="app">
       <header className="header">
@@ -403,9 +473,9 @@ function App() {
           <h1>Price Tracker Pro</h1>
           <p>Rastreie preços de livros (Books to Scrape)</p>
         </div>
-        {supabase && user && (
+        {canManage && (
           <div className="auth-row auth-row--logged">
-            <span className="auth-email">👤 {user.email}</span>
+            <span className="auth-email">👤 {user!.email}</span>
             <button type="button" className="btn-logout" onClick={handleLogout}>
               Sair
             </button>
@@ -413,149 +483,122 @@ function App() {
         )}
       </header>
 
-      <main className="content">
-        <section className="card">
-          <form className="form" onSubmit={handleSubmit}>
-            <label>
-              Produto:
-              <select
-                value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}
-              >
-                <option value="">Selecione um produto</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.id})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="form-actions">
-              <button type="submit" disabled={loading || !selectedProductId}>
-                {loading ? "Carregando..." : "Buscar histórico"}
-              </button>
-              {supabase && user && selectedProduct && (
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => handleDeleteProduct(selectedProduct)}
-                  disabled={deletingProductId === selectedProduct.id}
-                >
-                  {deletingProductId === selectedProduct.id ? "Removendo..." : "Excluir produto"}
-                </button>
-              )}
+      <main className="dashboard">
+        {/* ── Sidebar: busca + produtos + alertas ── */}
+        <aside className="sidebar">
+          <div className="panel">
+            <h2>Buscar produto</h2>
+            <div className="search-box">
+              <span className="search-box-icon" aria-hidden="true">🔎</span>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Ex: light, velvet, the..."
+                aria-label="Buscar livros"
+              />
+              {searchLoading && <span className="spinner" aria-hidden="true" />}
             </div>
-          </form>
 
-          {error && <p className="error">{error}</p>}
+            {searchError && <p className="error">{searchError}</p>}
 
-          {loading && <div className="skeleton skeleton--summary" aria-hidden="true" />}
+            {searchLoading && searchResults.length === 0 && (
+              <div className="search-results">
+                <div className="skeleton skeleton--row" aria-hidden="true" />
+                <div className="skeleton skeleton--row" aria-hidden="true" />
+                <div className="skeleton skeleton--row" aria-hidden="true" />
+              </div>
+            )}
 
-          {!loading && selectedProductId && history.length === 0 && (
-            <p className="muted" style={{ marginTop: "1rem" }}>
-              ⏳ Aguardando primeiro rastreamento pelo backend...
-            </p>
-          )}
-
-          {latest && (
-            <div className="summary">
-              <h2>Preço atual</h2>
-              <p className="price">
-                {latest.currency} {latest.discountedPrice.toFixed(2)}
-                {stats.isLowestEver && history.length > 1 && (
-                  <span className="price-badge">Menor preço!</span>
-                )}
-              </p>
-
-              {latest.fullPrice > latest.discountedPrice && (
-                <p className="meta" style={{ marginTop: "0.25rem" }}>
-                  <span style={{ textDecoration: "line-through", marginRight: "0.5rem" }}>
-                    {latest.currency} {latest.fullPrice.toFixed(2)}
-                  </span>
-                  <span style={{ color: "#f97316", fontWeight: 600 }}>
-                    -{Math.round((1 - latest.discountedPrice / latest.fullPrice) * 100)}%
-                  </span>
-                </p>
-              )}
-
-              {history.length > 1 && (
-                <div className="stat-grid">
-                  <div className="stat">
-                    <span className="stat-label">Menor</span>
-                    <span className="stat-value stat-value--low">
-                      {latest.currency} {stats.min?.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-label">Médio</span>
-                    <span className="stat-value">
-                      {latest.currency} {stats.avg?.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-label">Maior</span>
-                    <span className="stat-value stat-value--high">
-                      {latest.currency} {stats.max?.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-label">Variação</span>
-                    <span
-                      className={`stat-value ${
-                        stats.changePct == null || stats.changePct === 0
-                          ? ""
-                          : stats.changePct > 0
-                            ? "stat-value--high"
-                            : "stat-value--low"
-                      }`}
-                    >
-                      {stats.changePct == null
-                        ? "—"
-                        : `${stats.changePct > 0 ? "▲" : stats.changePct < 0 ? "▼" : ""} ${Math.abs(stats.changePct).toFixed(1)}%`}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <p className="meta" style={{ marginTop: "0.75rem" }}>
-                Atualizado em {new Date(latest.date).toLocaleString("pt-BR")}
-                {history.length > 1 && ` · ${history.length} registros`}
-                {" · "}
-                <a href={listingUrl ?? latest.url} target="_blank" rel="noreferrer">
-                  Ver opções
-                </a>
-              </p>
-              <p className="title">{latest.title}</p>
-
-              {supabase && user && (
-                <form className="form" onSubmit={handleCreateAlert} style={{ marginTop: "1.25rem" }}>
-                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem", color: "#94a3b8" }}>
-                    Alerta de preço
-                  </h3>
-                  <div className="alert-field">
-                    <label htmlFor="alert-threshold">Me avise quando cair abaixo de</label>
-                    <div className="alert-controls">
-                      <input
-                        id="alert-threshold"
-                        type="number"
-                        step="0.01"
-                        placeholder={(stats.avg ?? latest.discountedPrice).toFixed(2)}
-                        value={alertThreshold}
-                        onChange={(e) => setAlertThreshold(e.target.value)}
-                      />
-                      <button type="submit" className="btn-alert" disabled={alertSaving}>
-                        {alertSaving ? "Salvando..." : "Ativar alerta"}
+            {!searchLoading && searchResults.length > 0 && (
+              <ul className="search-results">
+                {searchResults.map((item) => {
+                  const id = slugify(item.title);
+                  const tracked = products.some((p) => p.id === id);
+                  return (
+                    <li key={item.url} className="search-item">
+                      <div className="search-item-main">
+                        <a href={item.url} target="_blank" rel="noreferrer" className="search-item-title">
+                          {item.title}
+                        </a>
+                        <span className="search-item-price">
+                          {item.currency} {item.price.toFixed(2)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-track"
+                        onClick={() => handleTrackFromSearch(item)}
+                        disabled={trackingId === id}
+                        title={tracked ? "Atualizar preço agora" : "Rastrear este produto"}
+                      >
+                        {trackingId === id ? "..." : tracked ? "✓ Rastreando" : "🔔 Rastrear"}
                       </button>
-                    </div>
-                  </div>
-                  {alertError && <p className="error">{alertError}</p>}
-                </form>
-              )}
-            </div>
-          )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
 
-          {supabase && user && alerts.length > 0 && (
-            <div className="summary" style={{ marginTop: "1.5rem" }}>
+            {!searchLoading && searchQuery.trim() && !searchError && searchResults.length === 0 && (
+              <p className="muted empty-hint">Nenhum livro encontrado para &quot;{searchQuery.trim()}&quot;.</p>
+            )}
+          </div>
+
+          <div className="panel">
+            <h2>
+              Rastreando <span className="count-badge">{products.length}</span>
+            </h2>
+
+            {products.length === 0 ? (
+              <p className="muted empty-hint">Nenhum produto ainda. Busque acima e clique em Rastrear.</p>
+            ) : (
+              <ul className="product-list">
+                {products.map((p) => (
+                  <li
+                    key={p.id}
+                    className={`product-card${p.id === selectedProductId ? " active" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="product-card-btn"
+                      onClick={() => selectProduct(p.id)}
+                    >
+                      <span className="product-card-name">{p.name}</span>
+                      <span className="product-card-id">{p.id}</span>
+                    </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="product-card-remove"
+                        onClick={() => handleDeleteProduct(p)}
+                        disabled={deletingProductId === p.id}
+                        aria-label={`Excluir ${p.name}`}
+                        title="Excluir produto"
+                      >
+                        {deletingProductId === p.id ? "..." : "×"}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <form className="add-product" onSubmit={handleCreateProduct}>
+              <input
+                value={newProductName}
+                onChange={(e) => setNewProductName(e.target.value)}
+                placeholder="Adicionar por nome exato..."
+                aria-label="Nome do produto"
+              />
+              <button type="submit" disabled={creating} aria-label="Adicionar produto">
+                {creating ? "..." : "+"}
+              </button>
+            </form>
+            {createError && <p className="error">{createError}</p>}
+          </div>
+
+          {canManage && alerts.length > 0 && (
+            <div className="panel">
               <h2>Alertas ativos</h2>
               <ul className="alert-list">
                 {alerts.map((a) => (
@@ -580,61 +623,197 @@ function App() {
               </ul>
             </div>
           )}
+        </aside>
 
-          <div className="summary" style={{ marginTop: "1.5rem" }}>
-            <h2>Buscar produto</h2>
-            <form className="form" onSubmit={handleSearch}>
-              <label>
-                Pesquisar livros:
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Ex: light, velvet, the..."
-                />
-              </label>
-              <button type="submit" disabled={searchLoading || !searchQuery.trim()}>
-                {searchLoading ? "Buscando..." : "Buscar"}
-              </button>
-            </form>
-            {searchError && <p className="error">{searchError}</p>}
-            {searchResults.length > 0 && (
-              <ul className="search-results">
-                {searchResults.map((item, i) => (
-                  <li key={i}>
-                    <a href={item.url} target="_blank" rel="noreferrer">
-                      {item.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="summary" style={{ marginTop: "1.5rem" }}>
-            <h2>Cadastrar novo produto</h2>
-            <form className="form" onSubmit={handleCreateProduct}>
-              <label>
-                Nome do produto:
-                <input
-                  value={newProductName}
-                  onChange={(e) => setNewProductName(e.target.value)}
-                  placeholder="Ex: A Light in the Attic, Soumission..."
-                />
-              </label>
-              <button type="submit" disabled={creating}>
-                {creating ? "Salvando..." : "Cadastrar e rastrear"}
-              </button>
-            </form>
-            {createError && <p className="error">{createError}</p>}
-          </div>
-        </section>
-
-        <section className="card">
-          <h2>Evolução de preço</h2>
-          {loading ? (
-            <div className="skeleton skeleton--chart" aria-hidden="true" />
+        {/* ── Painel de detalhe ── */}
+        <section className="detail">
+          {!selectedProductId ? (
+            <div className="detail-empty">
+              <span className="detail-empty-icon" aria-hidden="true">📈</span>
+              <p>Escolha um produto na lista ou busque um livro para começar a rastrear.</p>
+            </div>
           ) : (
-            <PriceChart data={history} />
+            <div className="card detail-card">
+              {error && <p className="error">{error}</p>}
+
+              {loading && <div className="skeleton skeleton--summary" aria-hidden="true" />}
+
+              {!loading && history.length === 0 && (
+                <p className="muted">⏳ Aguardando primeiro rastreamento pelo backend...</p>
+              )}
+
+              {latest && (
+                <>
+                  <div className="detail-head">
+                    <div className="detail-head-info">
+                      <p className="detail-eyebrow">{selectedProduct?.name ?? latest.title}</p>
+                      <p className="price">
+                        {latest.currency} {animatedPrice.toFixed(2)}
+                        {deal.available && deal.tone === "success" && stats.isLowestEver && (
+                          <span className="price-badge">Menor preço!</span>
+                        )}
+                      </p>
+                      {discountPct > 0 && (
+                        <p className="meta discount-line">
+                          <span className="strike">
+                            {latest.currency} {latest.fullPrice.toFixed(2)}
+                          </span>
+                          <span className="discount-pct">-{discountPct}%</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {deal.available && (
+                    <div className={`deal deal--${deal.tone}`}>
+                      <div className="deal-signal">
+                        <span className="deal-label">{deal.label}</span>
+                        <span className="deal-hint">{deal.hint}</span>
+                      </div>
+                      <div className="deal-score">
+                        <span className="deal-score-value">{deal.score}</span>
+                        <span className="deal-score-max">/100</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {stats.min != null && stats.max != null && stats.max > stats.min && (
+                    <div className="position">
+                      <div className="position-labels">
+                        <span>Menor · {latest.currency} {stats.min.toFixed(2)}</span>
+                        <span>Maior · {latest.currency} {stats.max.toFixed(2)}</span>
+                      </div>
+                      <div className="position-track">
+                        <div
+                          className={`position-fill position-fill--${deal.tone}`}
+                          style={{ width: `${Math.max(2, deal.positionPct)}%` }}
+                        />
+                        <div
+                          className="position-marker"
+                          style={{ left: `${deal.positionPct}%` }}
+                          title={`Preço atual: ${latest.currency} ${latest.discountedPrice.toFixed(2)}`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="segmented" role="group" aria-label="Período">
+                    {PERIODS.map((p) => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        className={`segmented-btn${period === p.value ? " active" : ""}`}
+                        onClick={() => setPeriod(p.value)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {viewHistory.length > 1 && (
+                    <div className="stat-grid">
+                      <div className="stat">
+                        <span className="stat-label">Menor</span>
+                        <span className="stat-value stat-value--low">
+                          {latest.currency} {stats.min?.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-label">Média</span>
+                        <span className="stat-value">
+                          {latest.currency} {stats.avg?.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-label">Maior</span>
+                        <span className="stat-value stat-value--high">
+                          {latest.currency} {stats.max?.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-label">Variação</span>
+                        <span
+                          className={`stat-value ${
+                            stats.changePct == null || stats.changePct === 0
+                              ? ""
+                              : stats.changePct > 0
+                                ? "stat-value--high"
+                                : "stat-value--low"
+                          }`}
+                        >
+                          {stats.changePct == null
+                            ? "—"
+                            : `${stats.changePct > 0 ? "▲" : stats.changePct < 0 ? "▼" : ""} ${Math.abs(stats.changePct).toFixed(1)}%`}
+                        </span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-label">Tendência</span>
+                        <span
+                          className={`stat-value ${
+                            !trend.available
+                              ? ""
+                              : trend.dir === "up"
+                                ? "stat-value--high"
+                                : trend.dir === "down"
+                                  ? "stat-value--low"
+                                  : ""
+                          }`}
+                        >
+                          {!trend.available
+                            ? "—"
+                            : `${trend.dir === "up" ? "↗" : trend.dir === "down" ? "↘" : "→"} ${trend.label}`}
+                        </span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-label">Volatilidade</span>
+                        <span className="stat-value">
+                          {volatility.available ? volatility.level : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="detail-chart">
+                    <div className="detail-chart-head">
+                      <h2>Evolução de preço</h2>
+                    </div>
+                    <PriceChart data={viewHistory} />
+                  </div>
+
+                  <p className="meta detail-meta">
+                    Atualizado em {new Date(latest.date).toLocaleString("pt-BR")}
+                    {history.length > 1 && ` · ${history.length} registros`}
+                    {" · "}
+                    <a href={latest.url} target="_blank" rel="noreferrer">
+                      Ver opções
+                    </a>
+                  </p>
+
+                  {canManage && (
+                    <form className="form alert-form" onSubmit={handleCreateAlert}>
+                      <h3 className="alert-form-title">Alerta de preço</h3>
+                      <div className="alert-field">
+                        <label htmlFor="alert-threshold">Me avise quando cair abaixo de</label>
+                        <div className="alert-controls">
+                          <input
+                            id="alert-threshold"
+                            type="number"
+                            step="0.01"
+                            placeholder={(stats.avg ?? latest.discountedPrice).toFixed(2)}
+                            value={alertThreshold}
+                            onChange={(e) => setAlertThreshold(e.target.value)}
+                          />
+                          <button type="submit" className="btn-alert" disabled={alertSaving}>
+                            {alertSaving ? "Salvando..." : "Ativar alerta"}
+                          </button>
+                        </div>
+                      </div>
+                      {alertError && <p className="error">{alertError}</p>}
+                    </form>
+                  )}
+                </>
+              )}
+            </div>
           )}
         </section>
       </main>
