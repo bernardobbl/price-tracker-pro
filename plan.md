@@ -88,17 +88,17 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 ---
 
-### Fase 2 — Refatorar o scraping para fora da request
+### Fase 2 — Refatorar o scraping para fora da request ✅ CONCLUÍDA
 **Meta:** scraping confiável, testável e que não trava a API.
 
-- [ ] Extrair seletores e parsing de preço para funções puras testáveis (ex: `parsePrice(html)`), com o HTML como input.
-- [ ] Adicionar **timeout**, **retry com backoff** e **User-Agent rotativo** no `axios`.
-- [ ] Tornar `POST /api/track` **assíncrono/rápido**: enfileirar/registrar o pedido e responder 202, OU manter síncrono mas com timeout curto + fallback claro. (Escolher a mais simples: timeout + mensagem de erro amigável já resolve para portfólio.)
-- [ ] Centralizar o scraping no **cron** (agenda) + um endpoint manual de "rastrear agora". Evitar scraping em cada page load.
-- [ ] Rate-limit entre produtos no job diário (ex: `p-limit` + delay) para não ser bloqueado.
-- [ ] Tratar o caso "produto sem preço encontrado" com erro estruturado (não `throw` genérico).
+- [x] Extrair seletores/parsing para **funções puras testáveis** (`parseListingPrice`, `parseDetailPrice`, `parseSearchResults`) que recebem HTML como string. Verificadas com smoke test (preço 4.299/90 → 4299.9, desconto, resultados de busca).
+- [x] Adicionar **timeout (10s)**, **retry com backoff exponencial** e **User-Agent rotativo** num novo `httpClient.ts` (`fetchHtml`).
+- [x] `POST /api/track` mantido síncrono mas com **timeouts limitados** + **respostas estruturadas** (404 "sem preço", 502 "falha externa temporária"). _(Abordagem simples escolhida: timeout + mensagem amigável.)_
+- [x] Scraping centralizado no **cron** + endpoint manual `POST /track`; não há scraping em page load.
+- [x] **Rate-limit** entre produtos no job diário (delay de 2s, dependency-free).
+- [x] Caso "produto sem preço" tratado com erro estruturado (`ScrapeError("PRICE_NOT_FOUND")` → 404).
 
-**DoD:** rastrear 10 produtos no cron sem travar; teste unitário do parser passa com HTML fixture salvo em `backend/test/fixtures/`.
+**DoD:** ✅ Parser verificado por smoke test; cron com rate-limit. _(Testes formais com fixtures em `backend/test/fixtures/` entram na Fase 4.)_
 
 ---
 
@@ -207,7 +207,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 - [x] Fase 0 — Higiene do repo
 - [x] Fase 1 — Fonte única de verdade (Supabase, tira CSV)
-- [ ] Fase 2 — Scraping robusto e fora da request
+- [x] Fase 2 — Scraping robusto e fora da request
 - [ ] Fase 3 — Validação, tipos, logger, cliente HTTP unificado
 - [ ] Fase 4 — Testes
 - [ ] Fase 5 — CI

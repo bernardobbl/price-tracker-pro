@@ -9,6 +9,7 @@ import { requireAuth } from "./middleware/authMiddleware";
 import { createOrUpdateAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 import searchRouter from "./routes/searchRoute";
 import { scrapeMercadoLivrePrice } from "./scrapers/mercadoLivreScraper";
+import { ScrapeError } from "./scrapers/httpClient";
 
 const app = express();
 app.use(cors({
@@ -87,7 +88,16 @@ app.post("/api/track/:productId", requireAuth, async (req: AuthenticatedRequest,
     return res.status(201).json(record);
   } catch (error) {
     console.error("[/api/track] Erro ao rastrear preço:", error);
-    res.status(500).json({ error: "Erro ao registrar preço" });
+
+    if (error instanceof ScrapeError) {
+      if (error.code === "PRICE_NOT_FOUND") {
+        return res.status(404).json({ error: "Nenhum preço encontrado para esse produto no Mercado Livre." });
+      }
+      // FETCH_FAILED / PARSE_FAILED: falha externa temporária
+      return res.status(502).json({ error: "Não foi possível consultar o Mercado Livre agora. Tente novamente em instantes." });
+    }
+
+    return res.status(500).json({ error: "Erro ao registrar preço" });
   }
 });
 
