@@ -42,8 +42,12 @@ estatísticas e **alertas por email** quando o preço cai abaixo de um valor des
 
 ### 1. Banco de dados
 
-No **SQL Editor** do Supabase, execute o conteúdo de `backend/supabase/schema.sql`.
-(Se já rodou uma versão antiga, rode antes `backend/supabase/migration_drop_old_tables.sql`.)
+No **SQL Editor** do Supabase, execute o conteúdo de `backend/supabase/schema.sql`
+(domínio de **preços de combustível / ANP**: `fuel_prices`, `tracked_series`, `alerts`, `ingestion_runs`).
+
+Se já rodou uma versão antiga do domínio **livros** (`tracked_products`/`prices`), rode antes
+`backend/supabase/migration_002_books_to_fuel.sql` para dropar as tabelas antigas e depois o `schema.sql`.
+(O `migration_drop_old_tables.sql` é ainda mais antigo — só relevante para bancos pré-`schema.sql`.)
 
 ### 2. Backend
 
@@ -64,6 +68,9 @@ Variáveis (`backend/.env`):
 | `SUPABASE_SERVICE_ROLE_KEY` | Chave service_role (backend grava preços; **secreta**) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP para alertas (opcional) |
 | `FRONTEND_URL` | Origem liberada no CORS (padrão `http://localhost:5173`) |
+| `ANP_CSV_URL` | URL do CSV da ANP a ingerir (padrão: arquivo do semestre corrente) |
+| `ANP_CRON` | Cron do job semanal de ingestão (padrão `0 6 * * 1` — segunda 06:00) |
+| `ANP_INGEST_ON_BOOT` | Se `true`, ingere uma vez no boot (útil no 1º deploy/demo) |
 
 ### 3. Frontend
 
@@ -94,6 +101,33 @@ npm run dev               # dashboard em http://localhost:5173
 3. Um cron diário atualiza os preços dos produtos monitorados.
 4. O dashboard mostra preço atual, menor/maior/médio, variação e o gráfico de evolução.
 5. O usuário define um alerta; quando o preço cai abaixo do alvo, recebe um email.
+
+## Fonte de dados & legalidade (ANP)
+
+O projeto está migrando para uma fonte de **dados reais e públicos**: a
+[Série Histórica de Preços de Combustíveis](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis)
+da **ANP** (Agência Nacional do Petróleo, Gás Natural e Biocombustíveis), publicada como **dado aberto**
+a partir do levantamento semanal de preços por município, produto e revenda.
+
+Boas práticas de coleta adotadas (Frente H do [`plan.md`](./plan.md)):
+
+- **Legalidade / robots.txt:** é dado aberto governamental, de uso livre com **atribuição à ANP**. O
+  `robots.txt` do `gov.br` **não restringe** o caminho de dados abertos utilizado (verificado — as regras
+  `Disallow` cobrem apenas `/economia`, `/ebserh` e `/mre`).
+- **Coleta educada:** um único arquivo por semestre, baixado **no máximo uma vez por semana** (cron), com
+  **timeout + retry com backoff** e **requisição condicional** (`ETag`/`If-Modified-Since` → `304 Not Modified`)
+  para não rebaixar o arquivo quando nada mudou.
+- **Idempotência:** persistência por **upsert** na chave natural (CNPJ + produto + data), então reprocessar
+  o mesmo arquivo nunca duplica dados.
+- **Observabilidade:** cada execução é registrada em `ingestion_runs` (arquivo, hash, linhas lidas/inseridas/
+  rejeitadas, duração, status), e a ingestão roda **sempre em background** (cron/job), nunca dentro de uma
+  request HTTP.
+- **Qualidade de dado:** as linhas passam por normalização (produto canônico, CNPJ só-dígitos, descarte de
+  valores fora de faixa) e por um **gate de validação Zod** antes de gravar; rejeições são contabilizadas.
+
+> Esta é a **2ª migração de fonte** do projeto (Mercado Livre → Books to Scrape → ANP). O histórico das
+> migrações fica registrado no `plan.md`. A troca de rótulos/UI do domínio livros para combustível é a
+> etapa seguinte (Frente I).
 
 ## Licença
 

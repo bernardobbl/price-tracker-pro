@@ -6,6 +6,8 @@ import type { AuthenticatedRequest } from "./middleware/authMiddleware";
 import { requireAuth } from "./middleware/authMiddleware";
 import { createOrUpdateAlert, deleteAlert, evaluateAlertImmediately, listAlertsByUser } from "./services/alertService";
 import searchRouter from "./routes/searchRoute";
+import fuelRouter from "./routes/fuelRoute";
+import fuelUserRouter from "./routes/fuelUserRoute";
 import { scrapeBookPrice } from "./scrapers/booksToScrapeScraper";
 import { asyncHandler } from "./lib/asyncHandler";
 import { sendError } from "./lib/httpError";
@@ -28,6 +30,8 @@ app.use(express.json());
 
 // ── Rotas ──────────────────────────────────────────────────────────────────
 app.use("/api/search", searchRouter);
+app.use("/api/fuel", fuelRouter);
+app.use("/api/fuel", fuelUserRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

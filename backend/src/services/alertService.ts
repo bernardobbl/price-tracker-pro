@@ -1,25 +1,12 @@
 import { supabase } from "../config/supabaseClient";
 import { sendPriceAlertEmail } from "./emailService";
 import { logger } from "../lib/logger";
+import { getUserEmail } from "./userEmailService";
+import { decideAlertAction } from "../lib/alertDecision";
 
-export type AlertAction = "notify" | "reset" | "none";
-
-/**
- * Decide o que fazer com um alerta dado o preço atual (lógica pura, testável).
- * - "notify": preço atingiu o alvo e o alerta ainda não foi disparado
- * - "reset":  preço voltou a subir acima do alvo → rearmar o alerta
- * - "none":   nada a fazer (ou threshold inválido)
- */
-export function decideAlertAction(
-  currentPrice: number,
-  threshold: number,
-  alreadyTriggered: boolean
-): AlertAction {
-  if (Number.isNaN(threshold)) return "none";
-  if (currentPrice <= threshold && !alreadyTriggered) return "notify";
-  if (currentPrice > threshold && alreadyTriggered) return "reset";
-  return "none";
-}
+// Reexportados dos módulos neutros (mantêm compatibilidade com os testes existentes).
+export { decideAlertAction, type AlertAction } from "../lib/alertDecision";
+export { __clearEmailCache } from "./userEmailService";
 
 export interface CreateOrUpdateAlertInput {
   userId: string;
@@ -65,31 +52,7 @@ export async function createOrUpdateAlert(input: CreateOrUpdateAlertInput) {
   return data;
 }
 
-// ── Envio de email (trilha única + cache de email por usuário) ──────────────
-
-// Evita N chamadas admin.getUserById numa mesma rodada (ex.: job diário com
-// vários alertas do mesmo usuário). Emails mudam raramente; cache simples basta.
-const emailCache = new Map<string, string | null>();
-
-/** Limpa o cache de emails (usado em testes). */
-export function __clearEmailCache() {
-  emailCache.clear();
-}
-
-async function getUserEmail(userId: string): Promise<string | null> {
-  if (emailCache.has(userId)) return emailCache.get(userId) ?? null;
-  if (!supabase) return null;
-
-  const { data, error } = await supabase.auth.admin.getUserById(userId);
-  if (error) {
-    logger.error({ err: error.message }, "[Alerts] Erro ao buscar usuário para envio de email");
-    return null;
-  }
-
-  const email = data?.user?.email ?? null;
-  emailCache.set(userId, email);
-  return email;
-}
+// ── Envio de email (trilha única; cache de email em userEmailService) ────────
 
 interface AlertEmailInput {
   alertId: string;

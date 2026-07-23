@@ -331,6 +331,107 @@ auditado, e `lint`/`type-check`/`test`/`build` verdes. Aí sim seguir limpo para
 
 ---
 
+### Fase 6.8 — Virada de domínio (a mais importante): preços reais de combustível (ANP)
+**Meta:** trocar a fonte-sandbox (Books to Scrape, preços que nunca mudam → histórico simulado) por
+**dados reais e públicos da ANP**, consertando a premissa do produto e elevando MUITO o realismo de
+scraping/engenharia de dados. Fonte: [Série Histórica de Preços de Combustíveis — ANP / dados abertos](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis).
+
+> **Por que essa é a virada:** hoje o app rastreia variação de preço num site cujo preço não varia — o núcleo
+> (histórico, tendência, sinal de compra, alerta) opera sobre dados fabricados pelo seed. Com a ANP, os preços
+> **mudam de verdade** (levantamento semanal, por município/produto/bandeira), é **legal e sem anti-bot** (dado
+> aberto), e o trabalho vira **ETL de verdade** (parsing de CSV grande, normalização, dedup) — que vale mais
+> no portfólio do que raspar HTML estático. A arquitetura atual é **reaproveitada quase inteira**: rastrear
+> entidade → valor periódico → histórico → stats/sinal/tendência → alerta por threshold.
+
+**Frente G — Fonte de dados e ETL (o coração)**
+- [x] **G1 · Mapear o dataset**: confirmado formato SHPC (separador `;`, encoding latin-1, decimal com vírgula,
+  data dd/mm/aaaa, 16 colunas: Região/Estado/Município/Revenda/CNPJ/Produto/Data da Coleta/Valor de Venda/
+  Valor de Compra/Unidade/Bandeira). _Feito por pesquisa; layout exato reconfirmado quando o ingestor rodar._
+- [x] **G2 · Ingestor/ETL** (`backend/src/ingest/anp*.ts`):
+  - [x] **Parser puro** `anpParser.ts` (`parseAnpCsv` dirigido pelo cabeçalho + `parseMoneyBR`/`parseDateBR`),
+    tolerante a acentos/reordenação, descartando linhas ruins. **10 testes** com fixture (`anpSample.csv`).
+  - [x] **Download** (`fetchLatin1`/`fetchBuffer` no `httpClient` — arraybuffer decodificado Latin-1),
+    **normalização** (`anpNormalize.ts`: `canonicalProduct` mapeia variações históricas, CNPJ só-dígitos,
+    trim/upper de UF/município/bandeira, descarte de preço fora da faixa com contagem de motivos),
+    **dedup** (chave natural cnpj|produto|data, última vence) e **persistência idempotente** no Supabase
+    (`fuelPriceService.upsertFuelPrices`, upsert em lote com `onConflict`). Orquestrado por
+    `anpIngestor.ts` (`ingestAnp`): registra em `ingestion_runs` (H3), **hash sha256 pula arquivo já
+    ingerido** (base do H2), roda todo o trabalho fora de request (H5). URL via env `ANP_CSV_URL`.
+    **+11 testes** de normalização/dedup; `lint`/`type-check`/`test`/`build` verdes; smoke da pipeline
+    parse→normalize→dedup na fixture ok. _(Persistência real no Supabase valida junto do seed/J3, que
+    precisa de credenciais.)_
+- [x] **G3 · Modelo de dados**: novo schema orientado a combustível. `schema.sql` reescrito com 4 tabelas:
+  **`fuel_prices`** (dado público da ANP — SEM user_id, referência compartilhada; leitura `to authenticated`,
+  escrita só via service_role; chave natural `(cnpj, product, collected_at)` → upsert idempotente; índices
+  de consulta por local+produto+tempo), **`tracked_series`** (favoritos do usuário: produto+UF+município+bandeira
+  opcional, RLS, índice único por combinação), **`alerts`** (reescrito para apontar `series_id`, RLS) e
+  **`ingestion_runs`** (observabilidade do ETL — H3: arquivo/hash/lidas/inseridas/rejeitadas/duração/status;
+  service_role apenas). Migração versionada `migration_002_books_to_fuel.sql` dropa `tracked_products`/`prices`/
+  `alerts` do domínio livros; README atualizado com a ordem. _Idempotente; DDL validado por parse Postgres
+  (sqlglot) — execução real no Supabase fica junto do ingestor G2b/seed. Colunas espelham `FuelPriceRow` do parser._
+- [x] **G4 · Agendamento**: `scheduleWeeklyAnpJob.ts` roda `ingestAnp` **semanalmente** (padrão seg 06:00,
+  via env `ANP_CRON`; valida a expressão antes de agendar). O "delta" é resolvido sem diff manual: **hash
+  do conteúdo pula** o arquivo se não mudou (H2) + **upsert idempotente** grava só o que é novo/alterado.
+  Timeout/retry já vêm do `httpClient`. Opção `ANP_INGEST_ON_BOOT=true` para ingerir no 1º deploy/demo.
+  `index.ts` passou a bootar este job **no lugar** do cron diário de livros (que consultava `tracked_products`,
+  tabela aposentada) — o arquivo antigo fica no git até a limpeza formal do J4. `type-check`/`lint`/`test`
+  (45)/`build` verdes.
+
+**Frente H — Realismo de scraping / engenharia de dados (o que a crítica apontou)** ✅ CONCLUÍDA
+- [x] **H1 · robots.txt + legalidade**: verificado o `robots.txt` do `gov.br` — `Disallow` só cobre
+  `/economia`, `/ebserh`, `/mre`; o caminho de dados abertos **não** é restrito. Documentado no README
+  (seção "Fonte de dados & legalidade"): dado aberto, uso livre com atribuição à ANP, coleta educada.
+- [x] **H2 · Requisição condicional / cache**: `fetchConditional` no `httpClient` envia `If-None-Match`/
+  `If-Modified-Since` e trata **304 Not Modified** (não rebaixa o corpo). Validadores (`etag`/`last_modified`)
+  guardados no `ingestion_runs` e reusados na próxima execução. **2ª linha de defesa**: hash de conteúdo
+  (sha256) pula reprocessamento em servidores que ignoram o condicional.
+- [x] **H3 · Observabilidade de ingestão**: `ingestion_runs` preenchida a cada execução (fonte, arquivo, hash,
+  etag/last-modified, lidas/inseridas/rejeitadas, duração, status running/success/skipped/error) + logs pino
+  estruturados em cada etapa. _(Feito no G2b; UI de status fica para depois, opcional.)_
+- [x] **H4 · Qualidade de dado**: normalização (produto canônico, CNPJ só-dígitos, faixa de preço) com
+  contagem de rejeições por motivo **+ gate Zod final** (`anpRowSchema.ts`, `filterValidRows`) antes do
+  upsert; barrados somam ao `rows_rejected`. **+6 testes**.
+- [x] **H5 · Trabalho pesado fora da request**: ingestão só no cron/job (`scheduleWeeklyAnpJob` + `ingestAnp`),
+  nunca numa request HTTP — resolve de vez o item #3 da Seção 1. _(Feito no G2b/G4.)_
+
+**Validação da Frente H:** `type-check`/`lint`/`build` limpos, **51 testes** verdes, `schema.sql` re-parseado
+(38 statements, colunas `etag`/`last_modified` + `alter ... add column if not exists` idempotentes).
+
+**Frente I — Produto sobre dados reais**
+- [~] **I1 · Busca por combustível + local**: **backend pronto**. Camada de consulta sobre `fuel_prices`:
+  agregação pura testável (`lib/fuelAggregate.ts`: `aggregateDailySeries` = média/mín/máx + amostra por data;
+  `summarizeSnapshot` = levantamento mais recente), `fuelQueryService.ts` (produtos canônicos, UFs, municípios,
+  série, snapshot) e rotas `GET /api/fuel/{products,locations,series,snapshot}` com Zod. **+10 testes** (agg + rotas).
+  _Falta a parte de UI (entra no I3/I5)._
+- [~] **I2 · Comparação multi-revenda/bandeira** ("onde está mais barato"): **backend pronto** —
+  `summarizeSnapshot` devolve o ranking de postos do levantamento mais recente (asc por preço, dedup por CNPJ),
+  exposto em `GET /api/fuel/snapshot`. _Falta exibir no front (I3/I5)._
+- [ ] **I3 · Reuso**: sinal ("bom momento de abastecer"), tendência, volatilidade, filtro de período e gráfico
+  — tudo reaproveitado sobre a série real.
+- [~] **I4 · Alerta real**: **backend pronto**. `tracked_series` (favoritos: produto+UF+município+bandeira,
+  `trackedSeriesService`) + `alerts` por `series_id` (`fuelAlertService`): criar/atualizar (upsert
+  user+série+canal), listar (join com a série), excluir, **avaliação imediata** ao criar e **avaliação em lote**
+  (`evaluateAllFuelAlerts`) disparada pelo job semanal **após ingestão bem-sucedida** — compara o **preço médio
+  mais recente do município** com o threshold. Como o preço muda de verdade, o alerta **dispara de verdade**.
+  Rotas autenticadas `GET/POST/DELETE /api/fuel/{tracked,alerts}` com Zod. Reuso limpo: `decideAlertAction`
+  (→ `lib/alertDecision`) e cache de email (→ `userEmailService`) extraídos e compartilhados, sem acoplar ao
+  serviço de livros (que fica intacto). **+8 testes** (label + validação de rotas). _Falta ligar no front (I5)._
+- [ ] **I5 · UI/labels**: de "livros" para "combustível" (títulos, placeholders, textos, meta tags).
+
+**Frente J — Testes e migração limpa**
+- [x] **J1 · Testes de ETL**: parser do CSV ✅ (10 testes) + normalizador/dedup ✅ (11 testes: `canonicalProduct`,
+  `normalizeFuelRows` com rejeições contadas, `dedupeFuelRows` chave natural). Faltam só as rotas/serviços (J2).
+- [ ] **J2 · Testes** das novas rotas/serviços.
+- [ ] **J3 · Seed** atualizado para importar uma **amostra real** (subset do CSV) para a demo.
+- [ ] **J4 · Aposentar o Books to Scrape** (manter no histórico do git), atualizar READMEs e marcar a Seção 6.5
+  como "1ª migração" (esta é a 2ª: Books → ANP).
+
+**DoD:** o app roda sobre dados **reais da ANP que mudam no tempo**; histórico, sinal e alerta são verdadeiros;
+ETL **idempotente com observabilidade**; testes verdes. Premissa consertada → as dimensões de
+scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
+
+---
+
 ### Fase 7 — Deploy público (o marco final)
 **Meta:** link clicável funcionando, com dados de demo.
 
@@ -387,9 +488,31 @@ auditado, e `lint`/`type-check`/`test`/`build` verdes. Aí sim seguir limpo para
 - [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
 - [x] Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
-- [x] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
+- [ ] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
+- [ ] **Fase 6.8 — Virada de domínio: preços reais de combustível (ANP)** ← a mais importante
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
+
+---
+
+## 5.5. Rubrica de avaliação (nota crítica para portfólio — acompanhar a evolução)
+
+> Autoavaliação honesta por dimensão (0–10), para medir o progresso a cada fase. A nota geral pesa mais as
+> dimensões de **scraping/realismo/domínio**, porque é o que o projeto se propõe a demonstrar.
+
+| Dimensão | Baseline (pós-6.6) | Alvo (pós-6.8) | Alvo (pós-7/8) |
+|---|:---:|:---:|:---:|
+| Engenharia full-stack | 8.0 | 8.0 | 8.5 |
+| Produto / UX | 8.0 | 8.0 | 8.5 |
+| **Sofisticação de scraping / ETL** | 3.5 | 7.5 | 8.0 |
+| **Realismo dos dados** | 3.0 | 8.0 | 8.5 |
+| Domínio / originalidade | 4.0 | 7.5 | 7.5 |
+| Apresentação (README/deploy) | 5.0 | 5.5 | 9.0 |
+| **NOTA GERAL** | **6.0** | **~8.0** | **~8.7** |
+
+**O que puxa a nota hoje (baseline 6.0):** dados de histórico **simulados** (premissa furada) e scraping de
+**site-sandbox estático**. A **Fase 6.8 (ANP)** ataca exatamente essas duas dimensões — é o maior salto de nota
+do projeto. Deploy + README (Fases 7–8) destravam a dimensão de apresentação.
 
 ---
 
@@ -406,6 +529,10 @@ auditado, e `lint`/`type-check`/`test`/`build` verdes. Aí sim seguir limpo para
 ---
 
 ## 6.5. Migração da fonte de dados: Mercado Livre → Books to Scrape
+
+> 📌 **Esta foi a 1ª migração de fonte.** Uma **2ª migração** (Books to Scrape → **ANP / combustível**) está
+> planejada na **Fase 6.8** — porque Books to Scrape é sandbox estático (preços não mudam), o que deixava o
+> histórico simulado. A ANP traz dados reais que variam no tempo. O registro abaixo fica como histórico.
 
 > **Por que:** o Mercado Livre passou a **bloquear scraping** (redireciona para uma página de
 > "account-verification" / anti-bot) e a **API oficial exige OAuth** (403 sem token). Isso quebraria a
