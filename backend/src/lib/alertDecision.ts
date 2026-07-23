@@ -1,7 +1,7 @@
 /**
- * Decisão de alerta (lógica pura, testável) — compartilhada entre os domínios.
- * Extraída do alertService para ser reusada pelo domínio combustível sem acoplar
- * o serviço novo ao antigo (livros).
+ * Decisão de alerta (lógica pura, testável) — módulo neutro de domínio.
+ * Usada pelo serviço de alertas de combustível (`fuelAlertService`); a regra
+ * (notify/reset/none + anti-spam) independe do que está sendo rastreado.
  */
 
 export type AlertAction = "notify" | "reset" | "none";

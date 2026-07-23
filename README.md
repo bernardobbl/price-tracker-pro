@@ -3,15 +3,18 @@
 [![CI](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
-Rastreador de preços de livros ([Books to Scrape](https://books.toscrape.com)) com histórico,
-estatísticas e **alertas por email** quando o preço cai abaixo de um valor desejado.
+Rastreador de **preços reais de combustível** por município, a partir dos **dados abertos da ANP**
+([Série Histórica de Preços de Combustíveis](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis)):
+histórico, sinal de compra ("bom momento de abastecer?"), comparação de postos e **alertas por email**
+quando o preço médio cai abaixo de um valor desejado.
 
-> **Nota sobre a fonte de dados:** o projeto começou raspando o Mercado Livre, mas eles passaram a
-> bloquear scraping (anti-bot) e a exigir OAuth na API. Para manter uma demo **sempre no ar e confiável**,
-> a fonte foi migrada para o **Books to Scrape** — um sandbox oficial feito para praticar web scraping.
-> Como o catálogo tem preços estáticos, o histórico da demo usa uma pequena variação simulada (via `seed`).
+> **Nota sobre a fonte de dados (histórico):** o projeto começou raspando o Mercado Livre (bloqueou scraping +
+> passou a exigir OAuth), migrou para o **Books to Scrape** (sandbox estático → histórico simulado) e, por fim,
+> para a **ANP** — dado **público, real e que varia no tempo**. Assim o núcleo do produto (histórico, tendência,
+> sinal de compra, alerta) opera sobre preços que **mudam de verdade**. O detalhe das migrações está no [`plan.md`](./plan.md).
 
-- **Backend:** Node.js + TypeScript + Express, web scraping (Axios + Cheerio), cron (`node-cron`)
+- **Backend:** Node.js + TypeScript + Express; **ETL** do CSV da ANP (download condicional → parse → normalização →
+  dedup → upsert idempotente), cron semanal (`node-cron`)
 - **Frontend:** React + Vite + TypeScript + Chart.js
 - **Banco / Auth:** Supabase (PostgreSQL + Row Level Security)
 - **Email:** Nodemailer (SMTP)
@@ -24,7 +27,7 @@ estatísticas e **alertas por email** quando o preço cai abaixo de um valor des
 
 ```
 .
-├── backend/     API, scraping, cron, integração Supabase e envio de email
+├── backend/     API, ETL da ANP, cron semanal, integração Supabase e envio de email
 └── frontend/    Dashboard React que consome a API
 ```
 
@@ -96,15 +99,29 @@ npm run dev               # dashboard em http://localhost:5173
 
 ## Como funciona
 
-1. Usuário faz login (Supabase Auth) e cadastra um produto pelo nome.
-2. O backend faz scraping do preço no Books to Scrape e grava o histórico.
-3. Um cron diário atualiza os preços dos produtos monitorados.
-4. O dashboard mostra preço atual, menor/maior/médio, variação e o gráfico de evolução.
-5. O usuário define um alerta; quando o preço cai abaixo do alvo, recebe um email.
+1. Um **job semanal** (ou `ANP_INGEST_ON_BOOT`) baixa o CSV da ANP e o ingere pelo ETL
+   (parse → normalização → dedup → upsert idempotente) para a tabela pública `fuel_prices`.
+2. Usuário faz login (Supabase Auth), escolhe **combustível → UF → município** e vê a série do município.
+3. O dashboard mostra o **preço médio atual**, menor/maior/médio, variação, tendência, volatilidade, um
+   **sinal de compra** (0–100) e o **ranking de postos** do levantamento mais recente ("onde está mais barato").
+4. O usuário **favorita** uma série e define um **alerta**; após cada ingestão semanal, se o preço médio do
+   município cai no/abaixo do alvo, recebe um **email**. Como o preço muda de verdade, o alerta dispara de fato.
+
+### Seed da demo
+
+```bash
+cd backend
+npm run seed        # cria usuário demo + ingere uma amostra (formato ANP) via o ETL real
+```
+
+Gera uma amostra no layout SHPC da ANP (várias semanas × cidades × postos), a ingere pelo **mesmo pipeline
+de produção** e cria um usuário demo com 1 favorito + 1 alerta. Login demo padrão: `demo@pricetracker.pro`
+/ `demo123456` (configurável via `DEMO_EMAIL`/`DEMO_PASSWORD`). Os **preços da amostra** são gerados em níveis
+realistas de mercado — em produção, o job semanal ingere o **arquivo real** da ANP.
 
 ## Fonte de dados & legalidade (ANP)
 
-O projeto está migrando para uma fonte de **dados reais e públicos**: a
+O projeto usa uma fonte de **dados reais e públicos**: a
 [Série Histórica de Preços de Combustíveis](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis)
 da **ANP** (Agência Nacional do Petróleo, Gás Natural e Biocombustíveis), publicada como **dado aberto**
 a partir do levantamento semanal de preços por município, produto e revenda.
@@ -125,9 +142,9 @@ Boas práticas de coleta adotadas (Frente H do [`plan.md`](./plan.md)):
 - **Qualidade de dado:** as linhas passam por normalização (produto canônico, CNPJ só-dígitos, descarte de
   valores fora de faixa) e por um **gate de validação Zod** antes de gravar; rejeições são contabilizadas.
 
-> Esta é a **2ª migração de fonte** do projeto (Mercado Livre → Books to Scrape → ANP). O histórico das
-> migrações fica registrado no `plan.md`. A troca de rótulos/UI do domínio livros para combustível é a
-> etapa seguinte (Frente I).
+> Esta foi a **2ª migração de fonte** do projeto (Mercado Livre → Books to Scrape → ANP). O histórico das
+> migrações fica registrado no `plan.md`. A UI e o código já operam **inteiramente** no domínio combustível
+> (o scraper/rotas de livros foram aposentados na Fase 6.8 · J4).
 
 ## Licença
 

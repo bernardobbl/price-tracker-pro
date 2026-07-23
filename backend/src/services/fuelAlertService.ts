@@ -7,7 +7,7 @@
  * preço muda de verdade a cada levantamento da ANP — então o alerta dispara de fato.
  *
  * Reusa a lógica pura de decisão (`decideAlertAction`), o cache de email
- * (`userEmailService`) e o envio (`emailService`), sem acoplar ao serviço de livros.
+ * (`userEmailService`) e o envio (`emailService`) — módulos neutros de domínio.
  */
 
 import { supabase } from "../config/supabaseClient";

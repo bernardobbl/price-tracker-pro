@@ -398,33 +398,51 @@ scraping/engenharia de dados. Fonte: [Série Histórica de Preços de Combustív
 (38 statements, colunas `etag`/`last_modified` + `alter ... add column if not exists` idempotentes).
 
 **Frente I — Produto sobre dados reais**
-- [~] **I1 · Busca por combustível + local**: **backend pronto**. Camada de consulta sobre `fuel_prices`:
-  agregação pura testável (`lib/fuelAggregate.ts`: `aggregateDailySeries` = média/mín/máx + amostra por data;
-  `summarizeSnapshot` = levantamento mais recente), `fuelQueryService.ts` (produtos canônicos, UFs, municípios,
-  série, snapshot) e rotas `GET /api/fuel/{products,locations,series,snapshot}` com Zod. **+10 testes** (agg + rotas).
-  _Falta a parte de UI (entra no I3/I5)._
-- [~] **I2 · Comparação multi-revenda/bandeira** ("onde está mais barato"): **backend pronto** —
+- [x] **I1 · Busca por combustível + local**: **backend + UI prontos**. Backend: agregação pura testável
+  (`lib/fuelAggregate.ts`), `fuelQueryService.ts` e rotas `GET /api/fuel/{products,locations,series,snapshot}` com Zod.
+  **Front (feito):** sidebar "Consultar preço" com seletores encadeados **combustível → UF → município**
+  (`fetchFuelProducts`/`fetchStates`/`fetchMunicipalities`) que carregam a série do município no painel de detalhe.
+- [x] **I2 · Comparação multi-revenda/bandeira** ("onde está mais barato"): **backend + UI prontos**.
   `summarizeSnapshot` devolve o ranking de postos do levantamento mais recente (asc por preço, dedup por CNPJ),
-  exposto em `GET /api/fuel/snapshot`. _Falta exibir no front (I3/I5)._
-- [ ] **I3 · Reuso**: sinal ("bom momento de abastecer"), tendência, volatilidade, filtro de período e gráfico
-  — tudo reaproveitado sobre a série real.
-- [~] **I4 · Alerta real**: **backend pronto**. `tracked_series` (favoritos: produto+UF+município+bandeira,
-  `trackedSeriesService`) + `alerts` por `series_id` (`fuelAlertService`): criar/atualizar (upsert
-  user+série+canal), listar (join com a série), excluir, **avaliação imediata** ao criar e **avaliação em lote**
-  (`evaluateAllFuelAlerts`) disparada pelo job semanal **após ingestão bem-sucedida** — compara o **preço médio
-  mais recente do município** com o threshold. Como o preço muda de verdade, o alerta **dispara de verdade**.
-  Rotas autenticadas `GET/POST/DELETE /api/fuel/{tracked,alerts}` com Zod. Reuso limpo: `decideAlertAction`
-  (→ `lib/alertDecision`) e cache de email (→ `userEmailService`) extraídos e compartilhados, sem acoplar ao
-  serviço de livros (que fica intacto). **+8 testes** (label + validação de rotas). _Falta ligar no front (I5)._
-- [ ] **I5 · UI/labels**: de "livros" para "combustível" (títulos, placeholders, textos, meta tags).
+  exposto em `GET /api/fuel/snapshot`. **Front (feito):** painel "Onde está mais barato" no detalhe, com ranking
+  de até 8 postos (bandeira + preço, o mais barato destacado) e a data do levantamento.
+- [x] **I3 · Reuso**: sinal, tendência, volatilidade, filtro de período e gráfico **reaproveitados sobre a série real**
+  via `lib/seriesToHistory.ts` (mapeia `DailyAggregate` → `PriceHistoryItem`). Zero alteração nas libs de inteligência
+  (`priceStats`/`dealSignal`/`priceInsights`) nem no `PriceChart` (só ganhou prop `decimals=3` para combustível).
+- [x] **I4 · Alerta real**: **backend + UI prontos**. Backend: `tracked_series` (favoritos) + `alerts` por `series_id`,
+  avaliação imediata ao criar e em lote no job semanal (compara o preço médio mais recente do município). Como o preço
+  muda de verdade, o alerta **dispara de verdade**. **Front (feito):** botão "Favoritar" no detalhe, lista de favoritos
+  na sidebar (abrir/excluir), lista de alertas ativos e formulário de alerta que **favorita-e-alerta em um passo**
+  (`ensureFavorite` → `createFuelAlert`). `useAlerts` migrado para os endpoints de fuel.
+- [x] **I5 · UI/labels**: de "livros" para "combustível" — `App.tsx` reescrito, `index.html` (título/description/theme),
+  estados vazios e placeholders. Nome do produto mantido como **"Price Tracker Pro"** (consistente com repo/README),
+  só o subtítulo/contexto virou combustível. `type-check`/`lint`/`build` limpos, **24 testes** front verdes.
 
 **Frente J — Testes e migração limpa**
 - [x] **J1 · Testes de ETL**: parser do CSV ✅ (10 testes) + normalizador/dedup ✅ (11 testes: `canonicalProduct`,
   `normalizeFuelRows` com rejeições contadas, `dedupeFuelRows` chave natural). Faltam só as rotas/serviços (J2).
-- [ ] **J2 · Testes** das novas rotas/serviços.
-- [ ] **J3 · Seed** atualizado para importar uma **amostra real** (subset do CSV) para a demo.
-- [ ] **J4 · Aposentar o Books to Scrape** (manter no histórico do git), atualizar READMEs e marcar a Seção 6.5
-  como "1ª migração" (esta é a 2ª: Books → ANP).
+- [x] **J2 · Testes** das novas rotas/serviços: `api.test.ts` (validação Zod das rotas `/api/fuel/*`:
+  series/locations/tracked/alerts + 400 padronizado), `schemas.test.ts` reescrito p/ os schemas de fuel
+  (série, locations, tracked, alerta com UUID), `alertNotify.test.ts` reescrito p/ `evaluateFuelAlertImmediately`
+  (notifica no/abaixo do alvo, ignora sem levantamento, **cache de email 1×** = fix do N+1) e `anpDemoData.test.ts`
+  (gerador do seed passa 100% limpo pelo ETL, série semanal, cidades cobertas). **71 testes** backend.
+- [x] **J3 · Seed** reescrito para o domínio combustível. O seed antigo estava **quebrado** (referenciava
+  `tracked_products`/`prices`, tabelas dropadas na migração 002). Agora: `scripts/lib/anpDemoData.ts` gera uma
+  amostra **no layout SHPC da ANP** (6 cidades × 5 postos × produtos × 16 semanas, RNG determinístico) e o
+  `scripts/seed.ts` a ingere pelo **pipeline ETL real** (`parseAnpCsv → normalizeFuelRows → dedupeFuelRows →
+  filterValidRows → upsertFuelPrices`), cria usuário demo + 1 favorito + 1 alerta e registra em `ingestion_runs`.
+  Verificado com o ETL real: **1728 linhas, 0 rejeitadas/dedup/barradas**; série de Gasolina/SP com **16 pontos
+  semanais** e tendência de queda realista. _Honestidade:_ os **preços** são gerados em níveis de mercado (não é
+  cópia do arquivo oficial de 100+ MB); estrutura e caminho de ETL são idênticos aos de produção, onde o job
+  semanal ingere o arquivo **real** da ANP.
+- [x] **J4 · Aposentar o Books to Scrape**: removidos do backend `booksToScrapeScraper.ts`, `searchRoute.ts`,
+  `priceService.ts`, `productService.ts`, `alertService.ts`, `scheduleDailyPriceJob.ts`, fixtures HTML e
+  `scraper.test.ts`; `app.ts` enxuto (só `/health` + rotas de fuel); schemas de livros e `fetchHtml` órfão
+  removidos; comentários que citavam "livros/prices/tracked_products" corrigidos. **README reescrito** para o
+  domínio combustível (pitch, stack=ETL, "como funciona", seção de seed/demo). Seção 6.5 já marcada como "1ª migração".
+  _Nota:_ a dependência `cheerio` (só usada pelo scraper de livros) ficou no `package.json` **de propósito** —
+  removê-la exige regenerar o lockfile do backend, que arrasta binários nativos do rollup/vite (via vitest) e é a
+  fonte da dor de CI da Fase 5. Removê-la fica para uma etapa dedicada e cuidadosa (ou no Docker linux/amd64).
 
 **DoD:** o app roda sobre dados **reais da ANP que mudam no tempo**; histórico, sinal e alerta são verdadeiros;
 ETL **idempotente com observabilidade**; testes verdes. Premissa consertada → as dimensões de
@@ -489,7 +507,8 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 - [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
 - [x] Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
 - [ ] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
-- [ ] **Fase 6.8 — Virada de domínio: preços reais de combustível (ANP)** ← a mais importante
+- [x] **Fase 6.8 — Virada de domínio: preços reais de combustível (ANP)** ✅ (Frentes G–J completas: ETL,
+  realismo de coleta, produto sobre dados reais, front migrado, seed, testes e limpeza do Books to Scrape)
 - [ ] Fase 7 — Deploy público + email real + demo
 - [ ] Fase 8 — README, diagrama, GIF, post
 
@@ -642,6 +661,28 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
 - **Validação**: `lint`/`type-check`/`build` limpos; **45 testes** verdes; zero emoji e zero cor escura
   hardcoded remanescentes (verificado por grep). Também corrigi o `index.html` (título/description ainda
   citavam "Mercado Livre") e o favicon (agora terracota).
+
+### ✅ Fase 6.8 (Frente I) — Frontend sobre dados reais da ANP
+- **Fim do "cérebro dividido"**: o backend já falava combustível (rotas/serviços/ETL), mas o `App.tsx` ainda era
+  100% "livros". Reescrevi o front inteiro para consumir `/api/fuel/*`. _Por quê:_ sem isso o app estava
+  inconsistente (backend ANP, front livros).
+- **Reuso via adaptador** (`lib/seriesToHistory.ts`): mapeia a série da ANP (`DailyAggregate`) para o
+  `PriceHistoryItem` genérico. Com isso, **toda a camada de inteligência** (sinal de compra, tendência,
+  volatilidade, filtro de período, gráfico) funciona sobre os dados reais **sem uma linha alterada** (I3).
+  _Por quê:_ o valor estava na reutilização — a lógica já era boa, só precisava de dados reais.
+- **Novo fluxo**: explorar (combustível → UF → município) → série + sinal + stats + gráfico → **favoritar** →
+  alerta. Painel "Onde está mais barato" (ranking de postos, I2). `useAlerts` migrado para os endpoints de fuel.
+- **Client/tipos** (`api/client.ts`, `types.ts`, `lib/seriesLabel.ts`) reescritos; `index.html` relabelado.
+  Nome do produto mantido como "Price Tracker Pro". `type-check`/`lint`/`build` limpos, **24 testes** front.
+
+### ✅ Fase 6.8 (J3) — Seed do domínio combustível
+- **Seed antigo estava quebrado** (apontava para `tracked_products`/`prices`, tabelas removidas). Reescrito:
+  `scripts/lib/anpDemoData.ts` gera uma amostra no **layout SHPC da ANP** (6 cidades × 5 postos × produtos ×
+  16 semanas, RNG determinístico) e o `scripts/seed.ts` a ingere pelo **pipeline ETL real** + cria usuário demo,
+  1 favorito e 1 alerta, registrando em `ingestion_runs`. _Por quê:_ a demo precisa abrir com série temporal de
+  verdade (gráfico/sinal/ranking com dados) e exercitando o mesmo caminho de produção.
+- **Validado** com o ETL real (sem Supabase): 1728 linhas, **0 rejeitadas/dedup/barradas**; Gasolina/SP com
+  16 pontos semanais e queda realista. **69 testes** backend verdes.
 
 ---
 

@@ -29,6 +29,8 @@ ChartJS.register(
 
 interface PriceChartProps {
   data: PriceHistoryItem[];
+  /** Casas decimais nos rótulos (combustível usa 3; padrão 2). */
+  decimals?: number;
 }
 
 // Paleta do tema claro editorial (espelha os tokens do index.css).
@@ -51,9 +53,9 @@ function makeGradient(ctx: ScriptableContext<"line">): CanvasGradient | string {
   return gradient;
 }
 
-export function PriceChart({ data }: PriceChartProps) {
+export function PriceChart({ data, decimals = 2 }: PriceChartProps) {
   if (!data.length) {
-    return <p className="muted">Nenhum dado ainda para este produto.</p>;
+    return <p className="muted">Nenhum dado ainda para esta série.</p>;
   }
 
   const currency = data[0]?.currency ?? "R$";
@@ -133,7 +135,7 @@ export function PriceChart({ data }: PriceChartProps) {
             const price = ctx.parsed.y;
             if (price == null) return "";
             const prefix = ctx.datasetIndex === 1 ? "Média: " : "Preço: ";
-            return `${prefix}${currency} ${price.toFixed(2)}`;
+            return `${prefix}${currency} ${price.toFixed(decimals)}`;
           }
         }
       }

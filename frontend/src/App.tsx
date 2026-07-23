@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
-  createAlert,
-  createProduct,
-  deleteProduct,
-  fetchPriceHistory,
-  fetchProducts,
-  searchProducts,
-  trackPriceNow,
-  type SearchResultItem
+  createFuelAlert,
+  createTrackedSeries,
+  deleteTrackedSeries,
+  fetchFuelProducts,
+  fetchMunicipalities,
+  fetchSeries,
+  fetchSnapshot,
+  fetchStates,
+  fetchTrackedSeries,
 } from "./api/client";
-import type { PriceHistoryItem, TrackedProduct } from "./types";
+import type { FuelSeriesPoint, SeriesView, SnapshotSummary, TrackedSeries } from "./types";
 import { PriceChart } from "./components/PriceChart";
 import { Icon } from "./components/Icon";
 import { ToastContainer } from "./components/Toast";
@@ -24,18 +25,28 @@ import {
   computeTrend,
   computeVolatility,
   PERIODS,
-  type Period
+  type Period,
 } from "./lib/priceInsights";
+import { buildSeriesLabel, titleCase } from "./lib/seriesLabel";
+import { seriesToHistory, ANP_SOURCE_URL } from "./lib/seriesToHistory";
 import { supabase } from "./supabaseClient";
 
-/** "A Light in the Attic" → "a-light-in-the-attic" */
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+/** Formata um preço em R$ com casas decimais (combustível usa 3). */
+function fmt(n: number, decimals = 3): string {
+  return n.toLocaleString("pt-BR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/** Verdadeiro se dois recortes de série apontam para a mesma combinação. */
+function sameSeries(a: SeriesView, b: { product: string; state: string; municipality: string; brand: string | null }): boolean {
+  return (
+    a.product === b.product &&
+    a.state === b.state &&
+    a.municipality === b.municipality &&
+    (a.brand ?? null) === (b.brand ?? null)
+  );
 }
 
 function App() {
@@ -47,150 +58,265 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
-  const [products, setProducts] = useState<TrackedProduct[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState<string>("");
-  const [history, setHistory] = useState<PriceHistoryItem[]>([]);
+  // ── Opções de exploração (dados públicos da ANP) ────────────────────────────
+  const [products, setProducts] = useState<string[]>([]);
+  const [states, setStates] = useState<string[]>([]);
+  const [municipalities, setMunicipalities] = useState<string[]>([]);
+  const [selProduct, setSelProduct] = useState("");
+  const [selState, setSelState] = useState("");
+  const [selMunicipality, setSelMunicipality] = useState("");
+
+  // ── Favoritos + série em exibição ───────────────────────────────────────────
+  const [tracked, setTracked] = useState<TrackedSeries[]>([]);
+  const [view, setView] = useState<SeriesView | null>(null);
+  const [series, setSeries] = useState<FuelSeriesPoint[]>([]);
+  const [snapshot, setSnapshot] = useState<SnapshotSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [newProductName, setNewProductName] = useState("");
+  const [period, setPeriod] = useState<Period>("all");
+
+  const [favSaving, setFavSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [alertThreshold, setAlertThreshold] = useState("");
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
-  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
-  const [period, setPeriod] = useState<Period>("all");
 
   const { toasts, push, remove: removeToast } = useToasts();
   const { alerts, reload: reloadAlerts, remove: removeAlert } = useAlerts(Boolean(supabase && user));
 
-  // ── Busca livre (instantânea, com debounce) ────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [trackingId, setTrackingId] = useState<string | null>(null);
+  const canManage = Boolean(supabase && user);
 
-  const runSearch = useCallback(async (q: string) => {
-    const query = q.trim();
-    if (!query) {
-      setSearchResults([]);
-      setSearchError(null);
-      return;
-    }
-    setSearchLoading(true);
-    setSearchError(null);
-    try {
-      const data = await searchProducts(query);
-      setSearchResults(data);
-    } catch (err: unknown) {
-      setSearchError(err instanceof Error ? err.message : "Erro inesperado na busca");
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
-    }
-  }, []);
-
-  // Dispara a busca ~350ms após parar de digitar.
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (!q) {
-      setSearchResults([]);
-      setSearchError(null);
-      setSearchLoading(false);
-      return;
-    }
-    const timer = setTimeout(() => void runSearch(q), 350);
-    return () => clearTimeout(timer);
-  }, [searchQuery, runSearch]);
-  // ────────────────────────────────────────────────────────────────────────
-
-  const loadData = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await fetchPriceHistory(id);
-      setHistory(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erro inesperado");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadProductsAndMaybeSelect = useCallback(async () => {
-    try {
-      const list = await fetchProducts();
-      setProducts(list);
-      if (!selectedProductId && list.length > 0) {
-        setSelectedProductId(list[0].id);
-        void loadData(list[0].id);
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar produtos");
-    }
-  }, [selectedProductId, loadData]);
-
+  // ── Sessão / auth ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!supabase) {
       setAuthLoading(false);
       return;
     }
-
     const timeout = setTimeout(() => setAuthLoading(false), 2000);
-
     void (async () => {
       const { data } = await supabase.auth.getSession();
       setUser(data.session?.user ?? null);
       clearTimeout(timeout);
       setAuthLoading(false);
     })();
-
     const {
-      data: { subscription }
+      data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
+  // Opções públicas: carregam uma vez, independem de login.
   useEffect(() => {
-    if (!supabase) {
-      void loadProductsAndMaybeSelect();
+    void (async () => {
+      try {
+        const [prods, sts] = await Promise.all([fetchFuelProducts(), fetchStates()]);
+        setProducts(prods);
+        setStates(sts);
+        if (prods.length > 0) setSelProduct((p) => p || prods[0]);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Erro ao carregar opções");
+      }
+    })();
+  }, []);
+
+  // Favoritos do usuário.
+  const reloadTracked = useCallback(async () => {
+    if (!canManage) {
+      setTracked([]);
+      return;
+    }
+    try {
+      setTracked(await fetchTrackedSeries());
+    } catch {
+      setTracked([]);
+    }
+  }, [canManage]);
+
+  useEffect(() => {
+    void reloadTracked();
+  }, [reloadTracked]);
+
+  // Municípios da UF selecionada.
+  useEffect(() => {
+    if (!selState) {
+      setMunicipalities([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const list = await fetchMunicipalities(selState);
+        if (active) setMunicipalities(list);
+      } catch {
+        if (active) setMunicipalities([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [selState]);
+
+  // ── Carregamento da série em exibição ───────────────────────────────────────
+  const loadSeries = useCallback(async (v: SeriesView) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const query = { product: v.product, state: v.state, municipality: v.municipality, brand: v.brand };
+      const [pts, snap] = await Promise.all([fetchSeries(query), fetchSnapshot(query)]);
+      setSeries(pts);
+      setSnapshot(snap);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao carregar a série");
+      setSeries([]);
+      setSnapshot(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const openView = useCallback(
+    (v: SeriesView) => {
+      setView(v);
+      setPeriod("all");
+      setAlertThreshold("");
+      setAlertError(null);
+      setSelProduct(v.product);
+      setSelState(v.state);
+      setSelMunicipality(v.municipality);
+      void loadSeries(v);
+    },
+    [loadSeries]
+  );
+
+  const handleExplore = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selProduct || !selState || !selMunicipality) return;
+    openView({
+      product: selProduct,
+      state: selState,
+      municipality: selMunicipality,
+      brand: null,
+      label: buildSeriesLabel(selProduct, selState, selMunicipality, null),
+    });
+  };
+
+  // ── Favoritos ───────────────────────────────────────────────────────────────
+  /** Garante que o recorte atual está favoritado; devolve o favorito. */
+  const ensureFavorite = useCallback(
+    async (v: SeriesView): Promise<TrackedSeries> => {
+      const existing = tracked.find((t) => sameSeries(v, t));
+      if (existing) return existing;
+      const created = await createTrackedSeries({
+        product: v.product,
+        state: v.state,
+        municipality: v.municipality,
+        brand: v.brand ?? undefined,
+        label: v.label,
+      });
+      setTracked((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
+      return created;
+    },
+    [tracked]
+  );
+
+  const handleFavorite = async () => {
+    if (!view) return;
+    if (!canManage) {
+      push("error", "Faça login para salvar favoritos.");
+      return;
+    }
+    setFavSaving(true);
+    try {
+      await ensureFavorite(view);
+      push("success", `"${view.label}" salvo nos favoritos.`);
+    } catch (err: unknown) {
+      push("error", err instanceof Error ? err.message : "Erro ao salvar favorito");
+    } finally {
+      setFavSaving(false);
+    }
+  };
+
+  const handleDeleteFavorite = async (ts: TrackedSeries) => {
+    setDeletingId(ts.id);
+    try {
+      await deleteTrackedSeries(ts.id);
+      setTracked((prev) => prev.filter((t) => t.id !== ts.id));
+      await reloadAlerts();
+      push("success", `"${ts.label}" removido dos favoritos.`);
+    } catch (err: unknown) {
+      push("error", err instanceof Error ? err.message : "Erro ao excluir favorito");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // ── Alerta ──────────────────────────────────────────────────────────────────
+  const handleCreateAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAlertError(null);
+
+    if (!canManage) {
+      setAlertError("Faça login para criar alertas.");
+      return;
+    }
+    if (!view) {
+      setAlertError("Escolha uma série primeiro.");
+      return;
+    }
+    const numericThreshold = Number(alertThreshold.replace(",", "."));
+    if (!numericThreshold || Number.isNaN(numericThreshold)) {
+      setAlertError("Informe um valor válido para o alerta.");
       return;
     }
 
-    if (!user) {
-      setProducts([]);
-      setSelectedProductId("");
-      setHistory([]);
-      return;
+    setAlertSaving(true);
+    try {
+      const favorite = await ensureFavorite(view);
+      await createFuelAlert({
+        seriesId: favorite.id,
+        thresholdPrice: numericThreshold,
+        currency: "R$",
+        channel: "email",
+        enabled: true,
+      });
+      setAlertThreshold("");
+      await Promise.all([reloadAlerts(), reloadTracked()]);
+      push("success", "Alerta salvo! Você será avisado por email.");
+    } catch (err: unknown) {
+      setAlertError(err instanceof Error ? err.message : "Erro ao salvar alerta");
+    } finally {
+      setAlertSaving(false);
     }
+  };
 
-    void loadProductsAndMaybeSelect();
-  }, [user, loadProductsAndMaybeSelect]);
+  const handleDeleteAlert = async (alertId: string) => {
+    try {
+      await removeAlert(alertId);
+      push("success", "Alerta removido.");
+    } catch (err: unknown) {
+      push("error", err instanceof Error ? err.message : "Erro ao excluir alerta");
+    }
+  };
 
+  // ── Auth handlers ─────────────────────────────────────────────────────────
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
-
     setAuthError(null);
     setAuthSubmitting(true);
-
     try {
       if (authMode === "login") {
         const { error } = await supabase.auth.signInWithPassword({
           email: authEmail,
-          password: authPassword
+          password: authPassword,
         });
         if (error) throw error;
       } else {
         const { data, error } = await supabase.auth.signUp({
           email: authEmail,
-          password: authPassword
+          password: authPassword,
         });
         if (error) throw error;
         if (!data.session) {
@@ -215,160 +341,19 @@ function App() {
     await supabase.auth.signOut();
   };
 
-  const selectProduct = (id: string) => {
-    setSelectedProductId(id);
-    void loadData(id);
-  };
-
-  const handleCreateProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateError(null);
-    const name = newProductName.trim();
-    if (!name) {
-      setCreateError("Digite o nome do produto.");
-      return;
-    }
-    const id = slugify(name);
-    try {
-      setCreating(true);
-      const created = await createProduct({ id, name, searchQuery: name, marketplace: "books-to-scrape" });
-      setProducts((prev) => [...prev, created]);
-      setSelectedProductId(created.id);
-      setNewProductName("");
-      await trackPriceNow(created.id);
-      await loadData(created.id);
-      push("success", `"${created.name}" cadastrado e rastreado!`);
-    } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : "Erro ao cadastrar produto");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleTrackFromSearch = async (item: SearchResultItem) => {
-    const name = item.title.trim();
-    const id = slugify(name);
-    setTrackingId(id);
-    try {
-      let created = products.find((p) => p.id === id);
-      if (!created) {
-        try {
-          created = await createProduct({
-            id,
-            name,
-            searchQuery: name,
-            marketplace: "books-to-scrape"
-          });
-          setProducts((prev) => [...prev, created as TrackedProduct]);
-        } catch (err: unknown) {
-          const existing = products.find((p) => p.id === id);
-          if (!existing) throw err;
-          created = existing;
-        }
-      }
-      setSelectedProductId(created.id);
-      await trackPriceNow(created.id);
-      await loadData(created.id);
-      push("success", `"${created.name}" rastreado!`);
-    } catch (err: unknown) {
-      push("error", err instanceof Error ? err.message : "Erro ao rastrear produto");
-    } finally {
-      setTrackingId(null);
-    }
-  };
-
-  const handleDeleteProduct = async (product: TrackedProduct) => {
-    setDeletingProductId(product.id);
-    try {
-      await deleteProduct(product.id);
-      const remaining = products.filter((p) => p.id !== product.id);
-      setProducts(remaining);
-      if (selectedProductId === product.id) {
-        const next = remaining[0]?.id ?? "";
-        setSelectedProductId(next);
-        if (next) {
-          void loadData(next);
-        } else {
-          setHistory([]);
-        }
-      }
-      await reloadAlerts();
-      push("success", `"${product.name}" removido.`);
-    } catch (err: unknown) {
-      push("error", err instanceof Error ? err.message : "Erro ao excluir produto");
-    } finally {
-      setDeletingProductId(null);
-    }
-  };
-
-  const handleDeleteAlert = async (alertId: string) => {
-    try {
-      await removeAlert(alertId);
-      push("success", "Alerta removido.");
-    } catch (err: unknown) {
-      push("error", err instanceof Error ? err.message : "Erro ao excluir alerta");
-    }
-  };
-
-  const handleCreateAlert = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAlertError(null);
-
-    if (!supabase) {
-      setAlertError("Alertas requerem Supabase configurado.");
-      return;
-    }
-
-    if (!user) {
-      setAlertError("Faça login para criar alertas.");
-      return;
-    }
-
-    if (!selectedProductId || !latest) {
-      setAlertError("Selecione um produto e carregue o último preço.");
-      return;
-    }
-
-    const numericThreshold = Number(alertThreshold.replace(",", "."));
-    if (!numericThreshold || Number.isNaN(numericThreshold)) {
-      setAlertError("Informe um valor válido para o alerta.");
-      return;
-    }
-
-    try {
-      setAlertSaving(true);
-      await createAlert({
-        productId: selectedProductId,
-        thresholdPrice: numericThreshold,
-        currency: latest.currency,
-        channel: "email",
-        enabled: true,
-        currentPrice: latest.discountedPrice,
-        productName: latest.title,
-        productUrl: latest.url
-      });
-
-      setAlertThreshold("");
-      await reloadAlerts();
-      push("success", "Alerta salvo! Você será avisado por email.");
-    } catch (err: unknown) {
-      setAlertError(err instanceof Error ? err.message : "Erro ao salvar alerta");
-    } finally {
-      setAlertSaving(false);
-    }
-  };
-
-  // ── Derivados (recortados pelo período selecionado) ─────────────────────────
-  const latest = history[history.length - 1];
+  // ── Derivados (recortados pelo período) ─────────────────────────────────────
+  const history = seriesToHistory(series, view?.label ?? "");
   const viewHistory = filterByPeriod(history, period);
   const stats = computePriceStats(viewHistory);
   const deal = computeDealSignal(stats);
   const trend = computeTrend(viewHistory);
   const volatility = computeVolatility(stats);
-  const selectedProduct = products.find((p) => p.id === selectedProductId);
-  const animatedPrice = useCountUp(latest?.discountedPrice ?? 0);
+  const latestAvg = history.length ? history[history.length - 1].discountedPrice : 0;
+  const animatedPrice = useCountUp(latestAvg);
+  const isFavorited = Boolean(view && tracked.some((t) => sameSeries(view, t)));
+  const collectedDate = snapshot?.date ?? (series.length ? series[series.length - 1].date : null);
 
-  // Tela de loading
+  // ── Tela de loading / login ─────────────────────────────────────────────────
   if (authLoading) {
     return (
       <div className="app">
@@ -377,7 +362,6 @@ function App() {
     );
   }
 
-  // Tela de login
   if (supabase && !user) {
     return (
       <div className="app">
@@ -386,7 +370,7 @@ function App() {
             <span className="brand-mark"><Icon name="chart" size={20} /></span>
             <div>
               <h1>Price Tracker Pro</h1>
-              <p>Rastreie preços de livros (Books to Scrape)</p>
+              <p>Preços reais de combustível (dados abertos da ANP)</p>
             </div>
           </div>
         </header>
@@ -464,18 +448,12 @@ function App() {
     );
   }
 
-  const canManage = Boolean(supabase && user);
-  const discountPct =
-    latest && latest.fullPrice > latest.discountedPrice
-      ? Math.round((1 - latest.discountedPrice / latest.fullPrice) * 100)
-      : 0;
-
   return (
     <div className="app">
       <header className="header">
         <div className="header-brand">
           <h1>Price Tracker Pro</h1>
-          <p>Rastreie preços de livros (Books to Scrape)</p>
+          <p>Preços reais de combustível (dados abertos da ANP)</p>
         </div>
         {canManage && (
           <div className="auth-row auth-row--logged">
@@ -488,128 +466,116 @@ function App() {
       </header>
 
       <main className="dashboard">
-        {/* ── Sidebar: busca + produtos + alertas ── */}
+        {/* ── Sidebar: explorar + favoritos + alertas ── */}
         <aside className="sidebar">
           <div className="panel">
-            <h2>Buscar produto</h2>
-            <div className="search-box">
-              <span className="search-box-icon"><Icon name="search" size={16} /></span>
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Ex: light, velvet, the..."
-                aria-label="Buscar livros"
-              />
-              {searchLoading && <span className="spinner" aria-hidden="true" />}
-            </div>
-
-            {searchError && <p className="error">{searchError}</p>}
-
-            {searchLoading && searchResults.length === 0 && (
-              <div className="search-results">
-                <div className="skeleton skeleton--row" aria-hidden="true" />
-                <div className="skeleton skeleton--row" aria-hidden="true" />
-                <div className="skeleton skeleton--row" aria-hidden="true" />
+            <h2>Consultar preço</h2>
+            <form className="explore-form" onSubmit={handleExplore}>
+              <div className="input-group">
+                <label htmlFor="sel-product">Combustível</label>
+                <select
+                  id="sel-product"
+                  value={selProduct}
+                  onChange={(e) => setSelProduct(e.target.value)}
+                >
+                  {products.length === 0 && <option value="">Carregando…</option>}
+                  {products.map((p) => (
+                    <option key={p} value={p}>{titleCase(p)}</option>
+                  ))}
+                </select>
               </div>
-            )}
-
-            {!searchLoading && searchResults.length > 0 && (
-              <ul className="search-results">
-                {searchResults.map((item) => {
-                  const id = slugify(item.title);
-                  const tracked = products.some((p) => p.id === id);
-                  return (
-                    <li key={item.url} className="search-item">
-                      <div className="search-item-main">
-                        <a href={item.url} target="_blank" rel="noreferrer" className="search-item-title">
-                          {item.title}
-                        </a>
-                        <span className="search-item-price">
-                          {item.currency} {item.price.toFixed(2)}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn-track"
-                        onClick={() => handleTrackFromSearch(item)}
-                        disabled={trackingId === id}
-                        title={tracked ? "Atualizar preço agora" : "Rastrear este produto"}
-                      >
-                        {trackingId === id ? (
-                          "..."
-                        ) : tracked ? (
-                          <>
-                            <Icon name="check" size={13} /> Rastreando
-                          </>
-                        ) : (
-                          <>
-                            <Icon name="bell" size={13} /> Rastrear
-                          </>
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {!searchLoading && searchQuery.trim() && !searchError && searchResults.length === 0 && (
-              <p className="muted empty-hint">Nenhum livro encontrado para &quot;{searchQuery.trim()}&quot;.</p>
+              <div className="input-group">
+                <label htmlFor="sel-state">Estado (UF)</label>
+                <select
+                  id="sel-state"
+                  value={selState}
+                  onChange={(e) => { setSelState(e.target.value); setSelMunicipality(""); }}
+                >
+                  <option value="">Selecione…</option>
+                  {states.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="input-group">
+                <label htmlFor="sel-municipality">Município</label>
+                <select
+                  id="sel-municipality"
+                  value={selMunicipality}
+                  onChange={(e) => setSelMunicipality(e.target.value)}
+                  disabled={!selState || municipalities.length === 0}
+                >
+                  <option value="">
+                    {!selState ? "Escolha a UF primeiro" : municipalities.length === 0 ? "Sem dados" : "Selecione…"}
+                  </option>
+                  {municipalities.map((m) => (
+                    <option key={m} value={m}>{titleCase(m)}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={!selProduct || !selState || !selMunicipality}
+              >
+                Ver preços
+              </button>
+            </form>
+            {states.length === 0 && (
+              <p className="muted empty-hint">
+                Sem dados carregados ainda. Rode a ingestão da ANP no backend.
+              </p>
             )}
           </div>
 
-          <div className="panel">
-            <h2>
-              Rastreando <span className="count-badge">{products.length}</span>
-            </h2>
-
-            {products.length === 0 ? (
-              <p className="muted empty-hint">Nenhum produto ainda. Busque acima e clique em Rastrear.</p>
-            ) : (
-              <ul className="product-list">
-                {products.map((p) => (
-                  <li
-                    key={p.id}
-                    className={`product-card${p.id === selectedProductId ? " active" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="product-card-btn"
-                      onClick={() => selectProduct(p.id)}
+          {canManage && (
+            <div className="panel">
+              <h2>
+                Favoritos <span className="count-badge">{tracked.length}</span>
+              </h2>
+              {tracked.length === 0 ? (
+                <p className="muted empty-hint">
+                  Nenhum favorito ainda. Consulte um preço e clique em “Favoritar”.
+                </p>
+              ) : (
+                <ul className="product-list">
+                  {tracked.map((t) => (
+                    <li
+                      key={t.id}
+                      className={`product-card${view && sameSeries(view, t) ? " active" : ""}`}
                     >
-                      <span className="product-card-name">{p.name}</span>
-                      <span className="product-card-id">{p.id}</span>
-                    </button>
-                    {canManage && (
+                      <button
+                        type="button"
+                        className="product-card-btn"
+                        onClick={() =>
+                          openView({
+                            product: t.product,
+                            state: t.state,
+                            municipality: t.municipality,
+                            brand: t.brand,
+                            label: t.label,
+                          })
+                        }
+                      >
+                        <span className="product-card-name">{t.label}</span>
+                        <span className="product-card-id">{titleCase(t.municipality)}/{t.state}</span>
+                      </button>
                       <button
                         type="button"
                         className="product-card-remove"
-                        onClick={() => handleDeleteProduct(p)}
-                        disabled={deletingProductId === p.id}
-                        aria-label={`Excluir ${p.name}`}
-                        title="Excluir produto"
+                        onClick={() => handleDeleteFavorite(t)}
+                        disabled={deletingId === t.id}
+                        aria-label={`Excluir ${t.label}`}
+                        title="Excluir favorito"
                       >
-                        {deletingProductId === p.id ? "..." : <Icon name="trash" size={15} />}
+                        {deletingId === t.id ? "..." : <Icon name="trash" size={15} />}
                       </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <form className="add-product" onSubmit={handleCreateProduct}>
-              <input
-                value={newProductName}
-                onChange={(e) => setNewProductName(e.target.value)}
-                placeholder="Adicionar por nome exato..."
-                aria-label="Nome do produto"
-              />
-              <button type="submit" disabled={creating} aria-label="Adicionar produto">
-                {creating ? "..." : <Icon name="plus" size={18} />}
-              </button>
-            </form>
-            {createError && <p className="error">{createError}</p>}
-          </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {canManage && alerts.length > 0 && (
             <div className="panel">
@@ -618,9 +584,11 @@ function App() {
                 {alerts.map((a) => (
                   <li key={a.id} className="alert-item">
                     <div className="alert-item-info">
-                      <span className="alert-item-product">{a.tracked_product_id}</span>
+                      <span className="alert-item-product">
+                        {a.tracked_series?.label ?? "Série"}
+                      </span>
                       <span className="alert-item-threshold">
-                        abaixo de {a.currency} {Number(a.threshold_price).toFixed(2)}
+                        abaixo de {a.currency} {fmt(Number(a.threshold_price))}
                         {a.triggered && <span className="alert-badge">disparado</span>}
                       </span>
                     </div>
@@ -628,7 +596,7 @@ function App() {
                       type="button"
                       className="btn-icon-danger"
                       onClick={() => handleDeleteAlert(a.id)}
-                      aria-label={`Remover alerta de ${a.tracked_product_id}`}
+                      aria-label={`Remover alerta de ${a.tracked_series?.label ?? "série"}`}
                     >
                       Remover
                     </button>
@@ -641,10 +609,10 @@ function App() {
 
         {/* ── Painel de detalhe ── */}
         <section className="detail">
-          {!selectedProductId ? (
+          {!view ? (
             <div className="detail-empty">
               <span className="detail-empty-icon"><Icon name="chart" size={34} /></span>
-              <p>Escolha um produto na lista ou busque um livro para começar a rastrear.</p>
+              <p>Escolha um combustível e um município para ver o histórico de preços.</p>
             </div>
           ) : (
             <div className="card detail-card">
@@ -652,30 +620,36 @@ function App() {
 
               {loading && <div className="skeleton skeleton--summary" aria-hidden="true" />}
 
-              {!loading && history.length === 0 && (
-                <p className="muted">Aguardando primeiro rastreamento pelo backend…</p>
+              {!loading && series.length === 0 && !error && (
+                <p className="muted">Sem dados de preço para esta série ainda.</p>
               )}
 
-              {latest && (
+              {!loading && series.length > 0 && (
                 <>
                   <div className="detail-head">
                     <div className="detail-head-info">
-                      <p className="detail-eyebrow">{selectedProduct?.name ?? latest.title}</p>
+                      <p className="detail-eyebrow">{view.label}</p>
                       <p className="price">
-                        {latest.currency} {animatedPrice.toFixed(2)}
+                        R$ {fmt(animatedPrice)}
+                        <span className="price-unit">/L</span>
                         {deal.available && deal.tone === "success" && stats.isLowestEver && (
                           <span className="price-badge">Menor preço!</span>
                         )}
                       </p>
-                      {discountPct > 0 && (
-                        <p className="meta discount-line">
-                          <span className="strike">
-                            {latest.currency} {latest.fullPrice.toFixed(2)}
-                          </span>
-                          <span className="discount-pct">-{discountPct}%</span>
-                        </p>
-                      )}
+                      <p className="meta">média do município no levantamento mais recente</p>
                     </div>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className={`btn-fav${isFavorited ? " btn-fav--on" : ""}`}
+                        onClick={handleFavorite}
+                        disabled={favSaving || isFavorited}
+                        title={isFavorited ? "Já está nos favoritos" : "Salvar nos favoritos"}
+                      >
+                        <Icon name={isFavorited ? "check" : "tag"} size={14} />{" "}
+                        {isFavorited ? "Favorito" : favSaving ? "Salvando…" : "Favoritar"}
+                      </button>
+                    )}
                   </div>
 
                   {deal.available && (
@@ -694,8 +668,8 @@ function App() {
                   {stats.min != null && stats.max != null && stats.max > stats.min && (
                     <div className="position">
                       <div className="position-labels">
-                        <span>Menor · {latest.currency} {stats.min.toFixed(2)}</span>
-                        <span>Maior · {latest.currency} {stats.max.toFixed(2)}</span>
+                        <span>Menor · R$ {fmt(stats.min)}</span>
+                        <span>Maior · R$ {fmt(stats.max)}</span>
                       </div>
                       <div className="position-track">
                         <div
@@ -705,7 +679,7 @@ function App() {
                         <div
                           className="position-marker"
                           style={{ left: `${deal.positionPct}%` }}
-                          title={`Preço atual: ${latest.currency} ${latest.discountedPrice.toFixed(2)}`}
+                          title={`Preço atual: R$ ${fmt(latestAvg)}`}
                         />
                       </div>
                     </div>
@@ -728,21 +702,15 @@ function App() {
                     <div className="stat-grid">
                       <div className="stat">
                         <span className="stat-label">Menor</span>
-                        <span className="stat-value stat-value--low">
-                          {latest.currency} {stats.min?.toFixed(2)}
-                        </span>
+                        <span className="stat-value stat-value--low">R$ {fmt(stats.min ?? 0)}</span>
                       </div>
                       <div className="stat">
                         <span className="stat-label">Média</span>
-                        <span className="stat-value">
-                          {latest.currency} {stats.avg?.toFixed(2)}
-                        </span>
+                        <span className="stat-value">R$ {fmt(stats.avg ?? 0)}</span>
                       </div>
                       <div className="stat">
                         <span className="stat-label">Maior</span>
-                        <span className="stat-value stat-value--high">
-                          {latest.currency} {stats.max?.toFixed(2)}
-                        </span>
+                        <span className="stat-value stat-value--high">R$ {fmt(stats.max ?? 0)}</span>
                       </div>
                       <div className="stat">
                         <span className="stat-label">Variação</span>
@@ -791,15 +759,41 @@ function App() {
                     <div className="detail-chart-head">
                       <h2>Evolução de preço</h2>
                     </div>
-                    <PriceChart data={viewHistory} />
+                    <PriceChart data={viewHistory} decimals={3} />
                   </div>
 
+                  {/* ── Ranking de postos: onde está mais barato (I2) ── */}
+                  {snapshot && snapshot.quotes.length > 0 && (
+                    <div className="ranking">
+                      <div className="detail-chart-head">
+                        <h2>Onde está mais barato</h2>
+                        {snapshot.date && (
+                          <span className="ranking-date">
+                            levantamento de {new Date(snapshot.date).toLocaleDateString("pt-BR")}
+                          </span>
+                        )}
+                      </div>
+                      <ul className="ranking-list">
+                        {snapshot.quotes.slice(0, 8).map((q, i) => (
+                          <li key={q.cnpj || i} className={`ranking-row${i === 0 ? " ranking-row--best" : ""}`}>
+                            <span className="ranking-pos">{i + 1}</span>
+                            <span className="ranking-name">
+                              {titleCase(q.reseller || "Posto")}
+                              {q.brand && <span className="ranking-brand">{titleCase(q.brand)}</span>}
+                            </span>
+                            <span className="ranking-price">R$ {fmt(q.sellPrice)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <p className="meta detail-meta">
-                    Atualizado em {new Date(latest.date).toLocaleString("pt-BR")}
-                    {history.length > 1 && ` · ${history.length} registros`}
+                    {collectedDate && `Atualizado em ${new Date(collectedDate).toLocaleDateString("pt-BR")}`}
+                    {series.length > 1 && ` · ${series.length} levantamentos`}
                     {" · "}
-                    <a href={latest.url} target="_blank" rel="noreferrer">
-                      Ver opções
+                    <a href={ANP_SOURCE_URL} target="_blank" rel="noreferrer">
+                      Fonte: ANP
                     </a>
                   </p>
 
@@ -807,13 +801,13 @@ function App() {
                     <form className="form alert-form" onSubmit={handleCreateAlert}>
                       <h3 className="alert-form-title">Alerta de preço</h3>
                       <div className="alert-field">
-                        <label htmlFor="alert-threshold">Me avise quando cair abaixo de</label>
+                        <label htmlFor="alert-threshold">Me avise quando a média cair abaixo de (R$/L)</label>
                         <div className="alert-controls">
                           <input
                             id="alert-threshold"
                             type="number"
-                            step="0.01"
-                            placeholder={(stats.avg ?? latest.discountedPrice).toFixed(2)}
+                            step="0.001"
+                            placeholder={(stats.avg ?? latestAvg).toFixed(3)}
                             value={alertThreshold}
                             onChange={(e) => setAlertThreshold(e.target.value)}
                           />

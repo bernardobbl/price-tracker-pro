@@ -1,7 +1,7 @@
 /**
  * Rotas autenticadas do domínio combustível: favoritos (`tracked_series`) e
- * alertas por série. Substituem, no novo domínio, as rotas de produto/alerta de
- * livros (que serão removidas no J4).
+ * alertas por série. Substituíram as antigas rotas de produto/alerta de livros
+ * (removidas na Fase 6.8 · J4).
  *
  *   GET/POST    /api/fuel/tracked            → listar / criar favorito
  *   DELETE      /api/fuel/tracked/:id        → excluir favorito

@@ -9,7 +9,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   logger.warn("[Supabase] Variáveis SUPABASE_URL / SUPABASE_ANON_KEY não configuradas. Operações remotas serão puladas.");
 }
 
-// Service role bypassa RLS: necessário para o backend inserir em prices/tracked_products.
+// Service role bypassa RLS: necessário para o ETL inserir em fuel_prices e ingestion_runs.
 // Em Settings > API do Supabase use a chave "service_role" (secret).
 const key = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
 export const supabase =

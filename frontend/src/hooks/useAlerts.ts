@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Alert } from "../types";
-import { deleteAlert as apiDeleteAlert, fetchAlerts } from "../api/client";
+import type { FuelAlert } from "../types";
+import { deleteFuelAlert, fetchFuelAlerts } from "../api/client";
 
-/** Carrega e gerencia os alertas do usuário. */
+/** Carrega e gerencia os alertas de combustível do usuário. */
 export function useAlerts(enabled: boolean) {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alerts, setAlerts] = useState<FuelAlert[]>([]);
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async () => {
@@ -14,7 +14,7 @@ export function useAlerts(enabled: boolean) {
     }
     setLoading(true);
     try {
-      setAlerts(await fetchAlerts());
+      setAlerts(await fetchFuelAlerts());
     } catch {
       // Falha silenciosa: a UI apenas mostra a lista vazia.
     } finally {
@@ -27,7 +27,7 @@ export function useAlerts(enabled: boolean) {
   }, [reload]);
 
   const remove = useCallback(async (id: string) => {
-    await apiDeleteAlert(id);
+    await deleteFuelAlert(id);
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   }, []);
 

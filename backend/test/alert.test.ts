@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideAlertAction } from "../src/services/alertService";
+import { decideAlertAction } from "../src/lib/alertDecision";
 
 describe("decideAlertAction", () => {
   it("notifica quando o preço atinge o alvo e ainda não foi disparado", () => {

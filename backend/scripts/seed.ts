@@ -1,9 +1,27 @@
 import "dotenv/config";
 import { supabase } from "../src/config/supabaseClient";
+import { parseAnpCsv } from "../src/ingest/anpParser";
+import { normalizeFuelRows, dedupeFuelRows } from "../src/ingest/anpNormalize";
+import { filterValidRows } from "../src/ingest/anpRowSchema";
+import { upsertFuelPrices } from "../src/services/fuelPriceService";
+import { buildSeriesLabel } from "../src/lib/seriesLabel";
+import { buildAnpCsv, CITIES, WEEKS } from "./lib/anpDemoData";
 
 /**
- * Popula o Supabase com um usuário de demonstração, alguns produtos rastreados
- * e um histórico de preços realista (tendência de queda) para a demo pública.
+ * Seed da demo (domínio combustível / ANP).
+ *
+ * Gera uma **amostra no formato SHPC da ANP** (mesmo layout do arquivo oficial:
+ * separador `;`, decimal com vírgula, data dd/mm/aaaa) cobrindo várias semanas,
+ * cidades, produtos e postos — e a ingere pelo **pipeline ETL real**
+ * (`parseAnpCsv → normalizeFuelRows → dedupeFuelRows → filterValidRows → upsertFuelPrices`),
+ * exatamente como o ingestor semanal faz com o arquivo público. Também cria um
+ * usuário demo com 1 favorito (`tracked_series`) e 1 alerta, para o app abrir com conteúdo.
+ *
+ * ⚠️ Honestidade: os **preços** aqui são gerados (variação semanal simulada, mas em
+ * níveis realistas de mercado) — é uma amostra de demonstração, não uma cópia do
+ * arquivo oficial (que tem 100+ MB e não cabe no repo). Em produção, o job semanal
+ * (`scheduleWeeklyAnpJob` / `ANP_INGEST_ON_BOOT=true`) ingere o **arquivo real da ANP**.
+ * A estrutura, o parsing e a normalização são idênticos aos de produção.
  *
  * Uso: npm run seed  (requer SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY no .env)
  */
@@ -11,29 +29,11 @@ import { supabase } from "../src/config/supabaseClient";
 const DEMO_EMAIL = process.env.DEMO_EMAIL || "demo@pricetracker.pro";
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "demo123456";
 
-interface SeedProduct {
-  id: string;
-  name: string;
-  searchQuery: string;
-  startPrice: number;
-  endPrice: number;
-}
-
-// Livros reais do books.toscrape.com; startPrice simula um histórico caindo até o preço atual.
-const PRODUCTS: SeedProduct[] = [
-  { id: "a-light-in-the-attic", name: "A Light in the Attic", searchQuery: "A Light in the Attic", startPrice: 58.9, endPrice: 51.77 },
-  { id: "tipping-the-velvet", name: "Tipping the Velvet", searchQuery: "Tipping the Velvet", startPrice: 60.0, endPrice: 53.74 },
-  { id: "soumission", name: "Soumission", searchQuery: "Soumission", startPrice: 55.0, endPrice: 50.1 },
-];
-
-const CURRENCY = "£";
-
-const DAYS = 30;
+// ── Usuário demo + favorito + alerta ──────────────────────────────────────────
 
 async function getOrCreateDemoUser(): Promise<string> {
   if (!supabase) throw new Error("Supabase não configurado.");
 
-  // Tenta criar; se já existir, procura o usuário existente.
   const { data: created, error: createError } = await supabase.auth.admin.createUser({
     email: DEMO_EMAIL,
     password: DEMO_PASSWORD,
@@ -45,10 +45,8 @@ async function getOrCreateDemoUser(): Promise<string> {
     return created.user.id;
   }
 
-  // Já existe: pagina os usuários e encontra pelo email.
   const { data: list, error: listError } = await supabase.auth.admin.listUsers();
   if (listError) throw listError;
-
   const existing = list.users.find((u) => u.email === DEMO_EMAIL);
   if (!existing) throw new Error(`Não foi possível criar nem encontrar o usuário demo (${DEMO_EMAIL}).`);
 
@@ -56,31 +54,66 @@ async function getOrCreateDemoUser(): Promise<string> {
   return existing.id;
 }
 
-function buildPriceSeries(product: SeedProduct, userId: string) {
-  const rows = [];
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
+/** Cria um favorito + alerta de demo (idempotente) apontando para Gasolina/São Paulo. */
+async function seedFavoriteAndAlert(userId: string): Promise<void> {
+  if (!supabase) return;
 
-  for (let i = DAYS - 1; i >= 0; i--) {
-    const t = (DAYS - 1 - i) / (DAYS - 1); // 0 → 1 ao longo do período
-    const trend = product.startPrice + (product.endPrice - product.startPrice) * t;
-    const noise = (Math.random() - 0.5) * product.startPrice * 0.03; // ±1.5%
-    const discounted = Math.round((trend + noise) * 100) / 100;
-    const full = Math.round(discounted * 1.12 * 100) / 100; // preço "de" ~12% acima
+  const product = "GASOLINA";
+  const state = "SP";
+  const municipality = "SAO PAULO";
+  const label = buildSeriesLabel(product, state, municipality, null);
 
-    rows.push({
-      user_id: userId,
-      tracked_product_id: product.id,
-      date: new Date(now - i * dayMs).toISOString(),
-      full_price: full,
-      discounted_price: discounted,
-      currency: CURRENCY,
-      title: `${product.name} (demo)`,
-      url: "https://books.toscrape.com/",
-    });
+  // Favorito (select-then-insert: o UNIQUE é sobre uma expressão coalesce).
+  const { data: existing } = await supabase
+    .from("tracked_series")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("product", product)
+    .eq("state", state)
+    .eq("municipality", municipality)
+    .is("brand", null)
+    .maybeSingle();
+
+  let seriesId = existing?.id as string | undefined;
+  if (!seriesId) {
+    const { data, error } = await supabase
+      .from("tracked_series")
+      .insert({ user_id: userId, product, state, municipality, brand: null, label })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[seed] Erro ao criar favorito demo:", error.message);
+      return;
+    }
+    seriesId = data.id as string;
   }
 
-  return rows;
+  // Alerta (upsert na chave user+série+canal). Threshold abaixo do preço típico → fica pendente.
+  const { error: alertError } = await supabase.from("alerts").upsert(
+    {
+      user_id: userId,
+      series_id: seriesId,
+      threshold_price: 5.5,
+      currency: "R$",
+      channel: "email",
+      enabled: true,
+    },
+    { onConflict: "user_id,series_id,channel" }
+  );
+  if (alertError) console.error("[seed] Erro ao criar alerta demo:", alertError.message);
+  else console.log(`[seed] Favorito + alerta demo prontos: ${label} (abaixo de R$ 5,500)`);
+}
+
+/** Registra a execução em ingestion_runs (paridade de observabilidade com o ETL real). */
+async function recordRun(patch: Record<string, unknown>): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("ingestion_runs").insert({
+    source: "seed-demo",
+    file_name: "anpDemo (gerado)",
+    status: "success",
+    ...patch,
+  });
+  if (error) console.error("[seed] Erro ao registrar ingestion_run:", error.message);
 }
 
 async function main() {
@@ -89,37 +122,31 @@ async function main() {
     process.exit(1);
   }
 
+  const start = Date.now();
   const userId = await getOrCreateDemoUser();
 
-  for (const product of PRODUCTS) {
-    // Produto (idempotente)
-    const { error: upsertProductError } = await supabase.from("tracked_products").upsert(
-      {
-        user_id: userId,
-        id: product.id,
-        name: product.name,
-        search_query: product.searchQuery,
-        marketplace: "books-to-scrape",
-      },
-      { onConflict: "user_id,id" }
-    );
-    if (upsertProductError) {
-      console.error(`[seed] Erro no produto ${product.id}:`, upsertProductError.message);
-      continue;
-    }
+  // ── ETL real sobre a amostra gerada ──
+  const csv = buildAnpCsv();
+  const parsed = parseAnpCsv(csv);
+  const { rows: normalized, stats } = normalizeFuelRows(parsed);
+  const { rows: deduped, removed } = dedupeFuelRows(normalized);
+  const { valid, invalid } = filterValidRows(deduped);
 
-    // Limpa histórico antigo do produto e reinsere
-    await supabase.from("prices").delete().eq("user_id", userId).eq("tracked_product_id", product.id);
+  console.log(
+    `[seed] ETL: ${stats.read} lidas · ${stats.kept} normalizadas · ${removed} dedup · ${invalid} barradas → ${valid.length} para upsert`
+  );
 
-    const rows = buildPriceSeries(product, userId);
-    const { error: insertError } = await supabase.from("prices").insert(rows);
-    if (insertError) {
-      console.error(`[seed] Erro ao inserir preços de ${product.id}:`, insertError.message);
-      continue;
-    }
+  const { upserted } = await upsertFuelPrices(valid);
+  console.log(`[seed] fuel_prices: ${upserted} linhas gravadas (${CITIES.length} cidades × ${WEEKS} semanas).`);
 
-    console.log(`[seed] ${product.name}: ${rows.length} registros inseridos.`);
-  }
+  await seedFavoriteAndAlert(userId);
+  await recordRun({
+    rows_read: stats.read,
+    rows_inserted: upserted,
+    rows_rejected: stats.rejected + invalid,
+    finished_at: new Date().toISOString(),
+    duration_ms: Date.now() - start,
+  });
 
   console.log(`\n[seed] Concluído! Login demo → email: ${DEMO_EMAIL} | senha: ${DEMO_PASSWORD}`);
   process.exit(0);

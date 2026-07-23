@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   })),
   eqUpdate: vi.fn(async () => ({ error: null })),
   sendEmail: vi.fn(async () => {}),
+  getSnapshot: vi.fn(),
 }));
 
 vi.mock("../src/config/supabaseClient", () => ({
@@ -21,41 +22,62 @@ vi.mock("../src/services/emailService", () => ({
   sendPriceAlertEmail: h.sendEmail,
 }));
 
-import { evaluateAlertImmediately, __clearEmailCache } from "../src/services/alertService";
+// getSnapshot é a "leitura de preço" do domínio combustível; mockada para não tocar o banco.
+vi.mock("../src/services/fuelQueryService", () => ({
+  getSnapshot: h.getSnapshot,
+}));
 
-const base = {
-  userId: "u1",
-  productId: "p1",
-  productName: "A Light in the Attic",
-  thresholdPrice: 50,
-  currentPrice: 40,
-  currency: "£",
-  productUrl: "https://books.toscrape.com/",
+import { evaluateFuelAlertImmediately } from "../src/services/fuelAlertService";
+import { __clearEmailCache } from "../src/services/userEmailService";
+
+const series = {
+  product: "GASOLINA",
+  state: "SP",
+  municipality: "SAO PAULO",
+  brand: null,
+  label: "Gasolina · São Paulo/SP",
 };
 
-describe("evaluateAlertImmediately (trilha única + cache)", () => {
+const base = { userId: "u1", series, thresholdPrice: 5.5, currency: "R$" };
+
+function snapshotWithAvg(avgPrice: number | null) {
+  return { date: "2026-07-20", avgPrice, minPrice: avgPrice, maxPrice: avgPrice, sampleSize: 3, quotes: [] };
+}
+
+describe("evaluateFuelAlertImmediately (trilha única + cache de email)", () => {
   beforeEach(() => {
     __clearEmailCache();
     h.getUserById.mockClear();
     h.sendEmail.mockClear();
+    h.getSnapshot.mockReset();
   });
 
   it("busca o email do mesmo usuário só uma vez (fix do N+1)", async () => {
-    await evaluateAlertImmediately({ alertId: "a1", ...base });
-    await evaluateAlertImmediately({ alertId: "a2", ...base });
+    h.getSnapshot.mockResolvedValue(snapshotWithAvg(5.4)); // abaixo do alvo → notifica
+    await evaluateFuelAlertImmediately({ alertId: "a1", ...base });
+    await evaluateFuelAlertImmediately({ alertId: "a2", ...base });
 
     expect(h.getUserById).toHaveBeenCalledTimes(1); // cache evitou a 2ª chamada
     expect(h.sendEmail).toHaveBeenCalledTimes(2);
   });
 
-  it("notifica quando o preço está no/abaixo do alvo", async () => {
-    const ok = await evaluateAlertImmediately({ alertId: "a3", ...base, currentPrice: 50 });
+  it("notifica quando a média está no/abaixo do alvo", async () => {
+    h.getSnapshot.mockResolvedValue(snapshotWithAvg(5.5)); // limite inclusivo
+    const ok = await evaluateFuelAlertImmediately({ alertId: "a3", ...base });
     expect(ok).toBe(true);
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
   });
 
-  it("não notifica quando o preço está acima do alvo", async () => {
-    const ok = await evaluateAlertImmediately({ alertId: "a4", ...base, currentPrice: 60 });
+  it("não notifica quando a média está acima do alvo", async () => {
+    h.getSnapshot.mockResolvedValue(snapshotWithAvg(6.0));
+    const ok = await evaluateFuelAlertImmediately({ alertId: "a4", ...base });
+    expect(ok).toBe(false);
+    expect(h.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("não notifica quando não há levantamento (avg nulo)", async () => {
+    h.getSnapshot.mockResolvedValue(snapshotWithAvg(null));
+    const ok = await evaluateFuelAlertImmediately({ alertId: "a5", ...base });
     expect(ok).toBe(false);
     expect(h.sendEmail).not.toHaveBeenCalled();
   });

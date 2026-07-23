@@ -40,40 +40,6 @@ export interface FetchHtmlOptions {
 }
 
 /**
- * Baixa o HTML de uma URL com timeout e retry (backoff exponencial).
- * Lança `ScrapeError("FETCH_FAILED")` se todas as tentativas falharem.
- */
-export async function fetchHtml(url: string, options: FetchHtmlOptions = {}): Promise<string> {
-  const { timeoutMs = 10_000, retries = 2 } = options;
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await axios.get<string>(url, {
-        timeout: timeoutMs,
-        responseType: "text",
-        headers: {
-          "User-Agent": randomUserAgent(),
-          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-        },
-      });
-      return response.data;
-    } catch (err) {
-      lastError = err;
-      if (attempt < retries) {
-        await sleep(500 * 2 ** attempt); // 500ms, 1s, 2s...
-      }
-    }
-  }
-
-  throw new ScrapeError(
-    "FETCH_FAILED",
-    `Falha ao acessar ${url} após ${retries + 1} tentativa(s).`,
-    lastError
-  );
-}
-
-/**
  * Baixa um recurso como bytes crus (arraybuffer) com timeout e retry.
  * Útil para arquivos que não são UTF-8 (ex.: CSV da ANP em Latin-1/Windows-1252)
  * ou binários. Lança `ScrapeError("FETCH_FAILED")` se todas as tentativas falharem.

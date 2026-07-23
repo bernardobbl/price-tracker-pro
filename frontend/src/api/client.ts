@@ -1,4 +1,9 @@
-import type { Alert, PriceHistoryItem, TrackedProduct } from "../types";
+import type {
+  FuelAlert,
+  FuelSeriesPoint,
+  SnapshotSummary,
+  TrackedSeries,
+} from "../types";
 import { supabase } from "../supabaseClient";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
@@ -9,7 +14,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   }
 
   const {
-    data: { session }
+    data: { session },
   } = await supabase.auth.getSession();
 
   if (!session?.access_token) {
@@ -17,7 +22,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   }
 
   return {
-    Authorization: `Bearer ${session.access_token}`
+    Authorization: `Bearer ${session.access_token}`,
   };
 }
 
@@ -33,157 +38,160 @@ async function extractError(response: Response, fallback: string): Promise<strin
   return fallback;
 }
 
-export interface SearchResultItem {
-  title: string;
-  url: string;
-  price: number;
-  currency: string;
-}
+// ── Consulta pública (dados da ANP) ─────────────────────────────────────────
 
-export async function fetchProducts(): Promise<TrackedProduct[]> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/products`, {
-    headers
-  });
-
+/** Produtos canônicos disponíveis (gasolina, etanol, diesel…). */
+export async function fetchFuelProducts(): Promise<string[]> {
+  const response = await fetch(`${API_BASE_URL}/api/fuel/products`);
   if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao buscar produtos rastreados"));
+    throw new Error(await extractError(response, "Erro ao carregar produtos"));
   }
-
   return response.json();
 }
 
-export async function searchProducts(q: string): Promise<SearchResultItem[]> {
-  const response = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(q)}`);
-
+/** UFs que têm dados. */
+export async function fetchStates(): Promise<string[]> {
+  const response = await fetch(`${API_BASE_URL}/api/fuel/locations`);
   if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao buscar produtos"));
+    throw new Error(await extractError(response, "Erro ao carregar estados"));
   }
-
-  return response.json();
+  const body = (await response.json()) as { states?: string[] };
+  return body.states ?? [];
 }
 
-export interface CreateProductPayload {
-  id: string;
-  name: string;
-  searchQuery: string;
-  marketplace?: string;
-}
-
-export async function createProduct(payload: CreateProductPayload): Promise<TrackedProduct> {
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/products`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao cadastrar produto"));
-  }
-
-  return response.json();
-}
-
-export async function fetchPriceHistory(productId: string): Promise<PriceHistoryItem[]> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/prices/${encodeURIComponent(productId)}`, {
-    headers
-  });
-
-  if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao buscar histórico de preços"));
-  }
-
-  return response.json();
-}
-
-export async function trackPriceNow(productId: string): Promise<PriceHistoryItem> {
-  const headers = await getAuthHeaders();
+/** Municípios com dados numa UF. */
+export async function fetchMunicipalities(state: string): Promise<string[]> {
   const response = await fetch(
-    `${API_BASE_URL}/api/track/${encodeURIComponent(productId)}`,
-    {
-      method: "POST",
-      headers
-    }
+    `${API_BASE_URL}/api/fuel/locations?state=${encodeURIComponent(state)}`
   );
-
   if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao rastrear preço agora"));
+    throw new Error(await extractError(response, "Erro ao carregar municípios"));
   }
+  const body = (await response.json()) as { municipalities?: string[] };
+  return body.municipalities ?? [];
+}
 
+export interface SeriesQuery {
+  product: string;
+  state: string;
+  municipality: string;
+  brand?: string | null;
+}
+
+function seriesQueryString({ product, state, municipality, brand }: SeriesQuery): string {
+  const params = new URLSearchParams({ product, state, municipality });
+  if (brand) params.set("brand", brand);
+  return params.toString();
+}
+
+/** Série temporal agregada (média/mín/máx por data). */
+export async function fetchSeries(query: SeriesQuery): Promise<FuelSeriesPoint[]> {
+  const response = await fetch(`${API_BASE_URL}/api/fuel/series?${seriesQueryString(query)}`);
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao carregar a série de preços"));
+  }
   return response.json();
 }
 
-export interface CreateAlertPayload {
-  productId: string;
+/** Levantamento mais recente + ranking de postos ("onde está mais barato"). */
+export async function fetchSnapshot(query: SeriesQuery): Promise<SnapshotSummary> {
+  const response = await fetch(`${API_BASE_URL}/api/fuel/snapshot?${seriesQueryString(query)}`);
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao carregar o levantamento mais recente"));
+  }
+  return response.json();
+}
+
+// ── Favoritos (tracked_series) ──────────────────────────────────────────────
+
+export async function fetchTrackedSeries(): Promise<TrackedSeries[]> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/fuel/tracked`, { headers });
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao carregar favoritos"));
+  }
+  return response.json();
+}
+
+export interface CreateTrackedSeriesPayload {
+  product: string;
+  state: string;
+  municipality: string;
+  brand?: string | null;
+  label?: string;
+}
+
+export async function createTrackedSeries(
+  payload: CreateTrackedSeriesPayload
+): Promise<TrackedSeries> {
+  const authHeaders = await getAuthHeaders();
+  if (!authHeaders.Authorization) {
+    throw new Error("Faça login para salvar favoritos.");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/fuel/tracked`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao salvar favorito"));
+  }
+  return response.json();
+}
+
+export async function deleteTrackedSeries(id: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/fuel/tracked/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao excluir favorito"));
+  }
+}
+
+// ── Alertas por série ───────────────────────────────────────────────────────
+
+export async function fetchFuelAlerts(): Promise<FuelAlert[]> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/fuel/alerts`, { headers });
+  if (!response.ok) {
+    throw new Error(await extractError(response, "Erro ao carregar alertas"));
+  }
+  return response.json();
+}
+
+export interface CreateFuelAlertPayload {
+  seriesId: string;
   thresholdPrice: number;
   currency?: string;
-  channel?: string;
+  channel?: "email";
   enabled?: boolean;
-  currentPrice?: number;
-  productName?: string;
-  productUrl?: string;
 }
 
-export async function createAlert(payload: CreateAlertPayload): Promise<unknown> {
+export async function createFuelAlert(payload: CreateFuelAlertPayload): Promise<FuelAlert> {
   const authHeaders = await getAuthHeaders();
-
   if (!authHeaders.Authorization) {
     throw new Error("Sessão expirada. Faça login novamente.");
   }
-
-  const response = await fetch(`${API_BASE_URL}/api/alerts`, {
+  const response = await fetch(`${API_BASE_URL}/api/fuel/alerts`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders
-    },
-    body: JSON.stringify(payload)
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify(payload),
   });
-
   if (!response.ok) {
     throw new Error(await extractError(response, "Erro ao salvar alerta"));
   }
-
   return response.json();
 }
 
-export async function deleteProduct(productId: string): Promise<void> {
+export async function deleteFuelAlert(alertId: string): Promise<void> {
   const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/products/${encodeURIComponent(productId)}`, {
+  const response = await fetch(`${API_BASE_URL}/api/fuel/alerts/${encodeURIComponent(alertId)}`, {
     method: "DELETE",
-    headers
+    headers,
   });
-
-  if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao excluir produto"));
-  }
-}
-
-export async function fetchAlerts(): Promise<Alert[]> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/alerts`, { headers });
-
-  if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao buscar alertas"));
-  }
-
-  return response.json();
-}
-
-export async function deleteAlert(alertId: string): Promise<void> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/alerts/${encodeURIComponent(alertId)}`, {
-    method: "DELETE",
-    headers
-  });
-
   if (!response.ok) {
     throw new Error(await extractError(response, "Erro ao excluir alerta"));
   }
 }
-
