@@ -126,6 +126,32 @@ create index if not exists ingestion_runs_file_hash_idx
   on public.ingestion_runs (file_hash);
 
 -- ---------------------------------------------------------------------------
+-- Funções de listagem (DISTINCT no servidor)
+-- ---------------------------------------------------------------------------
+-- Os seletores do app precisam das UFs e dos municípios distintos. Fazer o
+-- distinct no cliente exigiria puxar as linhas — e o PostgREST limita respostas
+-- a 1000, o que silenciosamente perderia valores. Estas funções resolvem o
+-- distinct no Postgres (usando os índices) e devolvem poucas linhas.
+create or replace function public.fuel_states()
+returns table (state text)
+language sql
+stable
+as $$
+  select distinct fp.state from public.fuel_prices fp order by fp.state;
+$$;
+
+create or replace function public.fuel_municipalities(p_state text)
+returns table (municipality text)
+language sql
+stable
+as $$
+  select distinct fp.municipality
+  from public.fuel_prices fp
+  where fp.state = p_state
+  order by fp.municipality;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- RLS
 -- ---------------------------------------------------------------------------
 alter table public.fuel_prices    enable row level security;

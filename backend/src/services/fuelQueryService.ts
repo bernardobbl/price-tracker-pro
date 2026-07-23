@@ -39,37 +39,33 @@ export function listProducts(): string[] {
   return [...FUEL_PRODUCTS];
 }
 
-/** UFs que têm dados (distinct em memória sobre um recorte limitado). */
+/**
+ * UFs que têm dados. Usa a função `fuel_states()` (DISTINCT no servidor) em vez de
+ * puxar linhas e deduplicar no cliente — o PostgREST limita respostas a 1000 linhas,
+ * então o distinct-no-cliente silenciosamente perdia UFs. A RPC devolve ~poucas
+ * dezenas de linhas, bem abaixo do teto.
+ */
 export async function listStates(): Promise<string[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("fuel_prices")
-    .select("state")
-    .limit(ROW_LIMIT);
+  const { data, error } = await supabase.rpc("fuel_states");
   if (error) {
     logger.error({ err: error.message }, "[fuelQuery] Erro ao listar UFs");
     return [];
   }
-  const set = new Set<string>();
-  for (const row of data ?? []) if (row.state) set.add(row.state as string);
-  return [...set].sort();
+  const rows = (data ?? []) as Array<{ state: string | null }>;
+  return rows.map((r) => r.state).filter((s): s is string => Boolean(s));
 }
 
-/** Municípios com dados numa UF. */
+/** Municípios com dados numa UF (DISTINCT no servidor via `fuel_municipalities`). */
 export async function listMunicipalities(state: string): Promise<string[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("fuel_prices")
-    .select("municipality")
-    .eq("state", state)
-    .limit(ROW_LIMIT);
+  const { data, error } = await supabase.rpc("fuel_municipalities", { p_state: state });
   if (error) {
     logger.error({ err: error.message }, "[fuelQuery] Erro ao listar municípios");
     return [];
   }
-  const set = new Set<string>();
-  for (const row of data ?? []) if (row.municipality) set.add(row.municipality as string);
-  return [...set].sort();
+  const rows = (data ?? []) as Array<{ municipality: string | null }>;
+  return rows.map((r) => r.municipality).filter((m): m is string => Boolean(m));
 }
 
 function mapRow(row: {
