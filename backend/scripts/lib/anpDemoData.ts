@@ -2,12 +2,14 @@
  * Gerador da amostra de demonstração no layout SHPC da ANP (para o seed).
  *
  * Produz um CSV **no formato oficial** (separador `;`, decimal com vírgula, data
- * dd/mm/aaaa, mesmo cabeçalho) cobrindo várias semanas × cidades × produtos × postos.
- * Fica separado do `seed.ts` para ser importável/testável sem disparar a ingestão.
+ * dd/mm/aaaa, mesmo cabeçalho) cobrindo várias semanas × cidades × produtos × postos,
+ * com **endereço** de cada posto (bairro/rua/número/CEP) — para o app mostrar onde
+ * abastecer. Fica separado do `seed.ts` para ser importável/testável sem disparar a ingestão.
  *
- * ⚠️ Os preços são gerados (variação semanal simulada em níveis realistas de mercado)
- * — é uma amostra de demo, não uma cópia do arquivo oficial da ANP. A estrutura e o
- * caminho de ETL (parse/normalize/dedup) são idênticos aos de produção.
+ * ⚠️ Os preços e endereços são gerados (variação semanal simulada em níveis realistas
+ * de mercado, bairros reais de cada cidade) — é uma amostra de demo, não uma cópia do
+ * arquivo oficial da ANP. A estrutura e o caminho de ETL (parse/normalize/dedup) são
+ * idênticos aos de produção.
  */
 
 /** Nº de levantamentos semanais (dá série temporal ao gráfico/tendência). */
@@ -22,15 +24,23 @@ export interface DemoCity {
   municipality: string;
   /** Multiplicador de nível de preço da praça. */
   factor: number;
+  /** Bairros reais da cidade (localização dos postos). */
+  neighborhoods: string[];
 }
 
+// Maiores cidades das UFs que já temos (SP, RJ, PR, RS, BA), com bairros reais.
 export const CITIES: DemoCity[] = [
-  { region: "SE", state: "SP", municipality: "SAO PAULO", factor: 1.0 },
-  { region: "SE", state: "SP", municipality: "CAMPINAS", factor: 0.98 },
-  { region: "SE", state: "RJ", municipality: "RIO DE JANEIRO", factor: 1.03 },
-  { region: "S", state: "PR", municipality: "CURITIBA", factor: 0.97 },
-  { region: "S", state: "RS", municipality: "PORTO ALEGRE", factor: 0.99 },
-  { region: "NE", state: "BA", municipality: "SALVADOR", factor: 1.02 },
+  { region: "SE", state: "SP", municipality: "SAO PAULO", factor: 1.0, neighborhoods: ["PINHEIROS", "MOEMA", "TATUAPE", "SANTANA", "LAPA", "ITAIM BIBI"] },
+  { region: "SE", state: "SP", municipality: "GUARULHOS", factor: 0.99, neighborhoods: ["CENTRO", "VILA GALVAO", "MACEDO", "GOPOUVA"] },
+  { region: "SE", state: "SP", municipality: "CAMPINAS", factor: 0.98, neighborhoods: ["CAMBUI", "BARAO GERALDO", "TAQUARAL", "CENTRO"] },
+  { region: "SE", state: "RJ", municipality: "RIO DE JANEIRO", factor: 1.03, neighborhoods: ["COPACABANA", "TIJUCA", "BARRA DA TIJUCA", "BOTAFOGO", "MEIER"] },
+  { region: "SE", state: "RJ", municipality: "NITEROI", factor: 1.02, neighborhoods: ["ICARAI", "CENTRO", "SAO FRANCISCO", "INGA"] },
+  { region: "S", state: "PR", municipality: "CURITIBA", factor: 0.97, neighborhoods: ["BATEL", "AGUA VERDE", "PORTAO", "CENTRO", "SANTA FELICIDADE"] },
+  { region: "S", state: "PR", municipality: "LONDRINA", factor: 0.96, neighborhoods: ["CENTRO", "GLEBA PALHANO", "JARDIM SHANGRILA"] },
+  { region: "S", state: "RS", municipality: "PORTO ALEGRE", factor: 0.99, neighborhoods: ["MOINHOS DE VENTO", "CIDADE BAIXA", "PETROPOLIS", "CENTRO HISTORICO"] },
+  { region: "S", state: "RS", municipality: "CAXIAS DO SUL", factor: 0.98, neighborhoods: ["CENTRO", "SAO PELEGRINO", "EXPOSICAO"] },
+  { region: "NE", state: "BA", municipality: "SALVADOR", factor: 1.02, neighborhoods: ["BARRA", "PITUBA", "ONDINA", "ITAPUA", "RIO VERMELHO"] },
+  { region: "NE", state: "BA", municipality: "FEIRA DE SANTANA", factor: 1.0, neighborhoods: ["CENTRO", "KALILANDIA", "TOMBA"] },
 ];
 
 interface DemoProduct {
@@ -47,8 +57,23 @@ const PRODUCTS: DemoProduct[] = [
   { name: "DIESEL", base: 5.99, unit: "R$ / litro" },
 ];
 
-const BRANDS = ["VIBRA", "IPIRANGA", "SHELL", "RAIZEN", "BRANCA", "ALE"];
-const RESELLERS_PER_CITY = 5;
+// Pool de 5 bandeiras + 8 postos por cidade → bandeiras se repetem (realista:
+// vários postos da mesma bandeira, com preços diferentes).
+const BRANDS = ["VIBRA", "SHELL", "IPIRANGA", "RAIZEN", "BRANCA"];
+const STREETS = [
+  "AV BRASIL",
+  "RUA XV DE NOVEMBRO",
+  "AV GETULIO VARGAS",
+  "RUA DAS FLORES",
+  "AV SETE DE SETEMBRO",
+  "RUA DO COMERCIO",
+  "AV JUSCELINO KUBITSCHEK",
+  "RUA MARECHAL DEODORO",
+];
+const RESELLERS_PER_CITY = 8;
+
+// Prefixo de CEP por UF (1º–2º dígitos das faixas reais dos Correios).
+const CEP_PREFIX: Record<string, string> = { SP: "01", RJ: "22", PR: "80", RS: "90", BA: "40" };
 
 /** RNG determinístico (mulberry32) → amostra reproduzível a cada execução. */
 function makeRng(seed: number): () => number {
@@ -86,23 +111,35 @@ interface DemoReseller {
   brand: string;
   offset: number; // desvio persistente de preço (ranking estável)
   products: DemoProduct[];
+  // Endereço (constante ao longo das semanas).
+  street: string;
+  streetNumber: string;
+  neighborhood: string;
+  cep: string;
 }
 
 function buildResellers(cityIdx: number, rng: () => number): DemoReseller[] {
+  const city = CITIES[cityIdx];
   const list: DemoReseller[] = [];
   for (let r = 0; r < RESELLERS_PER_CITY; r++) {
     const digits = String((cityIdx + 11) * 1_000_000 + r).padStart(14, "0");
     const letter = String.fromCharCode(65 + r); // A, B, C...
+    const neighborhood = city.neighborhoods[r % city.neighborhoods.length];
+    const bairroWord = neighborhood.split(" ")[0];
     // Todos vendem gasolina + etanol; a variação de produtos enriquece o ranking.
     const products = [PRODUCTS[0], PRODUCTS[2]];
     if (r % 2 === 0) products.push(PRODUCTS[1], PRODUCTS[3]);
     else products.push(PRODUCTS[4]);
     list.push({
-      name: `POSTO ${CITIES[cityIdx].municipality.split(" ")[0]} ${letter} LTDA`,
+      name: `AUTO POSTO ${bairroWord} ${letter} LTDA`,
       cnpj: digits,
-      brand: BRANDS[(cityIdx + r) % BRANDS.length],
+      brand: BRANDS[r % BRANDS.length], // repete a cada 5 → várias da mesma bandeira
       offset: (rng() - 0.4) * 0.3, // ~ -0,12 a +0,18
       products,
+      street: STREETS[(r + cityIdx) % STREETS.length],
+      streetNumber: String(100 + ((r * 137 + cityIdx * 53) % 3900)),
+      neighborhood,
+      cep: `${CEP_PREFIX[city.state] ?? "01"}${String((cityIdx * 100 + r * 13) % 1000).padStart(3, "0")}-${String((r * 137 + 100) % 1000).padStart(3, "0")}`,
     });
   }
   return list;
@@ -140,11 +177,11 @@ export function buildAnpCsv(): string {
               city.municipality,
               reseller.name,
               reseller.cnpj,
-              "RUA EXEMPLO",
-              String(100 + w),
-              "",
-              "CENTRO",
-              "00000-000",
+              reseller.street,
+              reseller.streetNumber,
+              "", // complemento
+              reseller.neighborhood,
+              reseller.cep,
               product.name,
               dateBR(d),
               money(sell),

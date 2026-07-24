@@ -43,4 +43,22 @@ describe("anpDemoData.buildAnpCsv (amostra de seed no layout SHPC da ANP)", () =
     const municipalities = new Set(parsed.map((r) => r.municipality));
     for (const c of CITIES) expect(municipalities.has(c.municipality)).toBe(true);
   });
+
+  it("gera endereço (bairro/rua) em cada linha", () => {
+    const parsed = parseAnpCsv(csv);
+    expect(parsed.every((r) => r.neighborhood && r.street)).toBe(true);
+  });
+
+  it("repete bandeiras dentro da mesma cidade (postos distintos, mesma marca)", () => {
+    const parsed = parseAnpCsv(csv);
+    const spSalvador = parsed.filter((r) => r.municipality === "SALVADOR");
+    const brandCounts = new Map<string, Set<string>>();
+    for (const r of spSalvador) {
+      const set = brandCounts.get(r.brand) ?? new Set<string>();
+      set.add(r.cnpj);
+      brandCounts.set(r.brand, set);
+    }
+    // pelo menos uma bandeira aparece em 2+ postos (CNPJs) distintos.
+    expect([...brandCounts.values()].some((cnpjs) => cnpjs.size >= 2)).toBe(true);
+  });
 });

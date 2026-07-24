@@ -31,6 +31,10 @@ function toRecord(row: NormalizedFuelRow) {
     buy_price: row.buyPrice,
     unit: row.unit || null,
     brand: row.brand || null,
+    street: row.street || null,
+    street_number: row.streetNumber || null,
+    neighborhood: row.neighborhood || null,
+    cep: row.cep || null,
   };
 }
 

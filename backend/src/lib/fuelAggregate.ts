@@ -15,6 +15,11 @@ export interface FuelPriceRecord {
   reseller: string;
   brand: string | null;
   cnpj: string;
+  /** Endereço do posto (para localizar). Opcionais. */
+  street?: string | null;
+  streetNumber?: string | null;
+  neighborhood?: string | null;
+  cep?: string | null;
 }
 
 export interface DailyAggregate {
@@ -31,6 +36,11 @@ export interface ResellerQuote {
   brand: string | null;
   cnpj: string;
   sellPrice: number;
+  /** Endereço do posto (para localizar onde abastecer). */
+  street?: string | null;
+  streetNumber?: string | null;
+  neighborhood?: string | null;
+  cep?: string | null;
 }
 
 export interface SnapshotSummary {
@@ -111,6 +121,10 @@ export function summarizeSnapshot(records: FuelPriceRecord[]): SnapshotSummary {
         brand: r.brand,
         cnpj: r.cnpj,
         sellPrice: r.sellPrice,
+        street: r.street ?? null,
+        streetNumber: r.streetNumber ?? null,
+        neighborhood: r.neighborhood ?? null,
+        cep: r.cep ?? null,
       });
     }
   }

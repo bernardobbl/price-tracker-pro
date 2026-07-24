@@ -39,6 +39,19 @@ function fmt(n: number, decimals = 3): string {
   });
 }
 
+/** "AV BRASIL, 1234 · PINHEIROS" a partir dos campos de endereço (o que existir). */
+function formatLocation(q: {
+  street?: string | null;
+  streetNumber?: string | null;
+  neighborhood?: string | null;
+}): string {
+  const streetPart = [q.street ? titleCase(q.street) : "", q.streetNumber ?? ""]
+    .filter(Boolean)
+    .join(", ");
+  const bairro = q.neighborhood ? titleCase(q.neighborhood) : "";
+  return [streetPart, bairro].filter(Boolean).join(" · ");
+}
+
 /** Verdadeiro se dois recortes de série apontam para a mesma combinação. */
 function sameSeries(a: SeriesView, b: { product: string; state: string; municipality: string; brand: string | null }): boolean {
   return (
@@ -774,16 +787,22 @@ function App() {
                         )}
                       </div>
                       <ul className="ranking-list">
-                        {snapshot.quotes.slice(0, 8).map((q, i) => (
-                          <li key={q.cnpj || i} className={`ranking-row${i === 0 ? " ranking-row--best" : ""}`}>
-                            <span className="ranking-pos">{i + 1}</span>
-                            <span className="ranking-name">
-                              {titleCase(q.reseller || "Posto")}
-                              {q.brand && <span className="ranking-brand">{titleCase(q.brand)}</span>}
-                            </span>
-                            <span className="ranking-price">R$ {fmt(q.sellPrice)}</span>
-                          </li>
-                        ))}
+                        {snapshot.quotes.slice(0, 8).map((q, i) => {
+                          const loc = formatLocation(q);
+                          return (
+                            <li key={q.cnpj || i} className={`ranking-row${i === 0 ? " ranking-row--best" : ""}`}>
+                              <span className="ranking-pos">{i + 1}</span>
+                              <div className="ranking-info">
+                                <span className="ranking-name">
+                                  {titleCase(q.reseller || "Posto")}
+                                  {q.brand && <span className="ranking-brand">{titleCase(q.brand)}</span>}
+                                </span>
+                                {loc && <span className="ranking-loc">{loc}</span>}
+                              </div>
+                              <span className="ranking-price">R$ {fmt(q.sellPrice)}</span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   )}

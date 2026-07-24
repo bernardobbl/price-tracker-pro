@@ -74,6 +74,10 @@ function mapRow(row: {
   reseller: string | null;
   brand: string | null;
   cnpj: string | null;
+  street: string | null;
+  street_number: string | null;
+  neighborhood: string | null;
+  cep: string | null;
 }): FuelPriceRecord {
   return {
     collectedAt: row.collected_at,
@@ -81,6 +85,10 @@ function mapRow(row: {
     reseller: row.reseller ?? "",
     brand: row.brand ?? null,
     cnpj: row.cnpj ?? "",
+    street: row.street,
+    streetNumber: row.street_number,
+    neighborhood: row.neighborhood,
+    cep: row.cep,
   };
 }
 
@@ -93,7 +101,7 @@ async function fetchRecords(
   if (!supabase) return [];
   let query = supabase
     .from("fuel_prices")
-    .select("collected_at, sell_price, reseller, brand, cnpj")
+    .select("collected_at, sell_price, reseller, brand, cnpj, street, street_number, neighborhood, cep")
     .eq("product", product)
     .eq("state", state)
     .eq("municipality", municipality);

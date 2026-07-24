@@ -31,6 +31,11 @@ export interface ResellerQuote {
   brand: string | null;
   cnpj: string;
   sellPrice: number;
+  /** Endereço do posto (para localizar onde abastecer). */
+  street?: string | null;
+  streetNumber?: string | null;
+  neighborhood?: string | null;
+  cep?: string | null;
 }
 
 /** Snapshot do levantamento mais recente + ranking de postos (`GET /api/fuel/snapshot`). */

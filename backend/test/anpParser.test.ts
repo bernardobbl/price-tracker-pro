@@ -53,6 +53,14 @@ describe("parseAnpCsv", () => {
     expect(first.brand).toBe("VIBRA");
   });
 
+  it("extrai o endereço do posto (rua/número/bairro/CEP)", () => {
+    const first = rows[0];
+    expect(first.street).toBe("AV PAULISTA");
+    expect(first.streetNumber).toBe("1000");
+    expect(first.neighborhood).toBe("BELA VISTA");
+    expect(first.cep).toBe("01310-100");
+  });
+
   it("trata valor de compra ausente como null", () => {
     const etanol = rows.find((r) => r.product === "ETANOL");
     expect(etanol?.buyPrice).toBeNull();

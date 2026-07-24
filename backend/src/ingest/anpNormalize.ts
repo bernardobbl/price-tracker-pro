@@ -150,6 +150,10 @@ export function normalizeFuelRows(rows: FuelPriceRow[]): NormalizeResult {
       buyPrice,
       unit: (row.unit ?? "").replace(/\s+/g, " ").trim(),
       brand,
+      street: cleanUpper(row.street),
+      streetNumber: (row.streetNumber ?? "").replace(/\s+/g, " ").trim(),
+      neighborhood: cleanUpper(row.neighborhood),
+      cep: (row.cep ?? "").replace(/\s+/g, " ").trim(),
     });
   }
 

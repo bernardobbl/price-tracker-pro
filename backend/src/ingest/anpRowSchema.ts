@@ -26,6 +26,11 @@ export const normalizedFuelRowSchema = z.object({
   buyPrice: z.number().positive().nullable(),
   unit: z.string(),
   brand: z.string(),
+  // Endereço (free-text, opcional) — localização do posto.
+  street: z.string().optional(),
+  streetNumber: z.string().optional(),
+  neighborhood: z.string().optional(),
+  cep: z.string().optional(),
 });
 
 export interface PartitionResult {

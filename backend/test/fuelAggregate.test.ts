@@ -62,6 +62,26 @@ describe("summarizeSnapshot", () => {
     expect(snap.quotes.map((q) => q.reseller)).toEqual(["BARATO", "CARO"]);
   });
 
+  it("carrega o endereço do posto na cotação do ranking", () => {
+    const snap = summarizeSnapshot([
+      rec({
+        collectedAt: "2026-07-08",
+        sellPrice: 5.7,
+        reseller: "AUTO POSTO PINHEIROS A",
+        cnpj: "p",
+        street: "AV BRASIL",
+        streetNumber: "1234",
+        neighborhood: "PINHEIROS",
+        cep: "05411-000",
+      }),
+    ]);
+    const q = snap.quotes[0];
+    expect(q.street).toBe("AV BRASIL");
+    expect(q.streetNumber).toBe("1234");
+    expect(q.neighborhood).toBe("PINHEIROS");
+    expect(q.cep).toBe("05411-000");
+  });
+
   it("colapsa duplicatas por CNPJ mantendo o menor preço", () => {
     const snap = summarizeSnapshot([
       rec({ collectedAt: "2026-07-08", sellPrice: 6.0, cnpj: "same" }),

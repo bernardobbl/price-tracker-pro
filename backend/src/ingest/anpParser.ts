@@ -32,6 +32,11 @@ export interface FuelPriceRow {
   buyPrice: number | null;
   unit: string;
   brand: string;
+  /** Endereço do posto (para localizar onde abastecer). Opcionais: nem toda linha traz. */
+  street?: string;
+  streetNumber?: string;
+  neighborhood?: string;
+  cep?: string;
 }
 
 /** "5,89" → 5.89 · "R$ 1.234,56" → 1234.56 · "" → null */
@@ -71,7 +76,7 @@ function normalizeHeader(h: string): string {
 }
 
 // Mapa: chave do nosso modelo → cabeçalho normalizado da ANP.
-const COLUMN_MAP: Record<keyof Omit<FuelPriceRow, never>, string> = {
+const COLUMN_MAP: Record<keyof FuelPriceRow, string> = {
   region: "regiao - sigla",
   state: "estado - sigla",
   municipality: "municipio",
@@ -82,7 +87,11 @@ const COLUMN_MAP: Record<keyof Omit<FuelPriceRow, never>, string> = {
   sellPrice: "valor de venda",
   buyPrice: "valor de compra",
   unit: "unidade de medida",
-  brand: "bandeira"
+  brand: "bandeira",
+  street: "nome da rua",
+  streetNumber: "numero rua",
+  neighborhood: "bairro",
+  cep: "cep"
 };
 
 /**
@@ -134,7 +143,11 @@ export function parseAnpCsv(csv: string): FuelPriceRow[] {
       sellPrice,
       buyPrice: parseMoneyBR(at("buyPrice")),
       unit: at("unit"),
-      brand: at("brand")
+      brand: at("brand"),
+      street: at("street"),
+      streetNumber: at("streetNumber"),
+      neighborhood: at("neighborhood"),
+      cep: at("cep")
     });
   }
 

@@ -40,9 +40,19 @@ create table if not exists public.fuel_prices (
   buy_price     numeric(10,3),             -- Valor de Compra (R$, quase sempre nulo na revenda)
   unit          text,                      -- Unidade de Medida (ex.: 'R$ / litro')
   brand         text,                      -- Bandeira (ex.: 'VIBRA', 'IPIRANGA', 'BRANCA')
+  street        text,                      -- Nome da Rua (localização do posto)
+  street_number text,                      -- Número Rua
+  neighborhood  text,                      -- Bairro
+  cep           text,                      -- CEP
   created_at    timestamptz not null default now(),
   unique (cnpj, product, collected_at)
 );
+
+-- Colunas de endereço (localização do posto) — idempotente para bancos criados antes delas.
+alter table public.fuel_prices add column if not exists street text;
+alter table public.fuel_prices add column if not exists street_number text;
+alter table public.fuel_prices add column if not exists neighborhood text;
+alter table public.fuel_prices add column if not exists cep text;
 
 -- Índice principal de consulta: produto + local + tempo (I1: médio/min/máx por município).
 create index if not exists fuel_prices_lookup_idx

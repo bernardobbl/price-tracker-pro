@@ -1364,6 +1364,13 @@ input[type="number"] {
   color: var(--good-deep);
 }
 
+.ranking-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
 .ranking-name {
   display: flex;
   align-items: baseline;
@@ -1371,6 +1378,14 @@ input[type="number"] {
   min-width: 0;
   font-size: 0.9rem;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-loc {
+  font-size: 0.76rem;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
