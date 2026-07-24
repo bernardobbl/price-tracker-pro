@@ -9,6 +9,7 @@ node_modules
 # Build output
 dist
 build
+*.tsbuildinfo
 
 # Scraped data (gerada em runtime, não versionar)
 backend/data/*.csv
@@ -21,3 +22,9 @@ npm-debug.log*
 .DS_Store
 .idea
 *.swp
+
+# FUSE / filesystem artifacts (arquivos temporários de mounts, não versionar)
+.fuse_hidden*
+
+# Config local do assistente (settings específicos da máquina)
+.claude/

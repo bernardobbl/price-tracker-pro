@@ -1,5 +1,14 @@
 import axios from "axios";
 
+/** Extrai uma descrição legível do erro do axios (status HTTP quando houver). */
+function describeAxiosError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    if (err.response) return `HTTP ${err.response.status} ${err.response.statusText ?? ""}`.trim();
+    if (err.code) return err.code; // ex.: ECONNABORTED (timeout), ENOTFOUND, ECONNREFUSED
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Erro estruturado de scraping — permite ao chamador distinguir o tipo de falha
  * (ex.: rede vs. preço não encontrado) e responder com o status HTTP adequado.
@@ -69,7 +78,7 @@ export async function fetchBuffer(url: string, options: FetchHtmlOptions = {}): 
 
   throw new ScrapeError(
     "FETCH_FAILED",
-    `Falha ao baixar ${url} após ${retries + 1} tentativa(s).`,
+    `Falha ao baixar ${url} após ${retries + 1} tentativa(s). Motivo: ${describeAxiosError(lastError)}`,
     lastError
   );
 }
@@ -164,7 +173,7 @@ export async function fetchConditional(
 
   throw new ScrapeError(
     "FETCH_FAILED",
-    `Falha ao baixar (condicional) ${url} após ${retries + 1} tentativa(s).`,
+    `Falha ao baixar (condicional) ${url} após ${retries + 1} tentativa(s). Motivo: ${describeAxiosError(lastError)}`,
     lastError
   );
 }

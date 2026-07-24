@@ -14,6 +14,7 @@ export type IconName =
   | "x"
   | "external"
   | "logout"
+  | "map-pin"
   | "tag";
 
 // Paths no estilo Lucide (viewBox 24, stroke currentColor).
@@ -31,6 +32,7 @@ const PATHS: Record<IconName, string> = {
   x: "M6 6l12 12 M18 6l-12 12",
   external: "M12 6H6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6 M14 4h6v6 M10 14l10 -10",
   logout: "M14 8v-2a2 2 0 0 0 -2 -2H6a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2 -2v-2 M9 12h12l-3 -3 M18 15l3 -3",
+  "map-pin": "M20 10c0 6 -8 12 -8 12s-8 -6 -8 -12a8 8 0 0 1 16 0z M12 10m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0",
   tag: "M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M3 6v5.5a2 2 0 0 0 .6 1.4l7 7a2 2 0 0 0 2.8 0l5.5 -5.5a2 2 0 0 0 0 -2.8l-7 -7a2 2 0 0 0 -1.4 -.6H5a2 2 0 0 0 -2 2z"
 };
 

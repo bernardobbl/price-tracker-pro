@@ -1,151 +1,153 @@
-# Price Tracker Pro
+# ⛽ Price Tracker Pro
 
 [![CI](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardobbl/price-tracker-pro/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
+![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3ECF8E?logo=supabase&logoColor=white)
 
-Rastreador de **preços reais de combustível** por município, a partir dos **dados abertos da ANP**
-([Série Histórica de Preços de Combustíveis](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis)):
-histórico, sinal de compra ("bom momento de abastecer?"), comparação de postos e **alertas por email**
-quando o preço médio cai abaixo de um valor desejado.
+**Track real Brazilian fuel prices by city, decide whether it's a good time to fill up, and get an email when the price drops below your target — built on the [ANP open dataset](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis).**
 
-> **Nota sobre a fonte de dados (histórico):** o projeto começou raspando o Mercado Livre (bloqueou scraping +
-> passou a exigir OAuth), migrou para o **Books to Scrape** (sandbox estático → histórico simulado) e, por fim,
-> para a **ANP** — dado **público, real e que varia no tempo**. Assim o núcleo do produto (histórico, tendência,
-> sinal de compra, alerta) opera sobre preços que **mudam de verdade**. O detalhe das migrações está no [`plan.md`](./plan.md).
+The core of the product — price history, trend, a 0–100 *buy signal*, station ranking and threshold alerts — runs on **public data that actually changes over time**: the ANP (Brazil's national petroleum agency) publishes a weekly survey of pump prices per city, station and brand. A weekly ETL job ingests it; users only read.
 
-- **Backend:** Node.js + TypeScript + Express; **ETL** do CSV da ANP (download condicional → parse → normalização →
-  dedup → upsert idempotente), cron semanal (`node-cron`)
-- **Frontend:** React + Vite + TypeScript + Chart.js
-- **Banco / Auth:** Supabase (PostgreSQL + Row Level Security)
-- **Email:** Nodemailer (SMTP)
-
-> 📋 O roteiro de evolução do projeto (rumo ao deploy) está em [`plan.md`](./plan.md).
+> ### 🇧🇷 Resumo (PT-BR)
+> Rastreador de **preços reais de combustível por município**, a partir dos **dados abertos da ANP**. Mostra histórico, tendência, um **sinal de compra** ("bom momento de abastecer?"), o **ranking de postos mais baratos** (com link direto para o Google Maps) e **alertas por email** quando o preço médio cai abaixo de um valor. O coração do projeto é um **ETL idempotente** que ingere semanalmente o CSV público da ANP para o Supabase.
 
 ---
 
-## Estrutura
+## 🔗 Demo
 
+> **Deploy in progress** (see [Roadmap](#-roadmap)). Once live, a read-only demo account will be available:
+> `demo@pricetracker.pro` / `demo123456`
+
+<!-- Screenshots / GIF go here after deploy:
+![Dashboard](docs/screenshot-dashboard.png)
+![Buy signal](docs/screenshot-signal.png)
+-->
+
+---
+
+## ✨ What it does
+
+- **Explore** by fuel → state (UF) → city and see the municipal price series.
+- **Price intelligence**: current average, min/median/max, % change, **trend** (moving average), **volatility**, and a **buy signal** (0–100) that turns the chart into a *decision* ("fill up now" vs "wait").
+- **"Where is it cheapest"**: ranking of the cheapest stations in the latest survey, each with a **"View on map"** link built from the station's real address (from the ANP data).
+- **Alerts**: favorite a series and set a threshold; after each weekly ingestion, if the average falls to/below your target, you get an **email**. Because prices really move, the alert really fires.
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+  ANP["ANP open data<br/>(monthly CSVs, weekly survey)"]
+
+  subgraph Backend["Backend · Node + Express + TypeScript"]
+    ETL["ETL pipeline<br/>parse → normalize → dedup → validate → upsert"]
+    API["REST API<br/>/api/fuel/*"]
+    CRON["node-cron<br/>weekly ingest + alert eval"]
+    MAIL["Nodemailer<br/>price alerts"]
+  end
+
+  DB[("Supabase<br/>Postgres + RLS")]
+  FE["Frontend · React + Vite + TS<br/>dashboard · chart · buy signal"]
+  USER((User))
+
+  ANP -->|"conditional GET"| ETL
+  CRON --> ETL
+  CRON --> MAIL
+  ETL --> DB
+  API --> DB
+  FE -->|HTTPS| API
+  FE -->|Auth| DB
+  MAIL -->|email| USER
+  FE --> USER
 ```
-.
-├── backend/     API, ETL da ANP, cron semanal, integração Supabase e envio de email
-└── frontend/    Dashboard React que consome a API
-```
 
----
+**Data flow in one line:** a background job pulls the ANP CSVs → the ETL cleans and upserts them into `fuel_prices` (shared, read-only reference table) → the API serves aggregated series/snapshots → the dashboard renders the decision layer. **Writes happen once a week on the server; users only ever read.**
 
-## Pré-requisitos
+## ⚙️ How it works
 
-- Node.js **20+** (veja `.nvmrc` → `nvm use`)
-- Conta no [Supabase](https://supabase.com) (URL do projeto + anon key + service_role key)
-- (Opcional) Credenciais SMTP para os emails de alerta
+1. A **weekly job** (or the `npm run ingest` CLI) downloads the ANP monthly CSVs (`gasolina-etanol`, `diesel-gnv`) with **conditional GET** (ETag / `If-Modified-Since`) and timeout/retry.
+2. The **ETL** parses (header-driven, tolerant to accents/reordering), **normalizes** (canonical product names, digits-only CNPJ, plausible-price range), **deduplicates** by natural key `(cnpj, product, collected_at)`, passes a final **Zod** gate, and does an **idempotent upsert** into Supabase. Every run is recorded in `ingestion_runs` (rows read/inserted/rejected, hash, duration, status) for observability.
+3. The user logs in (Supabase Auth), picks **fuel → UF → city**, and the API returns the aggregated **daily series** (avg/min/max) plus the **latest-survey snapshot** with the station ranking.
+4. Favorites + alerts are per-user (Row Level Security); the weekly job re-evaluates alerts after each ingestion and sends email via Nodemailer.
 
----
+> A single real month (Dec/2025) ingests **~75k rows across all 27 states/DF with 0 rejected** — the pipeline is clean on production data.
 
-## Como rodar localmente
+## 🧰 Tech stack
 
-### 1. Banco de dados
+| Layer | Choice |
+|---|---|
+| Frontend | React + Vite + TypeScript + Chart.js |
+| Backend | Node.js + Express + TypeScript (strict) |
+| ETL | Pure, testable functions (parse/normalize/dedup/validate) + `node-cron` |
+| Database / Auth | Supabase (PostgreSQL + Row Level Security) |
+| Validation | Zod (request schemas + ETL row gate) |
+| Email | Nodemailer (SMTP) |
+| Tests | Vitest + Testing Library + supertest (**~99 tests**) |
+| CI | GitHub Actions (lint · type-check · test · build) |
 
-No **SQL Editor** do Supabase, execute o conteúdo de `backend/supabase/schema.sql`
-(domínio de **preços de combustível / ANP**: `fuel_prices`, `tracked_series`, `alerts`, `ingestion_runs`).
+## 🚀 Run locally
 
-Se já rodou uma versão antiga do domínio **livros** (`tracked_products`/`prices`), rode antes
-`backend/supabase/migration_002_books_to_fuel.sql` para dropar as tabelas antigas e depois o `schema.sql`.
-(O `migration_drop_old_tables.sql` é ainda mais antigo — só relevante para bancos pré-`schema.sql`.)
+**Prerequisites:** Node 20+ (`nvm use`), a [Supabase](https://supabase.com) project (URL + anon key + service_role key), optional SMTP for alert emails.
+
+### 1. Database
+
+In the Supabase **SQL Editor**, run `backend/supabase/schema.sql` (creates `fuel_prices`, `tracked_series`, `alerts`, `ingestion_runs`, the lookup functions and RLS). It's idempotent.
 
 ### 2. Backend
 
 ```bash
 cd backend
-cp .env.example .env      # preencha SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+cp .env.example .env      # fill SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 npm install
-npm run dev               # API em http://localhost:4000
+npm run ingest            # first load: ingests recent ANP months into Supabase
+npm run dev               # API on http://localhost:4000
 ```
 
-Variáveis (`backend/.env`):
-
-| Variável | Descrição |
-|---|---|
-| `PORT` | Porta da API (padrão 4000) |
-| `SUPABASE_URL` | URL do projeto Supabase |
-| `SUPABASE_ANON_KEY` | Chave pública anon |
-| `SUPABASE_SERVICE_ROLE_KEY` | Chave service_role (backend grava preços; **secreta**) |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP para alertas (opcional) |
-| `FRONTEND_URL` | Origem liberada no CORS (padrão `http://localhost:5173`) |
-| `ANP_CSV_URL` | URL do CSV da ANP a ingerir (padrão: arquivo do semestre corrente) |
-| `ANP_CRON` | Cron do job semanal de ingestão (padrão `0 6 * * 1` — segunda 06:00) |
-| `ANP_INGEST_ON_BOOT` | Se `true`, ingere uma vez no boot (útil no 1º deploy/demo) |
+`npm run ingest` uses `ANP_YEAR` / `ANP_MONTHS` to build the file list (e.g. `ANP_MONTHS=10,11,12`). It skips files already ingested (content hash) and tolerates missing months (404 → skip).
 
 ### 3. Frontend
 
 ```bash
 cd frontend
-cp .env.example .env      # preencha VITE_API_BASE_URL e VITE_SUPABASE_*
+cp .env.example .env      # fill VITE_API_BASE_URL and VITE_SUPABASE_*
 npm install
-npm run dev               # dashboard em http://localhost:5173
+npm run dev               # dashboard on http://localhost:5173
 ```
 
----
+### Demo data (optional)
 
-## Scripts úteis
+`npm run seed` (in `backend/`) creates a demo user + one favorite/alert and ingests a **synthetic sample in the ANP layout** through the real ETL. Use it only for a quick offline demo — for real data, run `npm run ingest` instead. Set `VITE_DEMO_MODE=true` to show a "demo data" badge when the DB is seeded rather than real.
 
-| Comando | Onde | O que faz |
-|---|---|---|
-| `npm run dev` | backend/frontend | Modo desenvolvimento |
-| `npm run build` | backend/frontend | Build de produção |
-| `npm run lint` | backend/frontend | Lint |
-| `npm start` | backend | Roda o build (`dist/`) |
-
----
-
-## Como funciona
-
-1. Um **job semanal** (ou `ANP_INGEST_ON_BOOT`) baixa o CSV da ANP e o ingere pelo ETL
-   (parse → normalização → dedup → upsert idempotente) para a tabela pública `fuel_prices`.
-2. Usuário faz login (Supabase Auth), escolhe **combustível → UF → município** e vê a série do município.
-3. O dashboard mostra o **preço médio atual**, menor/maior/médio, variação, tendência, volatilidade, um
-   **sinal de compra** (0–100) e o **ranking de postos** do levantamento mais recente ("onde está mais barato").
-4. O usuário **favorita** uma série e define um **alerta**; após cada ingestão semanal, se o preço médio do
-   município cai no/abaixo do alvo, recebe um **email**. Como o preço muda de verdade, o alerta dispara de fato.
-
-### Seed da demo
+## ✅ Testing & CI
 
 ```bash
-cd backend
-npm run seed        # cria usuário demo + ingere uma amostra (formato ANP) via o ETL real
+npm test        # in backend/ and frontend/
 ```
 
-Gera uma amostra no layout SHPC da ANP (várias semanas × cidades × postos), a ingere pelo **mesmo pipeline
-de produção** e cria um usuário demo com 1 favorito + 1 alerta. Login demo padrão: `demo@pricetracker.pro`
-/ `demo123456` (configurável via `DEMO_EMAIL`/`DEMO_PASSWORD`). Os **preços da amostra** são gerados em níveis
-realistas de mercado — em produção, o job semanal ingere o **arquivo real** da ANP.
+~99 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
-## Fonte de dados & legalidade (ANP)
+## 🧠 Technical decisions & trade-offs
 
-O projeto usa uma fonte de **dados reais e públicos**: a
-[Série Histórica de Preços de Combustíveis](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis)
-da **ANP** (Agência Nacional do Petróleo, Gás Natural e Biocombustíveis), publicada como **dado aberto**
-a partir do levantamento semanal de preços por município, produto e revenda.
+- **Real public data over a scraping sandbox.** The project started scraping Mercado Livre (blocked + OAuth), moved to Books to Scrape (a static sandbox → *simulated* history), and finally to the **ANP open dataset** — real prices that move weekly. This fixed the product's core premise and turned the work into honest **data engineering** (ETL of large CSVs) rather than fragile HTML scraping.
+- **Idempotent ETL.** Upsert on a natural key + content-hash skip + conditional GET means reprocessing the same file never duplicates data and rarely re-downloads it. Safe to run on any schedule.
+- **Supabase as the single source of truth, with RLS.** `fuel_prices` is a *shared, read-only* reference table (public ANP data, written only by the service role); `tracked_series`/`alerts` are *per-user* with Row Level Security. No ephemeral local files.
+- **Heavy work out of the request path.** Ingestion runs only in the cron job / CLI, never inside an HTTP request — the API stays fast and the scraping/ETL can't stall a user.
+- **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the ~99 tests cheap and meaningful.
+- **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.
 
-Boas práticas de coleta adotadas (Frente H do [`plan.md`](./plan.md)):
+## 🗺️ Roadmap
 
-- **Legalidade / robots.txt:** é dado aberto governamental, de uso livre com **atribuição à ANP**. O
-  `robots.txt` do `gov.br` **não restringe** o caminho de dados abertos utilizado (verificado — as regras
-  `Disallow` cobrem apenas `/economia`, `/ebserh` e `/mre`).
-- **Coleta educada:** um único arquivo por semestre, baixado **no máximo uma vez por semana** (cron), com
-  **timeout + retry com backoff** e **requisição condicional** (`ETag`/`If-Modified-Since` → `304 Not Modified`)
-  para não rebaixar o arquivo quando nada mudou.
-- **Idempotência:** persistência por **upsert** na chave natural (CNPJ + produto + data), então reprocessar
-  o mesmo arquivo nunca duplica dados.
-- **Observabilidade:** cada execução é registrada em `ingestion_runs` (arquivo, hash, linhas lidas/inseridas/
-  rejeitadas, duração, status), e a ingestão roda **sempre em background** (cron/job), nunca dentro de uma
-  request HTTP.
-- **Qualidade de dado:** as linhas passam por normalização (produto canônico, CNPJ só-dígitos, descarte de
-  valores fora de faixa) e por um **gate de validação Zod** antes de gravar; rejeições são contabilizadas.
+- **Public deploy** (Vercel frontend + Render/Railway backend + Supabase) with a live demo login and real SMTP.
+- **Screenshots + demo GIF** of the buy-signal flow.
+- National series via a Postgres view/RPC (instead of a client-side row cap).
+- More historical months for richer trends; optional GLP (13 kg) support.
 
-> Esta foi a **2ª migração de fonte** do projeto (Mercado Livre → Books to Scrape → ANP). O histórico das
-> migrações fica registrado no `plan.md`. A UI e o código já operam **inteiramente** no domínio combustível
-> (o scraper/rotas de livros foram aposentados na Fase 6.8 · J4).
+## 📚 Data source & legality (ANP)
 
-## Licença
+Public **open government data**: the ANP *Série Histórica de Preços de Combustíveis*, from the agency's weekly price survey by municipality, product and reseller. Free to use **with attribution to ANP**; the `gov.br` `robots.txt` does not restrict the open-data path used. Collection is polite (one conditional download per week, timeout/retry) and idempotent (upsert on the natural key). This was the project's **2nd data-source migration** (Mercado Livre → Books to Scrape → ANP); the full history is in [`plan.md`](./plan.md).
 
-MIT — veja [`LICENSE`](./LICENSE).
+## 📄 License
+
+MIT — see [`LICENSE`](./LICENSE).

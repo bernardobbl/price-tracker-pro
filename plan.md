@@ -453,6 +453,11 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 ### Fase 7 — Deploy público (o marco final)
 **Meta:** link clicável funcionando, com dados de demo.
 
+> ✅ **Pré-requisito da ingestão já resolvido (sessão de revisão):** a URL/estrutura real da ANP foi descoberta e
+> o ingestor ajustado — arquivos **mensais** em `.../shpc/dsan/ANO/precos-{gasolina-etanol,diesel-gnv}-MM.csv`,
+> configuráveis por `ANP_YEAR`/`ANP_MONTHS`. Carga inicial validada localmente (~75k linhas/mês, 27 UFs). No
+> deploy, rodar `npm run ingest` contra o Supabase de produção **ou** subir com `ANP_INGEST_ON_BOOT=true` na 1ª vez.
+
 - [ ] **Banco**: Supabase (já é hospedado) — projeto de produção separado do de dev.
 - [ ] **Backend**: deploy no **Render** ou **Railway** (Express + cron). Configurar env vars (Supabase, SMTP, `FRONTEND_URL`).
 - [ ] **Frontend**: deploy no **Vercel** ou **Netlify**; setar `VITE_API_BASE_URL` e `VITE_SUPABASE_*`.
@@ -469,12 +474,14 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 ### Fase 8 — Apresentação e portfólio (o que converte no LinkedIn)
 **Meta:** transformar o repo num case que vende.
 
-- [ ] **README raiz de alto nível**: título, 1 frase de pitch, **GIF/screenshots**, link da demo, badges (CI, licença, stack), seção "Arquitetura" com **diagrama** (Mermaid), "Como rodar", "Decisões técnicas", "Próximos passos".
-- [ ] Diagrama de arquitetura em **Mermaid** (Frontend → API → Scraper → Supabase → Email/Cron).
-- [ ] **GIF de demonstração** do fluxo (buscar → rastrear → alerta) — usar a skill de gravação do navegador.
-- [ ] Seção **"O que eu aprendi / trade-offs"** — recrutadores amam isso.
+- [x] **README raiz de alto nível**: título, pitch, badges (CI, licença, stack), seção "Arquitetura" com
+  **diagrama** (Mermaid), "Como rodar", "Decisões técnicas", "Próximos passos". Bilíngue (EN + resumo PT).
+  _(GIF/screenshots + link da demo ficam como placeholders até o deploy.)_
+- [x] Diagrama de arquitetura em **Mermaid** (ANP → ETL → Supabase → API → Frontend → usuário / Email/Cron).
+- [ ] **GIF de demonstração** do fluxo (explorar → favoritar → alerta) — usar a skill de gravação do navegador.
+- [x] Seção **"O que eu aprendi / trade-offs"** — feita (decisões técnicas & trade-offs no README).
 - [ ] Post de LinkedIn: problema → solução → stack → link da demo → aprendizado.
-- [ ] Adicionar tópicos/tags no GitHub (`price-tracking`, `react`, `typescript`, `supabase`, `web-scraping`).
+- [ ] Adicionar tópicos/tags no GitHub (`fuel-prices`, `etl`, `react`, `typescript`, `supabase`, `open-data`).
 
 **DoD:** um estranho entende o projeto em 30s pelo README e consegue testar a demo sem te perguntar nada.
 
@@ -506,11 +513,14 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 - [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
 - [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
 - [x] Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
-- [ ] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
+- [x] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
 - [x] **Fase 6.8 — Virada de domínio: preços reais de combustível (ANP)** ✅ (Frentes G–J completas: ETL,
   realismo de coleta, produto sobre dados reais, front migrado, seed, testes e limpeza do Books to Scrape)
+- [x] **Ingestão REAL validada ponta a ponta** ✅ (sessão de revisão): URL/estrutura real da ANP corrigida
+  (arquivos mensais `dsan/ANO/precos-*-MM.csv`), `npm run ingest`, ~75k linhas/mês · 27 UFs · 0 rejeitadas.
 - [ ] Fase 7 — Deploy público + email real + demo
-- [ ] Fase 8 — README, diagrama, GIF, post
+- [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags
+  (dependem do deploy)
 
 ---
 
@@ -532,6 +542,11 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 **O que puxa a nota hoje (baseline 6.0):** dados de histórico **simulados** (premissa furada) e scraping de
 **site-sandbox estático**. A **Fase 6.8 (ANP)** ataca exatamente essas duas dimensões — é o maior salto de nota
 do projeto. Deploy + README (Fases 7–8) destravam a dimensão de apresentação.
+
+> **📈 Atualização (sessão de revisão):** o realismo dos dados deixou de ser promessa e virou fato — **ingestão
+> real da ANP validada ponta a ponta** (~75k linhas/mês, 27 UFs, 0 rejeitadas), então **Realismo** e **ETL**
+> atingiram (e sustentam) o alvo pós-6.8. **Apresentação** subiu com o **README de portfólio + diagrama Mermaid**;
+> falta só o que depende do **deploy** (link da demo, screenshots/GIF, post) para fechar a dimensão em ~9.
 
 ---
 
@@ -683,6 +698,53 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
   verdade (gráfico/sinal/ranking com dados) e exercitando o mesmo caminho de produção.
 - **Validado** com o ETL real (sem Supabase): 1728 linhas, **0 rejeitadas/dedup/barradas**; Gasolina/SP com
   16 pontos semanais e queda realista. **69 testes** backend verdes.
+
+### ✅ Sessão de revisão crítica + higiene + localização + **ingestão REAL da ANP** + README
+
+> Sessão focada em revisar o projeto inteiro de forma crítica (para portfólio) e fechar as frentes A→D.
+> **Marco desta sessão:** o app deixou de rodar sobre dados de seed e passou a rodar sobre **dados reais da ANP
+> ingeridos de verdade** — a premissa do produto está finalmente comprovada ponta a ponta.
+
+**A · Higiene do repo**
+- Removidos do git os dois `.fuse_hidden*` (artefatos de mount, estavam rastreados) e adicionados
+  `.fuse_hidden*` + `*.tsbuildinfo` ao `.gitignore`.
+- `cheerio` (dep morta do scraper de livros): **removção adiada de propósito** — tirar exige regenerar o
+  lockfile do backend, e o ambiente de trabalho era ARM (o CI é x64); regenerar lá reintroduziria o bug de
+  arquitetura da Fase 5. Fazer no Docker linux/amd64 numa etapa dedicada.
+
+**B · Localização dos postos + honestidade da UI**
+- **"Ver no mapa"**: cada posto do ranking "Onde está mais barato" virou link para o Google Maps, montado a
+  partir do endereço real (nome + rua + nº + bairro + município/UF). Ícone `map-pin` novo no `Icon.tsx`.
+  _Por quê:_ era o que o Bernardo notou — endereço como texto morto; com o dado real da ANP o posto existe
+  no mapa de verdade.
+- **Selo "dados de demonstração"** via `VITE_DEMO_MODE` (desligado por padrão): quando ligado, a UI avisa que
+  os dados são amostra ilustrativa (seed). Evita apresentar posto fictício como real sem mentir em produção.
+
+**C · Ingestão REAL da ANP (a grande virada desta sessão)**
+- **Bug crítico de URL descoberto e corrigido.** A estrutura assumida no código (`shpc/dsas/ca/ca-YYYY-SS.csv`,
+  por semestre) **não existe** (404). A estrutura real é `shpc/dsan/ANO/precos-{gasolina-etanol,diesel-gnv}-MM.csv`
+  — arquivos **mensais, separados por grupo de produto**, sem sufixo `/@@download/file`. Descoberto extraindo os
+  hrefs reais da página viva da ANP.
+- **`anpIngestor` refatorado** para o mundo real: `buildAnpUrls()` monta a lista a partir de `ANP_YEAR`/`ANP_MONTHS`
+  (padrão 2025 · 10,11,12); `ingestAnp` agora **itera sobre vários arquivos**, com `ingestOneFile` por arquivo
+  (fonte por-arquivo → validadores condicionais/observabilidade corretos) e **404 é pulado sem abortar o lote**.
+- **`httpClient`**: o erro passou a **expor o status HTTP** (`describeAxiosError`) — antes engolia (só "falhou"),
+  o que escondeu o 404 inicial. Melhora diagnóstico agora e em produção (virada de semestre/mês).
+- **Novo comando `npm run ingest`** (`scripts/ingest.ts`) para carga manual/1ª carga — mais limpo que o hack
+  `ANP_INGEST_ON_BOOT`, e bom artefato de portfólio. `.env.example` atualizado (ANP_YEAR/ANP_MONTHS).
+- **Validado com DADO REAL no Supabase do Bernardo:** schema aplicado (4 tabelas + RLS ok); seed falso limpo
+  (`delete from fuel_prices`); ingerido Dez/2025 = **74.638 linhas, 27 UFs, 0 rejeitadas**; depois o trimestre
+  completo (out+nov+dez, com Dez **pulado automaticamente** pelo hash de conteúdo). Parser confirmado contra o
+  cabeçalho oficial (16 colunas, inclui endereço) — **zero alteração no parser**. Alerta demo reavaliado e
+  corretamente **não** disparou (limiar abaixo da média real). ETL impecável sobre produção.
+
+**D · README / apresentação (parcial)**
+- **README raiz reescrito como case de portfólio** (bilíngue: EN principal + resumo PT), com **badges** (CI,
+  licença, stack), **diagrama de arquitetura em Mermaid** (ANP→ETL→Supabase→API→Front→usuário), "como funciona"
+  com os números reais, **decisões técnicas & trade-offs**, "como rodar" já com `npm run ingest`, fonte/legalidade
+  e **roadmap** honesto.
+- **Placeholders** deixados para o deploy: link da demo (credenciais já anotadas) e seção de screenshots/GIF.
+- **Pendente:** GIF de demonstração, post de LinkedIn e tags do GitHub (entram junto do deploy — Fase 7).
 
 ---
 

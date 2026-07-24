@@ -24,16 +24,52 @@ import { filterValidRows } from "./anpRowSchema";
 import { upsertFuelPrices } from "../services/fuelPriceService";
 
 /**
- * URL padrão do arquivo da ANP (combustíveis automotivos). Segue o padrão de
- * publicação por semestre da ANP; ajuste via `ANP_CSV_URL` para o semestre atual.
+ * Estrutura real dos arquivos da ANP (SHPC — revenda automotiva).
+ *
+ * Os dados são publicados em CSVs **mensais**, dentro de `.../shpc/dsan/ANO/`, e
+ * **separados por grupo de produto**: `precos-gasolina-etanol-MM.csv` e
+ * `precos-diesel-gnv-MM.csv` (GLP é um arquivo à parte, fora do escopo automotivo).
+ * Não há sufixo `/@@download/file` — é o `.csv` direto. Cada arquivo cobre um mês.
+ *
+ * Como são vários arquivos, o ingestor baixa uma **lista** deles (um por grupo × mês)
+ * e ingere cada um pelo mesmo pipeline idempotente. Um 404 (mês ainda não publicado)
+ * é apenas pulado, sem derrubar o lote.
  */
-const DEFAULT_ANP_CSV_URL =
-  "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/shpc/dsas/ca/ca-2026-01.csv";
+const ANP_BASE =
+  "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/shpc/dsan";
+const ANP_GROUPS = ["gasolina-etanol", "diesel-gnv"] as const;
+
+/**
+ * Monta a lista de URLs a ingerir a partir de env:
+ *  - `ANP_YEAR`   (padrão "2025" — último ano publicado no portal)
+ *  - `ANP_MONTHS` (padrão "10,11,12" — trimestre recente; dá série semanal ao gráfico)
+ * Um `ANP_CSV_URL` explícito (arquivo único) tem precedência e ignora o resto.
+ */
+export function buildAnpUrls(): string[] {
+  const single = process.env.ANP_CSV_URL?.trim();
+  if (single) return [single];
+
+  const year = (process.env.ANP_YEAR || "2025").trim();
+  const months = (process.env.ANP_MONTHS || "10,11,12")
+    .split(",")
+    .map((m) => m.trim().padStart(2, "0"))
+    .filter((m) => /^\d{2}$/.test(m));
+
+  const urls: string[] = [];
+  for (const month of months) {
+    for (const group of ANP_GROUPS) {
+      urls.push(`${ANP_BASE}/${year}/precos-${group}-${month}.csv`);
+    }
+  }
+  return urls;
+}
 
 export interface IngestOptions {
-  /** URL do CSV. Padrão: env `ANP_CSV_URL` ou o arquivo do semestre corrente. */
+  /** URL única a ingerir (sobrepõe a lista padrão). Usado pelo `--url` do script. */
   url?: string;
-  /** Rótulo da fonte para o registro de ingestão. */
+  /** Lista explícita de URLs (sobrepõe o padrão do env). */
+  urls?: string[];
+  /** Rótulo-base da fonte para o registro de ingestão (o nome do arquivo é anexado). */
   source?: string;
 }
 
@@ -125,14 +161,16 @@ async function closeRun(
 }
 
 /**
- * Executa a ingestão completa. Nunca lança para o chamador: encapsula o erro no
+ * Ingere **um** arquivo CSV da ANP. Nunca lança: encapsula o erro no
  * `ingestion_runs` e no `IngestResult` (job em background não deve derrubar o processo).
  */
-export async function ingestAnp(options: IngestOptions = {}): Promise<IngestResult> {
+async function ingestOneFile(url: string, baseSource = "anp-shpc"): Promise<IngestResult> {
   const start = Date.now();
-  const url = options.url ?? process.env.ANP_CSV_URL ?? DEFAULT_ANP_CSV_URL;
-  const source = options.source ?? "anp-shpc";
-  const fileName = url.split("/").pop() ?? url;
+  // Nome do CSV (ex.: "precos-gasolina-etanol-12.csv") para o registro/observabilidade.
+  const fileName = url.match(/([^/]+\.csv)/i)?.[1] ?? url.split("/").pop() ?? url;
+  // Fonte por-arquivo → validadores condicionais (etag/last-modified) e histórico
+  // de ingestão ficam corretos por arquivo, não misturados entre meses/grupos.
+  const source = `${baseSource}:${fileName}`;
 
   if (!supabase) {
     const message = "Supabase não configurado — ingestão da ANP ignorada.";
@@ -241,4 +279,54 @@ export async function ingestAnp(options: IngestOptions = {}): Promise<IngestResu
     logger.error({ err: message, runId }, "[anpIngestor] Ingestão falhou");
     return { status: "error", runId, rowsRead: 0, rowsUpserted: 0, rowsRejected: 0, durationMs, message };
   }
+}
+
+/**
+ * Ingestão da ANP: baixa e processa **todos** os arquivos-alvo (por padrão, os
+ * CSVs mensais de gasolina-etanol + diesel-gnv definidos por `ANP_YEAR`/`ANP_MONTHS`).
+ *
+ * - `options.url`  → ingere só aquele arquivo (usado pelo `--url` do script).
+ * - `options.urls` → ingere essa lista explícita.
+ * - sem nenhum     → usa `buildAnpUrls()` (env, com fallback sensato).
+ *
+ * Cada arquivo é idempotente e independente: um 404/erro num arquivo é registrado e
+ * **pulado**, sem abortar os demais. O resultado agregado soma as contagens e só é
+ * `error` se **todos** os arquivos falharam.
+ */
+export async function ingestAnp(options: IngestOptions = {}): Promise<IngestResult> {
+  const start = Date.now();
+  const urls = options.url ? [options.url] : options.urls ?? buildAnpUrls();
+
+  logger.info({ files: urls.length }, "[anpIngestor] Iniciando ingestão da ANP (lote de arquivos)");
+
+  let rowsRead = 0;
+  let rowsUpserted = 0;
+  let rowsRejected = 0;
+  let anySuccess = false;
+  let anySkipped = false;
+  const failures: string[] = [];
+
+  for (const url of urls) {
+    const r = await ingestOneFile(url, options.source);
+    rowsRead += r.rowsRead;
+    rowsUpserted += r.rowsUpserted;
+    rowsRejected += r.rowsRejected;
+    if (r.status === "success") anySuccess = true;
+    else if (r.status === "skipped") anySkipped = true;
+    else failures.push(`${url.match(/([^/]+\.csv)/i)?.[1] ?? url}: ${r.message ?? "erro"}`);
+  }
+
+  const durationMs = Date.now() - start;
+  const status: IngestResult["status"] = anySuccess ? "success" : anySkipped ? "skipped" : "error";
+  const message =
+    failures.length > 0
+      ? `${failures.length}/${urls.length} arquivo(s) falharam. ${failures.slice(0, 4).join(" · ")}`
+      : undefined;
+
+  logger.info(
+    { status, files: urls.length, rowsRead, rowsUpserted, rowsRejected, failures: failures.length, durationMs },
+    "[anpIngestor] Lote de ingestão finalizado"
+  );
+
+  return { status, rowsRead, rowsUpserted, rowsRejected, durationMs, message };
 }

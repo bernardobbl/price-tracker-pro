@@ -39,6 +39,11 @@ function fmt(n: number, decimals = 3): string {
   });
 }
 
+/** Modo demonstração: quando ligado (`VITE_DEMO_MODE=true`), a UI avisa que os
+ *  dados são uma amostra ilustrativa (postos/endereços gerados no seed), e não a
+ *  base real da ANP. Desligado por padrão → em produção (dado real) nada aparece. */
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+
 /** "AV BRASIL, 1234 · PINHEIROS" a partir dos campos de endereço (o que existir). */
 function formatLocation(q: {
   street?: string | null;
@@ -50,6 +55,29 @@ function formatLocation(q: {
     .join(", ");
   const bairro = q.neighborhood ? titleCase(q.neighborhood) : "";
   return [streetPart, bairro].filter(Boolean).join(" · ");
+}
+
+/**
+ * Link de busca no Google Maps a partir do que sabemos do posto: nome + endereço
+ * + município/UF. Com os dados reais da ANP (endereço exato), o Maps localiza o
+ * posto; na amostra de demo os postos são fictícios (ver `DEMO_MODE`).
+ */
+function mapsUrl(
+  q: { reseller: string; street?: string | null; streetNumber?: string | null; neighborhood?: string | null },
+  loc: { municipality: string; state: string }
+): string {
+  const query = [
+    q.reseller,
+    q.street ? titleCase(q.street) : "",
+    q.streetNumber ?? "",
+    q.neighborhood ? titleCase(q.neighborhood) : "",
+    titleCase(loc.municipality),
+    loc.state,
+    "Brasil",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 /** Verdadeiro se dois recortes de série apontam para a mesma combinação. */
@@ -465,7 +493,14 @@ function App() {
     <div className="app">
       <header className="header">
         <div className="header-brand">
-          <h1>Price Tracker Pro</h1>
+          <h1>
+            Price Tracker Pro
+            {DEMO_MODE && (
+              <span className="demo-badge" title="Amostra ilustrativa no layout da ANP — postos e endereços fictícios. Em produção, ingere o arquivo real da ANP.">
+                dados de demonstração
+              </span>
+            )}
+          </h1>
           <p>Preços reais de combustível (dados abertos da ANP)</p>
         </div>
         {canManage && (
@@ -797,7 +832,16 @@ function App() {
                                   {titleCase(q.reseller || "Posto")}
                                   {q.brand && <span className="ranking-brand">{titleCase(q.brand)}</span>}
                                 </span>
-                                {loc && <span className="ranking-loc">{loc}</span>}
+                                <a
+                                  className="ranking-loc"
+                                  href={mapsUrl(q, view)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Ver no Google Maps"
+                                >
+                                  <Icon name="map-pin" size={12} />
+                                  {loc || "Ver no mapa"}
+                                </a>
                               </div>
                               <span className="ranking-price">R$ {fmt(q.sellPrice)}</span>
                             </li>
