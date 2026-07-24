@@ -1,0 +1,170 @@
+import { Icon } from "./Icon";
+import type { FuelAlert, SeriesView, TrackedSeries } from "../types";
+import { titleCase } from "../lib/seriesLabel";
+import { fmt, sameSeries } from "../lib/format";
+
+interface SidebarProps {
+  products: string[];
+  states: string[];
+  municipalities: string[];
+  selProduct: string;
+  selState: string;
+  selMunicipality: string;
+  onSelProduct: (v: string) => void;
+  onSelState: (v: string) => void;
+  onSelMunicipality: (v: string) => void;
+  onExplore: (e: React.FormEvent) => void;
+
+  canManage: boolean;
+  view: SeriesView | null;
+  tracked: TrackedSeries[];
+  deletingId: string | null;
+  onOpenView: (v: SeriesView) => void;
+  onDeleteFavorite: (t: TrackedSeries) => void;
+
+  alerts: FuelAlert[];
+  onDeleteAlert: (id: string) => void;
+}
+
+/** Coluna esquerda do dashboard: consultar preço, favoritos e alertas ativos. */
+export function Sidebar({
+  products,
+  states,
+  municipalities,
+  selProduct,
+  selState,
+  selMunicipality,
+  onSelProduct,
+  onSelState,
+  onSelMunicipality,
+  onExplore,
+  canManage,
+  view,
+  tracked,
+  deletingId,
+  onOpenView,
+  onDeleteFavorite,
+  alerts,
+  onDeleteAlert,
+}: SidebarProps) {
+  return (
+    <aside className="sidebar">
+      <div className="panel">
+        <h2>Consultar preço</h2>
+        <form className="explore-form" onSubmit={onExplore}>
+          <div className="input-group">
+            <label htmlFor="sel-product">Combustível</label>
+            <select id="sel-product" value={selProduct} onChange={(e) => onSelProduct(e.target.value)}>
+              {products.length === 0 && <option value="">Carregando…</option>}
+              {products.map((p) => (
+                <option key={p} value={p}>{titleCase(p)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="input-group">
+            <label htmlFor="sel-state">Estado (UF)</label>
+            <select id="sel-state" value={selState} onChange={(e) => onSelState(e.target.value)}>
+              <option value="">Selecione…</option>
+              {states.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="input-group">
+            <label htmlFor="sel-municipality">Município</label>
+            <select
+              id="sel-municipality"
+              value={selMunicipality}
+              onChange={(e) => onSelMunicipality(e.target.value)}
+              disabled={!selState || municipalities.length === 0}
+            >
+              <option value="">
+                {!selState ? "Escolha a UF primeiro" : municipalities.length === 0 ? "Sem dados" : "Selecione…"}
+              </option>
+              {municipalities.map((m) => (
+                <option key={m} value={m}>{titleCase(m)}</option>
+              ))}
+            </select>
+          </div>
+          <button type="submit" className="btn-primary" disabled={!selProduct || !selState || !selMunicipality}>
+            Ver preços
+          </button>
+        </form>
+        {states.length === 0 && (
+          <p className="muted empty-hint">Sem dados carregados ainda. Rode a ingestão da ANP no backend.</p>
+        )}
+      </div>
+
+      {canManage && (
+        <div className="panel">
+          <h2>
+            Favoritos <span className="count-badge">{tracked.length}</span>
+          </h2>
+          {tracked.length === 0 ? (
+            <p className="muted empty-hint">Nenhum favorito ainda. Consulte um preço e clique em “Favoritar”.</p>
+          ) : (
+            <ul className="product-list">
+              {tracked.map((t) => (
+                <li key={t.id} className={`product-card${view && sameSeries(view, t) ? " active" : ""}`}>
+                  <button
+                    type="button"
+                    className="product-card-btn"
+                    onClick={() =>
+                      onOpenView({
+                        product: t.product,
+                        state: t.state,
+                        municipality: t.municipality,
+                        brand: t.brand,
+                        label: t.label,
+                      })
+                    }
+                  >
+                    <span className="product-card-name">{t.label}</span>
+                    <span className="product-card-id">{titleCase(t.municipality)}/{t.state}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="product-card-remove"
+                    onClick={() => onDeleteFavorite(t)}
+                    disabled={deletingId === t.id}
+                    aria-label={`Excluir ${t.label}`}
+                    title="Excluir favorito"
+                  >
+                    {deletingId === t.id ? "..." : <Icon name="trash" size={15} />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {canManage && alerts.length > 0 && (
+        <div className="panel">
+          <h2>Alertas ativos</h2>
+          <ul className="alert-list">
+            {alerts.map((a) => (
+              <li key={a.id} className="alert-item">
+                <div className="alert-item-info">
+                  <span className="alert-item-product">{a.tracked_series?.label ?? "Série"}</span>
+                  <span className="alert-item-threshold">
+                    abaixo de {a.currency} {fmt(Number(a.threshold_price))}
+                    {a.triggered && <span className="alert-badge">disparado</span>}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-icon-danger"
+                  onClick={() => onDeleteAlert(a.id)}
+                  aria-label={`Remover alerta de ${a.tracked_series?.label ?? "série"}`}
+                >
+                  Remover
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </aside>
+  );
+}

@@ -1,0 +1,128 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  fetchFuelProducts,
+  fetchMunicipalities,
+  fetchSeries,
+  fetchSnapshot,
+  fetchStates,
+} from "../api/client";
+import type { FuelSeriesPoint, SeriesView, SnapshotSummary } from "../types";
+import { buildSeriesLabel } from "../lib/seriesLabel";
+import { type Period } from "../lib/priceInsights";
+
+/**
+ * Domínio de consulta de combustível (dados públicos da ANP): opções de
+ * exploração (produto → UF → município), a série em exibição e o snapshot do
+ * levantamento mais recente. Seleções e série são acopladas (abrir um favorito
+ * sincroniza os selects), então vivem no mesmo hook.
+ */
+export function useFuelSeries() {
+  const [products, setProducts] = useState<string[]>([]);
+  const [states, setStates] = useState<string[]>([]);
+  const [municipalities, setMunicipalities] = useState<string[]>([]);
+  const [selProduct, setSelProduct] = useState("");
+  const [selState, setSelStateRaw] = useState("");
+  const [selMunicipality, setSelMunicipality] = useState("");
+
+  const [view, setView] = useState<SeriesView | null>(null);
+  const [series, setSeries] = useState<FuelSeriesPoint[]>([]);
+  const [snapshot, setSnapshot] = useState<SnapshotSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<Period>("all");
+
+  // Opções públicas: carregam uma vez, independem de login.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [prods, sts] = await Promise.all([fetchFuelProducts(), fetchStates()]);
+        setProducts(prods);
+        setStates(sts);
+        if (prods.length > 0) setSelProduct((p) => p || prods[0]);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Erro ao carregar opções");
+      }
+    })();
+  }, []);
+
+  // Municípios da UF selecionada.
+  useEffect(() => {
+    if (!selState) {
+      setMunicipalities([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const list = await fetchMunicipalities(selState);
+        if (active) setMunicipalities(list);
+      } catch {
+        if (active) setMunicipalities([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [selState]);
+
+  /** Troca de UF zera o município selecionado. */
+  const setSelState = useCallback((uf: string) => {
+    setSelStateRaw(uf);
+    setSelMunicipality("");
+  }, []);
+
+  const loadSeries = useCallback(async (v: SeriesView) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const query = { product: v.product, state: v.state, municipality: v.municipality, brand: v.brand };
+      const [pts, snap] = await Promise.all([fetchSeries(query), fetchSnapshot(query)]);
+      setSeries(pts);
+      setSnapshot(snap);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao carregar a série");
+      setSeries([]);
+      setSnapshot(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const openView = useCallback(
+    (v: SeriesView) => {
+      setView(v);
+      setPeriod("all");
+      setSelProduct(v.product);
+      setSelStateRaw(v.state);
+      setSelMunicipality(v.municipality);
+      void loadSeries(v);
+    },
+    [loadSeries]
+  );
+
+  /** Abre a série a partir das seleções atuais dos selects. */
+  const explore = useCallback(() => {
+    if (!selProduct || !selState || !selMunicipality) return;
+    openView({
+      product: selProduct,
+      state: selState,
+      municipality: selMunicipality,
+      brand: null,
+      label: buildSeriesLabel(selProduct, selState, selMunicipality, null),
+    });
+  }, [selProduct, selState, selMunicipality, openView]);
+
+  return {
+    options: { products, states, municipalities },
+    selection: { selProduct, selState, selMunicipality, setSelProduct, setSelState, setSelMunicipality },
+    view,
+    series,
+    snapshot,
+    loading,
+    error,
+    period,
+    setPeriod,
+    openView,
+    explore,
+  };
+}

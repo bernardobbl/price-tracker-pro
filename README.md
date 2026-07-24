@@ -83,8 +83,9 @@ flowchart LR
 | ETL | Pure, testable functions (parse/normalize/dedup/validate) + `node-cron` |
 | Database / Auth | Supabase (PostgreSQL + Row Level Security) |
 | Validation | Zod (request schemas + ETL row gate) |
+| Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**~99 tests**) |
+| Tests | Vitest + Testing Library + supertest (**~106 tests**) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
@@ -126,7 +127,7 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-~99 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
+~106 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
@@ -134,6 +135,7 @@ npm test        # in backend/ and frontend/
 - **Idempotent ETL.** Upsert on a natural key + content-hash skip + conditional GET means reprocessing the same file never duplicates data and rarely re-downloads it. Safe to run on any schedule.
 - **Supabase as the single source of truth, with RLS.** `fuel_prices` is a *shared, read-only* reference table (public ANP data, written only by the service role); `tracked_series`/`alerts` are *per-user* with Row Level Security. No ephemeral local files.
 - **Heavy work out of the request path.** Ingestion runs only in the cron job / CLI, never inside an HTTP request — the API stays fast and the scraping/ETL can't stall a user.
+- **Hardened public API.** Helmet sets security headers and `express-rate-limit` caps per-IP request bursts, so exposing the API publicly doesn't invite trivial abuse; `npm audit` is clean (0 vulnerabilities).
 - **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the ~99 tests cheap and meaningful.
 - **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.
 

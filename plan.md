@@ -746,6 +746,40 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
 - **Placeholders** deixados para o deploy: link da demo (credenciais já anotadas) e seção de screenshots/GIF.
 - **Pendente:** GIF de demonstração, post de LinkedIn e tags do GitHub (entram junto do deploy — Fase 7).
 
+### ✅ Sessão de polimento pré-deploy (higiene final + segurança + refactor do front)
+
+> Segunda passada crítica antes do deploy: fechar pontas soltas técnicas e elevar o código a nível de
+> review sênior. Decisão do Bernardo: **deixar tudo 100% antes de partir para o deploy** (Fases 7–8).
+> Auditoria confirmou que as alegações das fases anteriores se sustentam (testes/lint/type-check/build
+> verdes, git limpo, sem segredos, RLS ok, README honesto). Ajustes desta sessão:
+
+- **Env var morta removida:** `USE_CSV_FALLBACK` saiu do `backend/.env.example` (resquício do domínio
+  de livros/CSV; nenhum código a referenciava mais).
+- **`.fuse_hidden` (higiene):** confirmado que **não estão versionados** (só artefato de mount, invisível
+  ao git/clone) — nada a fazer no repositório.
+- **`cheerio` removido** (dep morta do scraper de livros, adiada desde a Fase 5 pelo medo do lockfile).
+  Feito com segurança: `npm uninstall --package-lock-only` **preservou os 9 binários nativos multi-plataforma**
+  (x64/darwin/win do rolldown) — validado com `npm ci` limpo num fs Linux à parte. A dor de CI da Fase 5
+  **não** se repetiu.
+- **Segurança da API pública:** adicionados **helmet** (headers de segurança, CSP desligada por ser API
+  JSON) + **express-rate-limit** (300 req/15min por IP) em `app.ts`, com `trust proxy = 1` para contar o IP
+  real atrás de Render/Vercel. Handler de 429 padronizado via `sendError`.
+- **Vulnerabilidades zeradas:** `npm audit` acusava **3 (1 HIGH no nodemailer + 2 via uuid/node-cron)**.
+  Bump **nodemailer 8→9** e **node-cron 3→4** (verificado que `cron.validate`/`cron.schedule` continuam
+  na API v4; `@types/node-cron` removido pois v4 traz tipos próprios). Agora **`npm audit` = 0**.
+- **`App.tsx` desmonolitizado: 897 → 209 linhas.** Lógica extraída em hooks (`useAuth`, `useFuelSeries`,
+  `useFavorites`) e view em componentes (`AuthPage`, `Sidebar`, `DetailPanel`); helpers puros movidos para
+  `lib/format.ts` (`fmt`/`formatLocation`/`mapsUrl`/`sameSeries`). O `App` virou orquestrador fino. **+7 testes**
+  novos (`lib/format.test.ts`) cobrindo os helpers. _Por quê:_ um componente de 897 linhas era o maior sinal
+  de imaturidade numa review; a nova estrutura (hooks/ + components/ + lib/) mostra separação de responsabilidades.
+- **README** atualizado: contagem de testes (~99 → **~106**), linha de **Segurança** na stack (helmet + rate-limit)
+  e bullet de decisão técnica ("Hardened public API" + audit limpo).
+- **Verificação final (fs limpo):** backend type-check/lint/**75 testes**/build/audit-0 ✓; frontend
+  type-check/lint/**31 testes**/build ✓. Total **106 testes**.
+- **Nota operacional:** um `git status` rodado no ambiente de mount deixou um `.git/index.lock` órfão que o
+  sandbox não conseguiu apagar (mesma limitação de permissão do FUSE). No Mac do Bernardo é um
+  `rm -f .git/index.lock` antes de commitar.
+
 ---
 
 ## 8. Anexo: hospedagem grátis, "sono" e keep-alive (para entender depois)
