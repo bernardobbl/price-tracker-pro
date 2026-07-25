@@ -1,11 +1,12 @@
 /**
- * Agregação pura da série de preços de combustível (I1/I2).
+ * Lógica pura do snapshot de preços de combustível (I2).
  *
- * O `fuel_prices` guarda uma linha por posto/data. O produto que o usuário vê é
- * a **série do município**: para cada data de coleta, a média/mín/máx entre os
- * postos, mais o ranking de postos no levantamento mais recente ("onde está mais
- * barato"). Toda a agregação é feita aqui, sem I/O, para ser trivial de testar —
- * o `fuelQueryService` só busca as linhas e delega.
+ * O `fuel_prices` guarda uma linha por posto/data. A **série diária** (média/mín/máx
+ * por data) é agregada **no Postgres** (RPC `fuel_daily_series`) — o PostgREST corta
+ * respostas em 1000 linhas, então agregar no cliente truncaria o histórico conforme
+ * ele cresce. O que continua aqui, puro e testável, é o resumo do levantamento mais
+ * recente ("onde está mais barato"): ranking de postos com dedup por CNPJ, sobre as
+ * poucas linhas que a RPC `fuel_latest_snapshot` devolve.
  */
 
 export interface FuelPriceRecord {
@@ -57,35 +58,6 @@ export interface SnapshotSummary {
 /** Arredonda para 3 casas (preços de combustível têm 3 decimais). */
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
-}
-
-/**
- * Agrupa por data de coleta e calcula média/mín/máx e o tamanho da amostra.
- * Retorna ordenado por data crescente (pronto para gráfico e estatísticas).
- */
-export function aggregateDailySeries(records: FuelPriceRecord[]): DailyAggregate[] {
-  const byDate = new Map<string, number[]>();
-  for (const r of records) {
-    if (!Number.isFinite(r.sellPrice)) continue;
-    const arr = byDate.get(r.collectedAt);
-    if (arr) arr.push(r.sellPrice);
-    else byDate.set(r.collectedAt, [r.sellPrice]);
-  }
-
-  const out: DailyAggregate[] = [];
-  for (const [date, prices] of byDate) {
-    const sum = prices.reduce((a, b) => a + b, 0);
-    out.push({
-      date,
-      avgPrice: round3(sum / prices.length),
-      minPrice: round3(Math.min(...prices)),
-      maxPrice: round3(Math.max(...prices)),
-      sampleSize: prices.length,
-    });
-  }
-
-  out.sort((a, b) => a.date.localeCompare(b.date));
-  return out;
 }
 
 /**

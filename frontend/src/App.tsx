@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFuelAlert } from "./api/client";
 import { Icon } from "./components/Icon";
 import { AuthPage } from "./components/AuthPage";
@@ -32,6 +32,15 @@ function App() {
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
 
+  // Login é OPT-IN (padrão Keepa/CamelCamelCamel): o dashboard de consulta é
+  // público — a tela de auth só aparece quando o usuário pede (ou quando uma
+  // ação exige conta, como favoritar/alertar).
+  const [showAuth, setShowAuth] = useState(false);
+  useEffect(() => {
+    if (auth.user) setShowAuth(false); // logou → volta ao dashboard
+  }, [auth.user]);
+  const requestLogin = () => setShowAuth(true);
+
   const { view } = fuel;
   const isFavorited = Boolean(view && favorites.tracked.some((t) => sameSeries(view, t)));
 
@@ -39,7 +48,7 @@ function App() {
   const handleFavorite = async () => {
     if (!view) return;
     if (!canManage) {
-      push("error", "Faça login para salvar favoritos.");
+      requestLogin(); // a AuthPage explica: entrar para favoritar/alertar
       return;
     }
     try {
@@ -65,7 +74,7 @@ function App() {
     setAlertError(null);
 
     if (!canManage) {
-      setAlertError("Faça login para criar alertas.");
+      requestLogin();
       return;
     }
     if (!view) {
@@ -116,7 +125,9 @@ function App() {
     );
   }
 
-  if (supabase && !auth.user) {
+  // Auth só quando pedida (botão "Entrar" ou ação que exige conta) — a consulta
+  // de preços é pública, então ninguém esbarra num formulário logo de cara.
+  if (showAuth && supabase && !auth.user) {
     return (
       <AuthPage
         mode={auth.form.mode}
@@ -128,6 +139,7 @@ function App() {
         onPasswordChange={auth.form.setPassword}
         onSwitchMode={auth.form.switchMode}
         onSubmit={auth.submit}
+        onBack={() => setShowAuth(false)}
       />
     );
   }
@@ -146,13 +158,21 @@ function App() {
           </h1>
           <p>Preços reais de combustível (dados abertos da ANP)</p>
         </div>
-        {canManage && (
+        {canManage ? (
           <div className="auth-row auth-row--logged">
             <span className="auth-email"><Icon name="user" size={14} /> {auth.user!.email}</span>
             <button type="button" className="btn-logout" onClick={auth.logout}>
               <Icon name="logout" size={14} /> Sair
             </button>
           </div>
+        ) : (
+          supabase && (
+            <div className="auth-row">
+              <button type="button" className="btn-login" onClick={requestLogin}>
+                <Icon name="user" size={14} /> Entrar
+              </button>
+            </div>
+          )
         )}
       </header>
 
@@ -193,6 +213,7 @@ function App() {
           isFavorited={isFavorited}
           favSaving={favorites.favSaving}
           onFavorite={handleFavorite}
+          onRequestLogin={requestLogin}
           alertThreshold={alertThreshold}
           onAlertThresholdChange={setAlertThreshold}
           alertSaving={alertSaving}

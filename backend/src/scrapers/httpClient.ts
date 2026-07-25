@@ -16,13 +16,31 @@ function describeAxiosError(err: unknown): string {
 export class ScrapeError extends Error {
   code: "FETCH_FAILED" | "PRICE_NOT_FOUND" | "PARSE_FAILED";
   cause?: unknown;
+  /** Status HTTP da resposta, quando houve (ex.: 404 = recurso não publicado). */
+  httpStatus?: number;
 
   constructor(code: ScrapeError["code"], message: string, cause?: unknown) {
     super(message);
     this.name = "ScrapeError";
     this.code = code;
     this.cause = cause;
+    if (axios.isAxiosError(cause) && cause.response) {
+      this.httpStatus = cause.response.status;
+    }
   }
+}
+
+/**
+ * Erros 4xx (exceto 429) são respostas DEFINITIVAS do servidor — retentar não
+ * muda nada (um 404 continua 404) e só martela o host. Retry fica para falhas
+ * transitórias: rede (timeout/DNS/conexão), 5xx e 429.
+ */
+function isRetryable(err: unknown): boolean {
+  if (axios.isAxiosError(err) && err.response) {
+    const s = err.response.status;
+    return s >= 500 || s === 429;
+  }
+  return true; // sem resposta = erro de rede → vale retentar
 }
 
 // Rotaciona o User-Agent para reduzir a chance de bloqueio.
@@ -70,6 +88,7 @@ export async function fetchBuffer(url: string, options: FetchHtmlOptions = {}): 
       return Buffer.from(response.data);
     } catch (err) {
       lastError = err;
+      if (!isRetryable(err)) break; // 4xx definitivo → falha imediata, sem martelar
       if (attempt < retries) {
         await sleep(500 * 2 ** attempt);
       }
@@ -78,7 +97,7 @@ export async function fetchBuffer(url: string, options: FetchHtmlOptions = {}): 
 
   throw new ScrapeError(
     "FETCH_FAILED",
-    `Falha ao baixar ${url} após ${retries + 1} tentativa(s). Motivo: ${describeAxiosError(lastError)}`,
+    `Falha ao baixar ${url}. Motivo: ${describeAxiosError(lastError)}`,
     lastError
   );
 }
@@ -165,6 +184,7 @@ export async function fetchConditional(
       };
     } catch (err) {
       lastError = err;
+      if (!isRetryable(err)) break; // 4xx definitivo → falha imediata, sem martelar
       if (attempt < retries) {
         await sleep(500 * 2 ** attempt);
       }
@@ -173,7 +193,7 @@ export async function fetchConditional(
 
   throw new ScrapeError(
     "FETCH_FAILED",
-    `Falha ao baixar (condicional) ${url} após ${retries + 1} tentativa(s). Motivo: ${describeAxiosError(lastError)}`,
+    `Falha ao baixar (condicional) ${url}. Motivo: ${describeAxiosError(lastError)}`,
     lastError
   );
 }

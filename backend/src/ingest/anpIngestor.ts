@@ -10,14 +10,15 @@
  *   5. fecha o registro com contagens (lidas/inseridas/rejeitadas), duração e status.
  *
  * Fonte (dado aberto): Série Histórica de Preços de Combustíveis — ANP.
- * A URL exata do arquivo é configurável via env `ANP_CSV_URL` (a ANP publica um
- * arquivo por semestre; o layout SHPC é estável — ver anpParser).
+ * A ANP publica CSVs mensais; os meses-alvo são derivados da data de execução
+ * (ver `buildAnpUrls`/`defaultAnpPeriods`), com override por env para backfill.
  */
 
 import crypto from "crypto";
 import { supabase } from "../config/supabaseClient";
 import { logger } from "../lib/logger";
-import { fetchConditional } from "../scrapers/httpClient";
+import { fetchBuffer, fetchConditional, ScrapeError } from "../scrapers/httpClient";
+import { extractAnpFileLinks } from "./anpDiscovery";
 import { parseAnpCsv } from "./anpParser";
 import { normalizeFuelRows, dedupeFuelRows } from "./anpNormalize";
 import { filterValidRows } from "./anpRowSchema";
@@ -40,25 +41,129 @@ const ANP_BASE =
 const ANP_GROUPS = ["gasolina-etanol", "diesel-gnv"] as const;
 
 /**
- * Monta a lista de URLs a ingerir a partir de env:
- *  - `ANP_YEAR`   (padrão "2025" — último ano publicado no portal)
- *  - `ANP_MONTHS` (padrão "10,11,12" — trimestre recente; dá série semanal ao gráfico)
- * Um `ANP_CSV_URL` explícito (arquivo único) tem precedência e ignora o resto.
+ * Períodos (ano/mês) a ingerir por padrão: o mês corrente + os `count - 1`
+ * anteriores, com virada de ano tratada. Puro e testável.
+ *
+ * Por que derivar da data em que o job RODA (e não de env fixo): o job é semanal
+ * e vive por meses em produção — um mês "pinado" no env congelaria o dado para
+ * sempre (o hash pularia os mesmos arquivos toda semana e o app exibiria preços
+ * antigos eternamente). O mês corrente pode ainda não estar publicado → 404,
+ * que o lote já pula sem abortar.
  */
-export function buildAnpUrls(): string[] {
+export function defaultAnpPeriods(
+  now: Date = new Date(),
+  count = 3
+): Array<{ year: string; month: string }> {
+  const periods: Array<{ year: string; month: string }> = [];
+  const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  for (let i = 0; i < count; i++) {
+    periods.push({
+      year: String(cursor.getUTCFullYear()),
+      month: String(cursor.getUTCMonth() + 1).padStart(2, "0"),
+    });
+    cursor.setUTCMonth(cursor.getUTCMonth() - 1);
+  }
+  return periods.reverse(); // cronológico: do mais antigo ao mais novo
+}
+
+/**
+ * Períodos-alvo (ano/mês) da ingestão.
+ * Padrão (sem env): **derivado da data atual** — mês corrente + 2 anteriores
+ * (`defaultAnpPeriods`), então o job semanal acompanha o calendário sozinho.
+ * Override: `ANP_YEAR` / `ANP_MONTHS` pinam ano e/ou meses (backfill/debug).
+ */
+export function targetAnpPeriods(now: Date = new Date()): Array<{ year: string; month: string }> {
+  const envYear = process.env.ANP_YEAR?.trim();
+  const envMonths = process.env.ANP_MONTHS?.trim();
+
+  if (envYear || envMonths) {
+    // Modo pinado: ano do env (ou o corrente) × meses do env (ou os recentes).
+    const year = envYear || String(now.getUTCFullYear());
+    const months = (envMonths || defaultAnpPeriods(now).map((p) => p.month).join(","))
+      .split(",")
+      .map((m) => m.trim().padStart(2, "0"))
+      .filter((m) => /^\d{2}$/.test(m));
+    return months.map((month) => ({ year, month }));
+  }
+  return defaultAnpPeriods(now);
+}
+
+/**
+ * FALLBACK por padrão de nome (estilo 2025: `precos-{grupo}-MM.csv`). Usado só
+ * quando a listagem da pasta do ano não pôde ser baixada — a fonte primária de
+ * URLs é a descoberta (`resolveAnpUrls`), porque a ANP mudou o naming em 2026
+ * de forma imprevisível (ver `anpDiscovery.ts`).
+ */
+export function buildAnpUrls(now: Date = new Date()): string[] {
   const single = process.env.ANP_CSV_URL?.trim();
   if (single) return [single];
 
-  const year = (process.env.ANP_YEAR || "2025").trim();
-  const months = (process.env.ANP_MONTHS || "10,11,12")
-    .split(",")
-    .map((m) => m.trim().padStart(2, "0"))
-    .filter((m) => /^\d{2}$/.test(m));
-
   const urls: string[] = [];
-  for (const month of months) {
+  for (const { year, month } of targetAnpPeriods(now)) {
     for (const group of ANP_GROUPS) {
       urls.push(`${ANP_BASE}/${year}/precos-${group}-${month}.csv`);
+    }
+  }
+  return urls;
+}
+
+/**
+ * Resolve as URLs reais a ingerir **descobrindo os arquivos na listagem da pasta
+ * do ano** (`.../dsan/ANO`), em vez de adivinhar o nome. Motivo: em 2026 a ANP
+ * trocou o padrão de nome dos arquivos — com typo num deles e um sem extensão —
+ * então nenhum template de URL é confiável (ver doc do `anpDiscovery.ts`).
+ *
+ * Comportamento:
+ *  - `ANP_CSV_URL` explícito → só ele (sem descoberta);
+ *  - mês-alvo ausente da listagem → **não publicado ainda**: é pulado sem nem
+ *    tentar o download (zero 404);
+ *  - listagem indisponível (rede/mudança de layout) → fallback para o padrão de
+ *    nome de 2025 (`buildAnpUrls`), onde o 404 é tratado como "skipped".
+ */
+export async function resolveAnpUrls(now: Date = new Date()): Promise<string[]> {
+  const single = process.env.ANP_CSV_URL?.trim();
+  if (single) return [single];
+
+  const periods = targetAnpPeriods(now);
+
+  // Agrupa meses por ano → uma busca de listagem por ano.
+  const monthsByYear = new Map<string, string[]>();
+  for (const { year, month } of periods) {
+    const arr = monthsByYear.get(year);
+    if (arr) arr.push(month);
+    else monthsByYear.set(year, [month]);
+  }
+
+  const urls: string[] = [];
+  for (const [year, months] of monthsByYear) {
+    let links: ReturnType<typeof extractAnpFileLinks> | null = null;
+    try {
+      const html = (await fetchBuffer(`${ANP_BASE}/${year}`, { timeoutMs: 15_000 })).toString("utf8");
+      links = extractAnpFileLinks(html, year);
+      logger.info({ year, found: links.length }, "[anpIngestor] Listagem da pasta do ano lida");
+    } catch (err) {
+      logger.warn(
+        { year, err: err instanceof Error ? err.message : String(err) },
+        "[anpIngestor] Falha ao ler a listagem do ano — usando padrão de nome como fallback"
+      );
+    }
+
+    for (const month of months) {
+      for (const group of ANP_GROUPS) {
+        if (links) {
+          const found = links.find((l) => l.month === month && l.group === group);
+          if (found) {
+            urls.push(found.url);
+          } else {
+            logger.info(
+              { year, month, group },
+              "[anpIngestor] Arquivo ausente da listagem (mês ainda não publicado) — pulando"
+            );
+          }
+        } else {
+          urls.push(`${ANP_BASE}/${year}/precos-${group}-${month}.csv`);
+        }
+      }
     }
   }
   return urls;
@@ -270,6 +375,21 @@ async function ingestOneFile(url: string, baseSource = "anp-shpc"): Promise<Inge
   } catch (err) {
     const durationMs = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
+
+    // 404 = arquivo (ainda) não publicado — esperado no caminho de fallback
+    // quando um mês não saiu. É "skipped", não erro: não deve derrubar o lote
+    // nem fazer o CLI sair com exit 1.
+    if (err instanceof ScrapeError && err.httpStatus === 404) {
+      await closeRun(runId, {
+        status: "skipped",
+        error: "HTTP 404 — arquivo ainda não publicado",
+        finished_at: new Date().toISOString(),
+        duration_ms: durationMs,
+      });
+      logger.info({ url, runId }, "[anpIngestor] 404 (mês não publicado) — pulando");
+      return { status: "skipped", runId, rowsRead: 0, rowsUpserted: 0, rowsRejected: 0, durationMs, message };
+    }
+
     await closeRun(runId, {
       status: "error",
       error: message,
@@ -287,7 +407,8 @@ async function ingestOneFile(url: string, baseSource = "anp-shpc"): Promise<Inge
  *
  * - `options.url`  → ingere só aquele arquivo (usado pelo `--url` do script).
  * - `options.urls` → ingere essa lista explícita.
- * - sem nenhum     → usa `buildAnpUrls()` (env, com fallback sensato).
+ * - sem nenhum     → usa `resolveAnpUrls()` (descoberta pela listagem do ano,
+ *                    com fallback para o padrão de nome).
  *
  * Cada arquivo é idempotente e independente: um 404/erro num arquivo é registrado e
  * **pulado**, sem abortar os demais. O resultado agregado soma as contagens e só é
@@ -295,9 +416,22 @@ async function ingestOneFile(url: string, baseSource = "anp-shpc"): Promise<Inge
  */
 export async function ingestAnp(options: IngestOptions = {}): Promise<IngestResult> {
   const start = Date.now();
-  const urls = options.url ? [options.url] : options.urls ?? buildAnpUrls();
+  const urls = options.url ? [options.url] : options.urls ?? (await resolveAnpUrls());
 
   logger.info({ files: urls.length }, "[anpIngestor] Iniciando ingestão da ANP (lote de arquivos)");
+
+  // Lista vazia = nenhum mês-alvo publicado ainda (descoberta não achou nada).
+  // Não é erro — é "nada a fazer nesta rodada".
+  if (urls.length === 0) {
+    return {
+      status: "skipped",
+      rowsRead: 0,
+      rowsUpserted: 0,
+      rowsRejected: 0,
+      durationMs: Date.now() - start,
+      message: "Nenhum arquivo-alvo publicado na listagem da ANP nesta rodada.",
+    };
+  }
 
   let rowsRead = 0;
   let rowsUpserted = 0;

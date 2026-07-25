@@ -463,7 +463,11 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 - [ ] **Frontend**: deploy no **Vercel** ou **Netlify**; setar `VITE_API_BASE_URL` e `VITE_SUPABASE_*`.
 - [ ] Ajustar **CORS** para aceitar o domínio do frontend em produção (hoje é origem única via env — validar).
 - [ ] Configurar **SMTP real** para os emails de alerta (ex: Resend/Brevo/Gmail app password) e testar ponta a ponta.
-- [ ] Criar **usuário de demo** (`demo@...`) com produtos e histórico via seed, e deixar as credenciais no README.
+- [ ] ~~Criar usuário de demo com credenciais no README~~ → **substituído pelo modo público**: a consulta
+  já funciona **sem login** (Fix 3), então o recrutador não precisa de credenciais compartilhadas — que
+  eram um risco real (qualquer um poderia trocar a senha da conta demo e trancar os próximos visitantes).
+  Quem quiser testar favoritos/alertas cria a própria conta. _(Na Fase 7, avaliar desativar a confirmação
+  de email no Supabase Auth para o signup da demo ser sem fricção.)_
 - [ ] Adicionar **healthcheck** e **uptime** (o `/health` já existe — usar num monitor grátis tipo UptimeRobot).
 - [ ] `Dockerfile` para o backend (opcional, mas fica bom no portfólio) + `docker-compose` para rodar local.
 
@@ -779,6 +783,61 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
 - **Nota operacional:** um `git status` rodado no ambiente de mount deixou um `.git/index.lock` órfão que o
   sandbox não conseguiu apagar (mesma limitação de permissão do FUSE). No Mac do Bernardo é um
   `rm -f .git/index.lock` antes de commitar.
+
+### ✅ Sessão de revisão crítica 3 — dois bugs latentes de produção (meses fixos + cap de 1000 linhas)
+
+> Auditoria crítica pré-deploy encontrou duas pontas soltas que só morderiam **em produção, com o tempo**.
+> Ambas corrigidas nesta sessão.
+
+- **Fix 1 · O cron nunca avançava de mês (dado congelaria em produção).** `buildAnpUrls` lia
+  `ANP_YEAR`/`ANP_MONTHS` fixos do env (padrão 2025 · 10,11,12): o job semanal rebaixaria os mesmos
+  arquivos para sempre (hash pula tudo) e o app exibiria dados velhos eternamente — alertas nunca mais
+  disparariam. Agora os meses são **derivados da data de execução** (`defaultAnpPeriods`: mês corrente +
+  2 anteriores, virada de ano tratada; mês não publicado → 404 pulado). Env virou **override explícito**
+  para backfill (`ANP_CSV_URL` > `ANP_YEAR`/`ANP_MONTHS` > automático). `.env.example` comentado de acordo.
+  **+8 testes** (`test/anpUrls.test.ts`, com data injetável e `vi.stubEnv`).
+- **Fix 2 · Cap de 1000 linhas do PostgREST na série municipal.** `fetchRecords` fazia `.limit(20000)`
+  na tabela crua, mas o Supabase corta a resposta em 1000 (Max Rows) ignorando o limit do cliente — o
+  mesmo problema já visto nas UFs, só que aqui truncaria **as linhas mais recentes** (ordem ascendente)
+  quando o histórico do município passasse de 1000 linhas (~6 meses numa cidade grande) → preço-herói
+  silenciosamente desatualizado. Agora a agregação roda **no Postgres**: RPC `fuel_daily_series` (uma
+  linha por data de levantamento) e `fuel_latest_snapshot` (só as linhas do último levantamento);
+  o ranking/dedup por CNPJ continua na função pura `summarizeSnapshot` (testada). `aggregateDailySeries`
+  (JS) removida — virou código morto (a versão SQL é a fonte de verdade). Bônus: menos tráfego DB→API.
+- **⚠️ Ação manual:** reexecutar `backend/supabase/schema.sql` no SQL Editor do Supabase (idempotente)
+  para criar as duas funções novas — **sem isso a série e o snapshot voltam vazios**.
+- **Verificação:** `tsc --noEmit` ✓, `eslint` ✓, **80 testes backend** verdes (75 − 3 do agregador JS
+  + 8 novos), schema re-parseado (46 statements). Front intocado (shape da API idêntico). Testes rodados
+  em cópia linux-arm64 com binário nativo `--no-save` (lockfile do repo **não** foi tocado).
+
+- **Fix 1b · Descoberta de URLs pela listagem do ano (a ANP mudou o naming em 2026).** O primeiro
+  `npm run ingest` real pós-Fix 1 revelou que **todos** os arquivos de 2026 davam 404: a ANP trocou o
+  padrão de nome — de `precos-{grupo}-MM.csv` (2025) para `MM-dados-abertos-precos-{grupo}.csv` (2026),
+  **com um typo do próprio portal** em fevereiro (`02-cados-abertos-preco-...`), **abril sem extensão**
+  `.csv` e **junho num terceiro formato** (`06-...-precos-2026-06-...`). Nenhum template sobrevive a isso.
+  Solução: o ingestor agora **descobre os hrefs reais na página da pasta do ano** (`anpDiscovery.ts`,
+  parser puro com fixture fiel à listagem real, tolerante a typos/sem-extensão, dedup por mês+grupo,
+  ignora GLP) e só cai no padrão antigo se a listagem estiver fora do ar. Bônus: mês ausente da listagem
+  = não publicado → **nem tenta baixar** (zero 404). **+10 testes.**
+- **httpClient endurecido:** 4xx (exceto 429) **não é mais retentado** (um 404 era baixado 3× com backoff
+  — desperdício e martelo no host); `ScrapeError` ganhou `httpStatus`; no ingestor, **404 virou "skipped"**
+  (não "error") — lote e CLI não falham mais por mês não publicado.
+- **Verificação (Fix 1b):** `tsc` ✓, `eslint` ✓, **90 testes backend** verdes. Total do projeto: **121**
+  (90 back + 31 front). Validação e2e real: `npm run ingest` no Mac deve agora achar mai+jun/2026 pela
+  listagem e pular jul (não publicado).
+
+- **Fix 3 · Explorar sem login (padrão Keepa/CamelCamelCamel).** As rotas públicas (`/api/fuel/*` de
+  leitura) nunca exigiram auth, mas o front bloqueava tudo atrás da AuthPage — recrutador abria o link e
+  via um formulário. Agora o **dashboard de consulta é público**: a AuthPage só aparece via botão
+  **"Entrar"** no header, ao clicar em **"Favoritar"** sem conta, ou pelo **CTA** que substitui o
+  formulário de alerta para visitantes ("crie uma conta grátis para receber email…"). A AuthPage ganhou
+  o link "← Explorar preços sem login" e o subtítulo explica o porquê do login. Sidebar já escondia
+  favoritos/alertas sem conta (nada a mudar).
+- **Fix 4 · Fim da promessa de demo "read-only".** O README prometia conta demo compartilhada
+  "read-only", mas nada impedia trocar a senha dela (trancando os próximos visitantes) ou apagar os
+  dados. Com o Fix 3 a conta demo pública ficou **desnecessária** — README atualizado (explorar é
+  público; conta própria para favoritos/alertas) e o item da Fase 7 reescrito. O usuário demo do seed
+  continua existindo **só para dev local**.
 
 ---
 

@@ -22,6 +22,8 @@ interface DetailPanelProps {
   isFavorited: boolean;
   favSaving: boolean;
   onFavorite: () => void;
+  /** Abre a tela de login (consulta é pública; favoritar/alertar exigem conta). */
+  onRequestLogin: () => void;
 
   alertThreshold: string;
   onAlertThresholdChange: (v: string) => void;
@@ -43,6 +45,7 @@ export function DetailPanel({
   isFavorited,
   favSaving,
   onFavorite,
+  onRequestLogin,
   alertThreshold,
   onAlertThresholdChange,
   alertSaving,
@@ -96,18 +99,23 @@ export function DetailPanel({
                 </p>
                 <p className="meta">média do município no levantamento mais recente</p>
               </div>
-              {canManage && (
-                <button
-                  type="button"
-                  className={`btn-fav${isFavorited ? " btn-fav--on" : ""}`}
-                  onClick={onFavorite}
-                  disabled={favSaving || isFavorited}
-                  title={isFavorited ? "Já está nos favoritos" : "Salvar nos favoritos"}
-                >
-                  <Icon name={isFavorited ? "check" : "tag"} size={14} />{" "}
-                  {isFavorited ? "Favorito" : favSaving ? "Salvando…" : "Favoritar"}
-                </button>
-              )}
+              {/* Sempre visível: sem login, o clique abre a tela de auth (via handler). */}
+              <button
+                type="button"
+                className={`btn-fav${isFavorited ? " btn-fav--on" : ""}`}
+                onClick={onFavorite}
+                disabled={favSaving || isFavorited}
+                title={
+                  !canManage
+                    ? "Entre para salvar nos favoritos"
+                    : isFavorited
+                      ? "Já está nos favoritos"
+                      : "Salvar nos favoritos"
+                }
+              >
+                <Icon name={isFavorited ? "check" : "tag"} size={14} />{" "}
+                {isFavorited ? "Favorito" : favSaving ? "Salvando…" : "Favoritar"}
+              </button>
             </div>
 
             {deal.available && (
@@ -268,7 +276,7 @@ export function DetailPanel({
               </a>
             </p>
 
-            {canManage && (
+            {canManage ? (
               <form className="form alert-form" onSubmit={onCreateAlert}>
                 <h3 className="alert-form-title">Alerta de preço</h3>
                 <div className="alert-field">
@@ -289,6 +297,19 @@ export function DetailPanel({
                 </div>
                 {alertError && <p className="error">{alertError}</p>}
               </form>
+            ) : (
+              <div className="login-cta">
+                <div className="login-cta-text">
+                  <h3 className="alert-form-title">Alerta de preço</h3>
+                  <p className="muted">
+                    Crie uma conta grátis para favoritar esta série e receber um{" "}
+                    <strong>email</strong> quando a média cair abaixo do seu alvo.
+                  </p>
+                </div>
+                <button type="button" className="btn-primary btn-cta" onClick={onRequestLogin}>
+                  Entrar / criar conta
+                </button>
+              </div>
             )}
           </>
         )}

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import {
-  aggregateDailySeries,
-  summarizeSnapshot,
-  type FuelPriceRecord,
-} from "../src/lib/fuelAggregate";
+import { summarizeSnapshot, type FuelPriceRecord } from "../src/lib/fuelAggregate";
+
+// A agregação da série diária (média/mín/máx por data) migrou para o Postgres
+// (RPC fuel_daily_series — ver schema.sql), então não há mais versão JS a testar.
+// O que permanece puro (e testado aqui) é o resumo do último levantamento.
 
 function rec(overrides: Partial<FuelPriceRecord> = {}): FuelPriceRecord {
   return {
@@ -15,37 +15,6 @@ function rec(overrides: Partial<FuelPriceRecord> = {}): FuelPriceRecord {
     ...overrides,
   };
 }
-
-describe("aggregateDailySeries", () => {
-  it("agrupa por data com média/mín/máx e amostra", () => {
-    const series = aggregateDailySeries([
-      rec({ collectedAt: "2026-07-01", sellPrice: 5.0, cnpj: "a" }),
-      rec({ collectedAt: "2026-07-01", sellPrice: 6.0, cnpj: "b" }),
-      rec({ collectedAt: "2026-07-08", sellPrice: 5.5, cnpj: "a" }),
-    ]);
-    expect(series).toHaveLength(2);
-    expect(series[0]).toEqual({
-      date: "2026-07-01",
-      avgPrice: 5.5,
-      minPrice: 5.0,
-      maxPrice: 6.0,
-      sampleSize: 2,
-    });
-    expect(series[1].date).toBe("2026-07-08");
-  });
-
-  it("retorna ordenado por data crescente", () => {
-    const series = aggregateDailySeries([
-      rec({ collectedAt: "2026-07-15", cnpj: "a" }),
-      rec({ collectedAt: "2026-07-01", cnpj: "b" }),
-    ]);
-    expect(series.map((s) => s.date)).toEqual(["2026-07-01", "2026-07-15"]);
-  });
-
-  it("é robusto a lista vazia", () => {
-    expect(aggregateDailySeries([])).toEqual([]);
-  });
-});
 
 describe("summarizeSnapshot", () => {
   it("resume o levantamento mais recente com ranking asc", () => {

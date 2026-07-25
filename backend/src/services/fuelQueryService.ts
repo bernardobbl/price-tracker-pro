@@ -2,13 +2,19 @@
  * Consulta dos preços de combustível (domínio ANP) sobre a tabela pública
  * `fuel_prices`. É a camada que o produto usa: listar produtos/locais disponíveis,
  * a série temporal do município (média/mín/máx por data) e o snapshot mais recente
- * com o ranking de postos. A agregação em si é pura (`lib/fuelAggregate`).
+ * com o ranking de postos.
+ *
+ * A agregação da série roda **no Postgres** (RPC `fuel_daily_series`) — o PostgREST
+ * corta respostas em 1000 linhas mesmo com `.limit()` maior, então puxar as linhas
+ * cruas do município truncaria silenciosamente os registros mais recentes conforme o
+ * histórico cresce. O snapshot busca só as linhas do último levantamento (RPC
+ * `fuel_latest_snapshot`, poucas dezenas) e delega o ranking/dedup à função pura
+ * `summarizeSnapshot` (testada).
  */
 
 import { supabase } from "../config/supabaseClient";
 import { logger } from "../lib/logger";
 import {
-  aggregateDailySeries,
   summarizeSnapshot,
   type DailyAggregate,
   type FuelPriceRecord,
@@ -29,11 +35,6 @@ export const FUEL_PRODUCTS = [
   "GNV",
   "GLP",
 ] as const;
-
-// Teto defensivo de linhas por consulta (o volume real por município é pequeno;
-// evita puxar o país inteiro por engano). Para o dataset completo, o próximo passo
-// seria uma view/RPC — registrado como melhoria futura.
-const ROW_LIMIT = 20_000;
 
 export function listProducts(): string[] {
   return [...FUEL_PRODUCTS];
@@ -68,7 +69,17 @@ export async function listMunicipalities(state: string): Promise<string[]> {
   return rows.map((r) => r.municipality).filter((m): m is string => Boolean(m));
 }
 
-function mapRow(row: {
+/** Linha devolvida pela RPC `fuel_daily_series` (agregação no Postgres). */
+interface DailySeriesRow {
+  date: string;
+  avg_price: number | string;
+  min_price: number | string;
+  max_price: number | string;
+  sample_size: number;
+}
+
+/** Linha (por posto) devolvida pela RPC `fuel_latest_snapshot`. */
+interface SnapshotRow {
   collected_at: string;
   sell_price: number | string;
   reseller: string | null;
@@ -78,7 +89,9 @@ function mapRow(row: {
   street_number: string | null;
   neighborhood: string | null;
   cep: string | null;
-}): FuelPriceRecord {
+}
+
+function mapSnapshotRow(row: SnapshotRow): FuelPriceRecord {
   return {
     collectedAt: row.collected_at,
     sellPrice: Number(row.sell_price),
@@ -92,52 +105,62 @@ function mapRow(row: {
   };
 }
 
-async function fetchRecords(
-  product: string,
-  state: string,
-  municipality: string,
-  brand?: string | null
-): Promise<FuelPriceRecord[]> {
-  if (!supabase) return [];
-  let query = supabase
-    .from("fuel_prices")
-    .select("collected_at, sell_price, reseller, brand, cnpj, street, street_number, neighborhood, cep")
-    .eq("product", product)
-    .eq("state", state)
-    .eq("municipality", municipality);
-
-  // Filtro opcional de bandeira (série/alerta por bandeira específica).
-  if (brand) query = query.eq("brand", brand);
-
-  const { data, error } = await query
-    .order("collected_at", { ascending: true })
-    .limit(ROW_LIMIT);
-
-  if (error) {
-    logger.error({ err: error.message }, "[fuelQuery] Erro ao buscar registros de preço");
-    return [];
-  }
-  return (data ?? []).map(mapRow);
-}
-
-/** Série temporal agregada (média/mín/máx por data) de um produto num município. */
+/**
+ * Série temporal agregada (média/mín/máx por data) de um produto num município.
+ * A agregação roda no Postgres (`fuel_daily_series`): devolve uma linha por data
+ * de levantamento (~semanal), imune ao teto de 1000 linhas do PostgREST.
+ */
 export async function getFuelSeries(
   product: string,
   state: string,
   municipality: string,
   brand?: string | null
 ): Promise<DailyAggregate[]> {
-  const records = await fetchRecords(product, state, municipality, brand);
-  return aggregateDailySeries(records);
+  if (!supabase) return [];
+  const { data, error } = await supabase.rpc("fuel_daily_series", {
+    p_product: product,
+    p_state: state,
+    p_municipality: municipality,
+    p_brand: brand ?? null,
+  });
+
+  if (error) {
+    logger.error({ err: error.message }, "[fuelQuery] Erro ao buscar série agregada");
+    return [];
+  }
+
+  return ((data ?? []) as DailySeriesRow[]).map((row) => ({
+    date: row.date,
+    avgPrice: Number(row.avg_price),
+    minPrice: Number(row.min_price),
+    maxPrice: Number(row.max_price),
+    sampleSize: row.sample_size,
+  }));
 }
 
-/** Snapshot do levantamento mais recente + ranking de postos (I2). */
+/**
+ * Snapshot do levantamento mais recente + ranking de postos (I2). O banco devolve
+ * só as linhas da data mais nova (`fuel_latest_snapshot`); o ranking/dedup por
+ * CNPJ fica na função pura `summarizeSnapshot`.
+ */
 export async function getSnapshot(
   product: string,
   state: string,
   municipality: string,
   brand?: string | null
 ): Promise<SnapshotSummary> {
-  const records = await fetchRecords(product, state, municipality, brand);
-  return summarizeSnapshot(records);
+  if (!supabase) return summarizeSnapshot([]);
+  const { data, error } = await supabase.rpc("fuel_latest_snapshot", {
+    p_product: product,
+    p_state: state,
+    p_municipality: municipality,
+    p_brand: brand ?? null,
+  });
+
+  if (error) {
+    logger.error({ err: error.message }, "[fuelQuery] Erro ao buscar snapshot");
+    return summarizeSnapshot([]);
+  }
+
+  return summarizeSnapshot(((data ?? []) as SnapshotRow[]).map(mapSnapshotRow));
 }

@@ -18,8 +18,9 @@ The core of the product — price history, trend, a 0–100 *buy signal*, statio
 
 ## 🔗 Demo
 
-> **Deploy in progress** (see [Roadmap](#-roadmap)). Once live, a read-only demo account will be available:
-> `demo@pricetracker.pro` / `demo123456`
+> **Deploy in progress** (see [Roadmap](#-roadmap)). Once live, **no login is needed to explore** —
+> price lookup (fuel → state → city → chart, buy signal, station ranking) is public, like
+> CamelCamelCamel/Keepa. Creating a free account is only required for favorites and email alerts.
 
 <!-- Screenshots / GIF go here after deploy:
 ![Dashboard](docs/screenshot-dashboard.png)
@@ -30,7 +31,7 @@ The core of the product — price history, trend, a 0–100 *buy signal*, statio
 
 ## ✨ What it does
 
-- **Explore** by fuel → state (UF) → city and see the municipal price series.
+- **Explore** by fuel → state (UF) → city and see the municipal price series — **no account needed**.
 - **Price intelligence**: current average, min/median/max, % change, **trend** (moving average), **volatility**, and a **buy signal** (0–100) that turns the chart into a *decision* ("fill up now" vs "wait").
 - **"Where is it cheapest"**: ranking of the cheapest stations in the latest survey, each with a **"View on map"** link built from the station's real address (from the ANP data).
 - **Alerts**: favorite a series and set a threshold; after each weekly ingestion, if the average falls to/below your target, you get an **email**. Because prices really move, the alert really fires.
@@ -67,10 +68,10 @@ flowchart LR
 
 ## ⚙️ How it works
 
-1. A **weekly job** (or the `npm run ingest` CLI) downloads the ANP monthly CSVs (`gasolina-etanol`, `diesel-gnv`) with **conditional GET** (ETag / `If-Modified-Since`) and timeout/retry.
+1. A **weekly job** (or the `npm run ingest` CLI) downloads the ANP monthly CSVs (`gasolina-etanol`, `diesel-gnv`) with **conditional GET** (ETag / `If-Modified-Since`) and timeout/retry. Target months are **derived from the run date** (current month + 2 previous, year rollover handled), and the actual file URLs are **discovered from the year folder's listing page** rather than guessed from a template — ANP changed its file naming in 2026 (month prefix, one typo'd filename, one file without extension), so pattern-guessing is unreliable. A month missing from the listing simply isn't published yet and is skipped.
 2. The **ETL** parses (header-driven, tolerant to accents/reordering), **normalizes** (canonical product names, digits-only CNPJ, plausible-price range), **deduplicates** by natural key `(cnpj, product, collected_at)`, passes a final **Zod** gate, and does an **idempotent upsert** into Supabase. Every run is recorded in `ingestion_runs` (rows read/inserted/rejected, hash, duration, status) for observability.
-3. The user logs in (Supabase Auth), picks **fuel → UF → city**, and the API returns the aggregated **daily series** (avg/min/max) plus the **latest-survey snapshot** with the station ranking.
-4. Favorites + alerts are per-user (Row Level Security); the weekly job re-evaluates alerts after each ingestion and sends email via Nodemailer.
+3. Anyone picks **fuel → UF → city** (public, no login), and the API returns the **daily series** (avg/min/max) **aggregated in Postgres** (SQL functions — immune to PostgREST's 1000-row response cap as history grows) plus the **latest-survey snapshot** with the station ranking.
+4. Favorites + alerts require a free account (Supabase Auth) and are per-user (Row Level Security); the weekly job re-evaluates alerts after each ingestion and sends email via Nodemailer.
 
 > A single real month (Dec/2025) ingests **~75k rows across all 27 states/DF with 0 rejected** — the pipeline is clean on production data.
 
@@ -85,7 +86,7 @@ flowchart LR
 | Validation | Zod (request schemas + ETL row gate) |
 | Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**~106 tests**) |
+| Tests | Vitest + Testing Library + supertest (**~121 tests**) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
@@ -127,7 +128,7 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-~106 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
+~121 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
@@ -138,12 +139,13 @@ npm test        # in backend/ and frontend/
 - **Hardened public API.** Helmet sets security headers and `express-rate-limit` caps per-IP request bursts, so exposing the API publicly doesn't invite trivial abuse; `npm audit` is clean (0 vulnerabilities).
 - **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the ~99 tests cheap and meaningful.
 - **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.
+- **Discover, don't guess.** In 2026 ANP silently changed its file naming — including a typo'd filename and a file published without extension. The ingestor now scrapes the year folder's listing for the real hrefs (pure, fixture-tested parser) and falls back to the old naming pattern only if the listing is unreachable. Real-world government data is messy; the pipeline embraces that.
 
 ## 🗺️ Roadmap
 
 - **Public deploy** (Vercel frontend + Render/Railway backend + Supabase) with a live demo login and real SMTP.
 - **Screenshots + demo GIF** of the buy-signal flow.
-- National series via a Postgres view/RPC (instead of a client-side row cap).
+- National (all-Brazil) aggregated series, reusing the same SQL-side aggregation approach.
 - More historical months for richer trends; optional GLP (13 kg) support.
 
 ## 📚 Data source & legality (ANP)

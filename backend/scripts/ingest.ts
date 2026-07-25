@@ -15,8 +15,9 @@ import { evaluateAllFuelAlerts } from "../src/services/fuelAlertService";
  * e, se entrou dado novo, reavalia os alertas. Ao final, imprime um resumo do banco.
  *
  * Uso:
- *   npm run ingest                       # usa ANP_CSV_URL do .env (ou o padrão do semestre)
- *   npm run ingest -- --url <URL_DO_CSV> # força uma URL específica (ex.: outro semestre)
+ *   npm run ingest                       # padrão: últimos 3 meses, derivados da data atual
+ *                                        # (override: ANP_CSV_URL ou ANP_YEAR/ANP_MONTHS no .env)
+ *   npm run ingest -- --url <URL_DO_CSV> # força uma URL específica (ex.: backfill de um mês antigo)
  *
  * Requer SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY no .env (o ETL grava via service_role).
  */

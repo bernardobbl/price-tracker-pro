@@ -11,6 +11,8 @@ interface AuthPageProps {
   onPasswordChange: (v: string) => void;
   onSwitchMode: (m: AuthMode) => void;
   onSubmit: (e: React.FormEvent) => void;
+  /** Volta para o dashboard público (explorar sem login). */
+  onBack?: () => void;
 }
 
 /** Tela de login/cadastro (Supabase Auth). Estado vive no `useAuth`. */
@@ -24,6 +26,7 @@ export function AuthPage({
   onPasswordChange,
   onSwitchMode,
   onSubmit,
+  onBack,
 }: AuthPageProps) {
   return (
     <div className="app">
@@ -41,7 +44,7 @@ export function AuthPage({
         <div className="auth-card">
           <div className="auth-card-logo">
             <h2>Price Tracker Pro</h2>
-            <p>Entre na sua conta para continuar</p>
+            <p>Entre para salvar favoritos e criar alertas de preço</p>
           </div>
 
           <div className="auth-tabs">
@@ -100,6 +103,12 @@ export function AuthPage({
               {submitting ? "Aguarde..." : mode === "login" ? "Entrar na conta" : "Criar conta"}
             </button>
           </form>
+
+          {onBack && (
+            <button type="button" className="auth-back" onClick={onBack}>
+              ← Explorar preços sem login
+            </button>
+          )}
         </div>
       </div>
     </div>

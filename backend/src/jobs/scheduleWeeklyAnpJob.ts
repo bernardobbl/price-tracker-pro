@@ -9,11 +9,12 @@ import { logger } from "../lib/logger";
  * A ANP publica um novo levantamento **semanalmente**. Este job dispara a ingestão
  * uma vez por semana (padrão: segunda-feira 06:00), após a publicação do arquivo.
  *
- * "Delta" na prática: a ANP mantém **um CSV por semestre** que cresce a cada semana.
- * Não precisamos de diff manual — a combinação de (1) hash do conteúdo, que **pula**
- * o arquivo se ele não mudou desde a última ingestão (H2), e (2) **upsert idempotente**
- * pela chave natural, faz com que só as linhas novas/alteradas do levantamento sejam
- * efetivamente gravadas. Reprocessar o mesmo arquivo é barato e seguro.
+ * "Delta" na prática: a ANP publica CSVs **mensais** (que crescem a cada semana até o
+ * mês fechar). Os meses-alvo são **derivados da data de execução** (`buildAnpUrls` →
+ * mês corrente + 2 anteriores), então o job acompanha o calendário sozinho — sem env
+ * fixo que congelaria o dado. Não precisamos de diff manual: (1) o hash do conteúdo
+ * **pula** arquivos que não mudaram (H2) e (2) o **upsert idempotente** pela chave
+ * natural grava só o que é novo/alterado. Reprocessar o mesmo arquivo é barato e seguro.
  *
  * Timeout e retry do download já estão no `httpClient` (usado pelo `ingestAnp`).
  */

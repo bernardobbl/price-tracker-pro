@@ -162,6 +162,88 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Funções de agregação (série e snapshot no servidor)
+-- ---------------------------------------------------------------------------
+-- Motivo: o PostgREST corta respostas em 1000 linhas (Max Rows) MESMO com .limit()
+-- maior no cliente. Agregar no cliente exigia puxar as linhas cruas do município —
+-- que passam de 1000 com ~6 meses de histórico numa cidade grande, truncando
+-- silenciosamente os registros MAIS RECENTES (ordenação ascendente). Estas funções
+-- agregam no Postgres (usando fuel_prices_lookup_idx) e devolvem poucas linhas:
+-- uma por data de levantamento (série) ou uma por posto do último levantamento.
+
+-- Série diária agregada de um produto num município (média/mín/máx + amostra).
+create or replace function public.fuel_daily_series(
+  p_product text,
+  p_state text,
+  p_municipality text,
+  p_brand text default null
+)
+returns table (
+  date date,
+  avg_price numeric,
+  min_price numeric,
+  max_price numeric,
+  sample_size integer
+)
+language sql
+stable
+as $$
+  select
+    fp.collected_at as date,
+    round(avg(fp.sell_price), 3) as avg_price,
+    min(fp.sell_price) as min_price,
+    max(fp.sell_price) as max_price,
+    count(*)::integer as sample_size
+  from public.fuel_prices fp
+  where fp.product = p_product
+    and fp.state = p_state
+    and fp.municipality = p_municipality
+    and (p_brand is null or fp.brand = p_brand)
+  group by fp.collected_at
+  order by fp.collected_at;
+$$;
+
+-- Linhas (por posto) do levantamento MAIS RECENTE de um produto num município.
+-- O ranking/dedup por CNPJ continua na função pura `summarizeSnapshot` (testada).
+create or replace function public.fuel_latest_snapshot(
+  p_product text,
+  p_state text,
+  p_municipality text,
+  p_brand text default null
+)
+returns table (
+  collected_at date,
+  sell_price numeric,
+  reseller text,
+  brand text,
+  cnpj text,
+  street text,
+  street_number text,
+  neighborhood text,
+  cep text
+)
+language sql
+stable
+as $$
+  select
+    fp.collected_at, fp.sell_price, fp.reseller, fp.brand, fp.cnpj,
+    fp.street, fp.street_number, fp.neighborhood, fp.cep
+  from public.fuel_prices fp
+  where fp.product = p_product
+    and fp.state = p_state
+    and fp.municipality = p_municipality
+    and (p_brand is null or fp.brand = p_brand)
+    and fp.collected_at = (
+      select max(fp2.collected_at)
+      from public.fuel_prices fp2
+      where fp2.product = p_product
+        and fp2.state = p_state
+        and fp2.municipality = p_municipality
+        and (p_brand is null or fp2.brand = p_brand)
+    );
+$$;
+
+-- ---------------------------------------------------------------------------
 -- RLS
 -- ---------------------------------------------------------------------------
 alter table public.fuel_prices    enable row level security;

@@ -188,6 +188,27 @@ body {
   color: var(--bad-deep);
 }
 
+/* Botão "Entrar" do header (visitante): mesmo formato do logout, acento de marca. */
+.btn-login {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-login:hover {
+  background: var(--brand-deep);
+  border-color: var(--brand-deep);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    Dashboard
    ══════════════════════════════════════════════════════════════════════════ */
@@ -950,6 +971,30 @@ body {
   border-top: 1px solid var(--line);
 }
 
+/* CTA de login no lugar do formulário de alerta (visitante sem conta). */
+.login-cta {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.login-cta-text p {
+  margin: 0;
+  font-size: 0.85rem;
+  max-width: 42ch;
+}
+
+.btn-cta {
+  flex-shrink: 0;
+  width: auto;
+  padding: 0.55rem 1.1rem;
+}
+
 .alert-form-title {
   margin: 0 0 0.5rem;
   font-size: 0.95rem;
@@ -1068,6 +1113,25 @@ input[type="number"] {
 .auth-card-logo {
   text-align: center;
   margin-bottom: 1.5rem;
+}
+
+/* Link "voltar a explorar" no rodapé do card de auth. */
+.auth-back {
+  display: block;
+  width: 100%;
+  margin-top: 1.25rem;
+  padding: 0.4rem;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.auth-back:hover {
+  color: var(--brand);
+  text-decoration: underline;
 }
 
 .auth-card-logo h2 {
