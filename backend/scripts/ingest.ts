@@ -2,6 +2,7 @@ import "dotenv/config";
 import { supabase } from "../src/config/supabaseClient";
 import { ingestAnp } from "../src/ingest/anpIngestor";
 import { evaluateAllFuelAlerts } from "../src/services/fuelAlertService";
+import { applyRetention } from "../src/services/retentionService";
 
 /**
  * Ingestão manual do arquivo real da ANP (Série Histórica de Preços de Combustíveis).
@@ -63,6 +64,10 @@ async function main() {
     const { evaluated, notified } = await evaluateAllFuelAlerts();
     console.log(`[ingest] Alertas reavaliados: ${evaluated} avaliados · ${notified} notificados`);
   }
+
+  // Fase 9 — retenção automática (free tier). RETENTION_MONTHS=0 desliga.
+  const deleted = await applyRetention();
+  if (deleted > 0) console.log(`[ingest] Retenção: ${deleted} linhas antigas removidas`);
 
   await printDbSummary();
 

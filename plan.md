@@ -457,8 +457,9 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
   "Reset" na service_role) e atualizar o `backend/.env` local. **⚠️ Pendente desde a Fase 0** —
   obrigatório **antes de tornar o repo público** (a chave ignora RLS; se já circulou fora do `.env`,
   considere-a comprometida). Se o repo já é público, fazer **imediatamente**.
-- [ ] **Commit + push** das mudanças das sessões de revisão (fixes 1–5, ~18 arquivos). Antes:
-  `rm -f .git/index.lock` (lock órfão do FUSE). O push dispara o **CI** — conferir verde no GitHub.
+- [~] **Commit + push**: fixes 1–5 já commitados ✅; falta o commit da **Fase 9** (10 arquivos: retenção
+  + db:stats + docs). Antes: `rm -f .git/index.lock` (lock órfão do FUSE). Depois do push, **conferir o
+  CI verde** no GitHub (aba Actions) — dos dois commits.
 - [x] **Primeira impressão**: série padrão (Gasolina · São Paulo/SP) auto-carregada na abertura — feito (Fix 5).
 - [x] **Reexecutar `schema.sql`** no Supabase (funções `fuel_daily_series`/`fuel_latest_snapshot`) — feito e validado.
 
@@ -513,24 +514,38 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 > **Contexto:** o free tier do Supabase dá **500 MB** de banco. Hoje temos ~615k linhas em `fuel_prices`
 > (out/2025–jun/2026, 9 meses) — bem abaixo do limite, mas o job semanal só **adiciona** (~70–75k
 > linhas/mês). Sem controle, em ~2–3 anos o limite chega. A solução é **retenção**: o produto só precisa
-> da janela recente (o filtro máximo da UI é "tudo", mas o valor está nos últimos 12–18 meses).
+> da janela recente (o filtro máximo da UI é "tudo", mas o valor está nos últimos ~12 meses).
 
-- [ ] **Medir o baseline**: painel do Supabase → Database → tamanho atual (anotar aqui: ___ MB).
-  Repetir após 2–3 ingestões para estimar o crescimento real por mês.
-- [ ] **Política de retenção (quando necessário, não agora)**: job mensal (ou passo no fim da ingestão
-  semanal) que apaga levantamentos com mais de **N meses** (começar com 18):
-  `delete from fuel_prices where collected_at < now() - interval '18 months'`.
-  Implementar como função SQL idempotente + chamada no cron; registrar o total apagado no log.
-  _Alternativa se quiser manter histórico longo:_ agregar meses antigos numa tabela mensal compacta
-  (`fuel_prices_monthly`: média/mín/máx por município+produto+mês) antes de apagar o detalhe — mantém
-  o gráfico "tudo" útil custando ~1% do espaço.
-- [ ] **Gatilho objetivo**: adotar a retenção quando o banco passar de **~350 MB** (70% do limite).
-  Até lá, só monitorar — sem trabalho à toa.
+> ✅ **Implementada antecipadamente** (a pedido do Bernardo: "não quero pagar nem 1 real") — a proteção
+> já nasce LIGADA por padrão, em vez de esperar o gatilho de 70%.
+
+- [x] **Política de retenção automática**: função SQL `fuel_prices_retention(p_keep_months)` (plpgsql,
+  devolve o total apagado; EXECUTE revogado de anon/authenticated, só service_role) + serviço
+  `retentionService.ts` chamado **após cada ingestão** (job semanal E CLI `npm run ingest`). Config por
+  `RETENTION_MONTHS`: padrão **12** (proteção ligada; era 18 no design, recalibrado após a medição —
+  ver baseline abaixo); `0` desliga; valor inválido cai no padrão (nunca
+  desliga por acidente — regra testada). Nunca lança (falha não derruba a ingestão). O banco atinge um
+  **platô** de tamanho em vez de crescer para sempre. **+4 testes** (`test/retention.test.ts`).
+- [x] **Monitoramento**: função SQL `fuel_db_stats()` (tamanho do banco em MB, linhas, janela de datas)
+  + CLI **`npm run db:stats`** que mostra o % de uso dos 500 MB grátis, a política em vigor e avisa
+  quando passar de 70% ("reduza para 12"). _Medir o baseline: rodar `npm run db:stats` após reexecutar
+  o schema.sql (anotar: ___ MB)._
+- [x] **Gatilho objetivo documentado**: se `db:stats` um dia passar de **~350 MB** (70%), reduzir
+  `RETENTION_MONTHS` (ex.: 9) — improvável com o padrão 12 (platô ~56%).
+  _Alternativa futura se quiser histórico longo:_ agregar meses antigos numa tabela mensal compacta
+  (`fuel_prices_monthly`: média/mín/máx por município+produto+mês) antes de apagar o detalhe.
 - [ ] **Keep-alive** (Supabase pausa após ~7 dias sem uso; backend free "dorme"): GitHub Action agendada
-  fazendo query mínima + ping no `/health` — detalhes já mapeados no **Anexo (Seção 8)**.
+  fazendo query mínima + ping no `/health` — detalhes no **Anexo (Seção 8)**. _Depende do deploy (Fase 7)._
+- [x] **⚠️ Ação manual**: schema.sql reexecutado no Supabase ✅ e baseline medido ✅.
 
-**DoD:** crescimento do banco conhecido e projetado; plano de retenção pronto para ligar quando o
-gatilho de 70% chegar; keep-alive ativo após o deploy. **Custo mensal: R$ 0.**
+**📊 Baseline medido (25/jul/2026):** `npm run db:stats` → **209,9 MB / 500 MB (42%)** com 614.987
+linhas (9 meses, out/2025→jun/2026) = **~21–23 MB/mês**. Conta da janela: 18 meses ≈ 420 MB (84% —
+apertado demais) vs **12 meses ≈ 280 MB (56%) — folga permanente**. Decisão: **padrão do código
+recalibrado de 18 → 12 meses** (`DEFAULT_RETENTION_MONTHS`), documentado no .env.example/README/schema.
+Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não precisa reexecutar o schema).
+
+**DoD:** ✅ retenção automática LIGADA por padrão (12 meses, calibrado por medição real) com testes;
+`db:stats` monitorando; keep-alive entra com o deploy. **Custo mensal: R$ 0, garantido por construção.**
 
 ---
 
@@ -574,8 +589,10 @@ gatilho de 70% chegar; keep-alive ativo após o deploy. **Custo mensal: R$ 0.**
 - [ ] Fase 7 — Deploy público + email real + demo
 - [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags
   (dependem do deploy)
-- [ ] Fase 9 — Operação contínua no free tier: medir crescimento do banco, retenção quando atingir ~70%
-  dos 500 MB, keep-alive. **Objetivo: custo R$ 0 para sempre.**
+- [x] Fase 9 — Operação contínua no free tier ✅ (**antecipada**): retenção automática ligada por padrão
+  (`RETENTION_MONTHS=12`, calibrado por medição real: platô ~280 MB ≈ 56%, SQL + serviço + testes)
+  e `npm run db:stats` para monitorar os 500 MB.
+  Falta só o keep-alive (depende do deploy). **Custo R$ 0 garantido por construção.**
 
 ---
 

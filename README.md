@@ -86,7 +86,7 @@ flowchart LR
 | Validation | Zod (request schemas + ETL row gate) |
 | Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**~121 tests**) |
+| Tests | Vitest + Testing Library + supertest (**~125 tests**) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
@@ -128,7 +128,7 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-~121 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
+~125 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
@@ -140,6 +140,7 @@ npm test        # in backend/ and frontend/
 - **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the ~99 tests cheap and meaningful.
 - **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.
 - **Discover, don't guess.** In 2026 ANP silently changed its file naming — including a typo'd filename and a file published without extension. The ingestor now scrapes the year folder's listing for the real hrefs (pure, fixture-tested parser) and falls back to the old naming pattern only if the listing is unreachable. Real-world government data is messy; the pipeline embraces that.
+- **Built to run free, forever.** The weekly job only ever adds rows (~70k/month ≈ 22 MB/month, measured), which would eventually blow past Supabase's free-tier 500 MB. An automatic **retention policy** (`RETENTION_MONTHS`, default 12 — calibrated from real measurements to plateau at ~56% of the free tier) prunes surveys older than the window after each ingestion, so database size plateaus instead of growing — plus an `npm run db:stats` CLI to watch usage.
 
 ## 🗺️ Roadmap
 

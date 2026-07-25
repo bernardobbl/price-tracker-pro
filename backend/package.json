@@ -15,7 +15,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "seed": "ts-node-dev --transpile-only scripts/seed.ts",
-    "ingest": "ts-node-dev --transpile-only scripts/ingest.ts"
+    "ingest": "ts-node-dev --transpile-only scripts/ingest.ts",
+    "db:stats": "ts-node-dev --transpile-only scripts/dbStats.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

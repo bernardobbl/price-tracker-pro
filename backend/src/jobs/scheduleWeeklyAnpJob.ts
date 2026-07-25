@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { ingestAnp } from "../ingest/anpIngestor";
 import { evaluateAllFuelAlerts } from "../services/fuelAlertService";
+import { applyRetention } from "../services/retentionService";
 import { logger } from "../lib/logger";
 
 /**
@@ -42,6 +43,10 @@ async function runIngest(trigger: string): Promise<void> {
     const { evaluated, notified } = await evaluateAllFuelAlerts();
     logger.info({ evaluated, notified }, "[CRON][ANP] Alertas reavaliados após ingestão");
   }
+
+  // Fase 9 — retenção automática (free tier): mantém o banco num platô de tamanho.
+  // Roda toda semana (mesmo em skip — barata e idempotente); nunca lança.
+  await applyRetention();
 }
 
 export function scheduleWeeklyAnpJob(): void {

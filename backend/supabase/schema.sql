@@ -244,6 +244,58 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Operação no free tier: retenção e estatísticas (Fase 9)
+-- ---------------------------------------------------------------------------
+-- O free tier do Supabase dá 500 MB de banco. O job semanal só ADICIONA linhas
+-- (~70k/mês ≈ 21-23 MB/mês, medido), então sem controle o banco cresceria para
+-- sempre. A retenção apaga levantamentos mais antigos que N meses (o app chama
+-- com RETENTION_MONTHS, padrão 12 → platô ~280 MB ≈ 56% do limite) — custo R$ 0
+-- para sempre. Nota: DELETE não devolve espaço ao SO, mas o espaço é reutilizado
+-- pelas ingestões seguintes (o platô é o que importa para o limite).
+-- Segurança: EXECUTE revogado de anon/authenticated — só o service_role (ETL) roda.
+
+create or replace function public.fuel_prices_retention(p_keep_months integer default 12)
+returns integer
+language plpgsql
+as $$
+declare
+  deleted integer;
+begin
+  if p_keep_months is null or p_keep_months < 1 then
+    return 0; -- 0/negativo = retenção desligada, não apaga nada
+  end if;
+  delete from public.fuel_prices
+  where collected_at < (current_date - make_interval(months => p_keep_months));
+  get diagnostics deleted = row_count;
+  return deleted;
+end;
+$$;
+
+revoke execute on function public.fuel_prices_retention(integer) from public, anon, authenticated;
+grant execute on function public.fuel_prices_retention(integer) to service_role;
+
+-- Saúde/tamanho do banco para o CLI `npm run db:stats` (monitorar o free tier).
+create or replace function public.fuel_db_stats()
+returns table (
+  db_size_mb numeric,
+  fuel_rows bigint,
+  oldest date,
+  newest date
+)
+language sql
+stable
+as $$
+  select
+    round(pg_database_size(current_database()) / 1024.0 / 1024.0, 1) as db_size_mb,
+    (select count(*) from public.fuel_prices) as fuel_rows,
+    (select min(collected_at) from public.fuel_prices) as oldest,
+    (select max(collected_at) from public.fuel_prices) as newest;
+$$;
+
+revoke execute on function public.fuel_db_stats() from public, anon, authenticated;
+grant execute on function public.fuel_db_stats() to service_role;
+
+-- ---------------------------------------------------------------------------
 -- RLS
 -- ---------------------------------------------------------------------------
 alter table public.fuel_prices    enable row level security;
