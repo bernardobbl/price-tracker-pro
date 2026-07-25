@@ -450,6 +450,22 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 
 ---
 
+### Fase 6.9 — Pendências operacionais pré-deploy (ações do Bernardo)
+**Meta:** fechar o que não é código antes de subir. Curta e objetiva.
+
+- [ ] **🔑 Rotacionar a `SUPABASE_SERVICE_ROLE_KEY`** no painel do Supabase (Settings → API →
+  "Reset" na service_role) e atualizar o `backend/.env` local. **⚠️ Pendente desde a Fase 0** —
+  obrigatório **antes de tornar o repo público** (a chave ignora RLS; se já circulou fora do `.env`,
+  considere-a comprometida). Se o repo já é público, fazer **imediatamente**.
+- [ ] **Commit + push** das mudanças das sessões de revisão (fixes 1–5, ~18 arquivos). Antes:
+  `rm -f .git/index.lock` (lock órfão do FUSE). O push dispara o **CI** — conferir verde no GitHub.
+- [x] **Primeira impressão**: série padrão (Gasolina · São Paulo/SP) auto-carregada na abertura — feito (Fix 5).
+- [x] **Reexecutar `schema.sql`** no Supabase (funções `fuel_daily_series`/`fuel_latest_snapshot`) — feito e validado.
+
+**DoD:** chave rotacionada, CI verde no GitHub com o código atual, app abrindo com dados sem interação.
+
+---
+
 ### Fase 7 — Deploy público (o marco final)
 **Meta:** link clicável funcionando, com dados de demo.
 
@@ -491,6 +507,33 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 
 ---
 
+### Fase 9 — Operação contínua no free tier (pós-deploy, custo zero)
+**Meta:** o app roda sozinho, para sempre, **sem pagar nada** — o banco não estoura o limite grátis.
+
+> **Contexto:** o free tier do Supabase dá **500 MB** de banco. Hoje temos ~615k linhas em `fuel_prices`
+> (out/2025–jun/2026, 9 meses) — bem abaixo do limite, mas o job semanal só **adiciona** (~70–75k
+> linhas/mês). Sem controle, em ~2–3 anos o limite chega. A solução é **retenção**: o produto só precisa
+> da janela recente (o filtro máximo da UI é "tudo", mas o valor está nos últimos 12–18 meses).
+
+- [ ] **Medir o baseline**: painel do Supabase → Database → tamanho atual (anotar aqui: ___ MB).
+  Repetir após 2–3 ingestões para estimar o crescimento real por mês.
+- [ ] **Política de retenção (quando necessário, não agora)**: job mensal (ou passo no fim da ingestão
+  semanal) que apaga levantamentos com mais de **N meses** (começar com 18):
+  `delete from fuel_prices where collected_at < now() - interval '18 months'`.
+  Implementar como função SQL idempotente + chamada no cron; registrar o total apagado no log.
+  _Alternativa se quiser manter histórico longo:_ agregar meses antigos numa tabela mensal compacta
+  (`fuel_prices_monthly`: média/mín/máx por município+produto+mês) antes de apagar o detalhe — mantém
+  o gráfico "tudo" útil custando ~1% do espaço.
+- [ ] **Gatilho objetivo**: adotar a retenção quando o banco passar de **~350 MB** (70% do limite).
+  Até lá, só monitorar — sem trabalho à toa.
+- [ ] **Keep-alive** (Supabase pausa após ~7 dias sem uso; backend free "dorme"): GitHub Action agendada
+  fazendo query mínima + ping no `/health` — detalhes já mapeados no **Anexo (Seção 8)**.
+
+**DoD:** crescimento do banco conhecido e projetado; plano de retenção pronto para ligar quando o
+gatilho de 70% chegar; keep-alive ativo após o deploy. **Custo mensal: R$ 0.**
+
+---
+
 ## 4. Decisões de stack (mantém o que já é bom)
 
 | Camada | Hoje | Manter / Mudar |
@@ -522,9 +565,17 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
   realismo de coleta, produto sobre dados reais, front migrado, seed, testes e limpeza do Books to Scrape)
 - [x] **Ingestão REAL validada ponta a ponta** ✅ (sessão de revisão): URL/estrutura real da ANP corrigida
   (arquivos mensais `dsan/ANO/precos-*-MM.csv`), `npm run ingest`, ~75k linhas/mês · 27 UFs · 0 rejeitadas.
+- [x] **Sessão de revisão crítica 3** ✅ — fixes 1–5 validados e2e com dado real: meses dinâmicos +
+  **descoberta de URLs pela listagem** (sobreviveu ao naming novo/typo/sem-extensão de 2026), agregação
+  em **SQL** (fim do cap de 1000 linhas), **explorar sem login**, fim da demo compartilhada, série padrão
+  na abertura. Banco: **614.987 linhas · out/2025→jun/2026 contínuo**.
+- [ ] **Fase 6.9 — Pendências operacionais** (Bernardo): rotacionar `SUPABASE_SERVICE_ROLE_KEY` (⚠️
+  pendente desde a Fase 0) + commit/push com CI verde.
 - [ ] Fase 7 — Deploy público + email real + demo
 - [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags
   (dependem do deploy)
+- [ ] Fase 9 — Operação contínua no free tier: medir crescimento do banco, retenção quando atingir ~70%
+  dos 500 MB, keep-alive. **Objetivo: custo R$ 0 para sempre.**
 
 ---
 
@@ -838,6 +889,24 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
   dados. Com o Fix 3 a conta demo pública ficou **desnecessária** — README atualizado (explorar é
   público; conta própria para favoritos/alertas) e o item da Fase 7 reescrito. O usuário demo do seed
   continua existindo **só para dev local**.
+- **Fix 5 · Primeira impressão (série padrão).** Sem login e sem seleção, o painel de detalhe abria
+  vazio. Agora, com as opções carregadas e nada em exibição, o app **auto-carrega Gasolina ·
+  São Paulo/SP** (com fallback para o 1º produto/UF/município disponível): o visitante vê gráfico,
+  sinal de compra e ranking em ~2s, sem clicar em nada. Roda uma única vez (ref) e nunca sobrescreve
+  uma escolha do usuário. Essencial para demo pública e screenshots.
+
+**✅ Validação e2e REAL dos fixes (terminal do Bernardo, 25/jul/2026):**
+1. **1ª rodada (código antigo ainda):** 6×404 com 3 retries cada — evidenciou o problema do naming 2026
+   e o desperdício de retry em 404 (ambos corrigidos em seguida).
+2. **2ª rodada (Fix 1b):** listagem lida (`found: 12`), jul/2026 **pulado sem nenhuma requisição**,
+   mai+jun ingeridos = **142.522 linhas, 0 rejeitadas** — incluindo o arquivo de junho com naming fora
+   do padrão. Status `success`, alerta reavaliado.
+3. **Backfill jan–abr/2026** (`ANP_YEAR=2026 ANP_MONTHS=01,02,03,04`): **274.251 linhas** — incluindo o
+   arquivo de fevereiro **com typo do portal** (`02-cados-abertos-preco-...`) e os dois de abril **sem
+   extensão .csv**, todos descobertos e ingeridos sem ajuste. Dedup pegou **6 duplicatas internas** dos
+   próprios CSVs da ANP (44.330 lidas → 44.326 upsert em fev).
+- **Estado final do banco: 614.987 linhas · 27 UFs · série contínua out/2025 → jun/2026.**
+  Quando a ANP publicar jul/2026, o job semanal pega sozinho.
 
 ---
 

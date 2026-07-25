@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchFuelProducts,
   fetchMunicipalities,
@@ -44,6 +44,35 @@ export function useFuelSeries() {
       }
     })();
   }, []);
+
+  // Primeira impressão: com as opções carregadas e nada em exibição, abre uma
+  // série padrão (Gasolina · São Paulo/SP quando disponível) — o visitante vê o
+  // produto funcionando (gráfico, sinal, ranking) sem precisar escolher nada.
+  // Roda uma única vez e nunca sobrescreve uma escolha do usuário (guarda `view`).
+  const autoLoaded = useRef(false);
+  useEffect(() => {
+    if (autoLoaded.current || view || products.length === 0 || states.length === 0) return;
+    autoLoaded.current = true;
+    void (async () => {
+      const product = products.includes("GASOLINA") ? "GASOLINA" : products[0];
+      const state = states.includes("SP") ? "SP" : states[0];
+      try {
+        const muns = await fetchMunicipalities(state);
+        if (muns.length === 0) return;
+        const municipality = muns.includes("SAO PAULO") ? "SAO PAULO" : muns[0];
+        openView({
+          product,
+          state,
+          municipality,
+          brand: null,
+          label: buildSeriesLabel(product, state, municipality, null),
+        });
+      } catch {
+        // Silencioso: sem série padrão, o visitante ainda explora manualmente.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openView é estável (useCallback)
+  }, [products, states, view]);
 
   // Municípios da UF selecionada.
   useEffect(() => {
