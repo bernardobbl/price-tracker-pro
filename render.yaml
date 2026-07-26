@@ -18,7 +18,12 @@ services:
     plan: free
     region: oregon
     rootDir: backend
-    buildCommand: npm ci && npm run build
+    # `--include=dev` é obrigatório aqui: como definimos NODE_ENV=production (o
+    # backend precisa disso em runtime para o fail-closed do requireAuth), o npm
+    # omitiria as devDependencies no build — e o TypeScript é uma delas, então o
+    # `npm run build` falharia com "tsc: not found". As devDeps só existem na
+    # etapa de build; o que roda em produção continua sendo o `dist/` compilado.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
