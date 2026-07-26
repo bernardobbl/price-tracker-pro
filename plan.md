@@ -521,6 +521,22 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 **DoD:** ✅ lint/type-check/testes/build verdes, furo de autorização fechado com teste, deploy sem
 armadilhas conhecidas de CORS/agendamento/cold start.
 
+**Pós-sessão — fila do Dependabot e baseline do Node** ✅ (26/jul/2026)
+- [x] **Os 10 PRs de major fecharam sozinhos** na 1ª varredura com a política nova; os updates passaram a vir
+  agrupados (1 PR por grupo). Mergeados #15/#16/#17 com CI verde.
+- [x] **`eslint-plugin-react-refresh` 0.5**: na v0.5 o plugin virou ESM com export **nomeado** e a regra
+  `only-export-components` saiu da raiz do objeto (agora vem nos presets). Ajustado o `eslint.config.js` para
+  `reactRefresh.configs.vite()`. _Lição:_ em pacotes **0.x**, minor já é quebra — o `ignore` de major não cobre.
+- [x] **Node 22 como baseline**: o `@supabase/supabase-js` 2.110.8 declara `engines: node >=22`, enquanto
+  `.nvmrc`, os dois `engines`, os dois workflows e o `render.yaml` diziam 20. Tudo alinhado em 22.
+  _(Verificado antes: mudar `engines` **não** exige regerar lockfile — `npm ci` passa.)_
+- [ ] ~~`overrides` para zerar o `npm audit`~~ → **tentado e descartado, de propósito.** As 6+8 advisories são
+  todas do `brace-expansion` chegando por ferramenta de **dev** (ESLint, `ts-node-dev`); `npm audit --omit=dev`
+  já dava **0** nos dois lados. O override para 5.0.8 funcionou local (audit 0, lint, type-check, 143 testes,
+  build, `ts-node-dev` rodando), mas regenerar o lockfile no macOS ARM **dessincronizou o `npm ci` no Linux**
+  (pacotes `@emnapi/*` podados do lock) — exatamente a armadilha registrada na Fase 5. Custo recorrente por
+  ganho cosmético: descartado. Volta a entrar sozinho quando o ESLint subir o `minimatch`.
+
 ---
 
 ### Fase 7 — Deploy público (o marco final)

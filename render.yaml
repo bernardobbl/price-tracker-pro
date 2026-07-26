@@ -28,7 +28,7 @@ services:
         value: production # liga o fail-closed do requireAuth
 
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
 
       # Origens liberadas no CORS. Aceita lista separada por vírgula
       # (produção + previews da Vercel). Preencher após o deploy do frontend.
