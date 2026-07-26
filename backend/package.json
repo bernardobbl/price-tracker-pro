@@ -45,5 +45,9 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.23.0",
     "vitest": "^4.1.10"
+  },
+  "//overrides": "brace-expansion <=5.0.7 tem um DoS (GHSA-mh99-v99m-4gvg) e chega aqui como dependência transitiva do ts-node-dev (rimraf/glob) e do ESLint, via minimatch. Só a linha 5.x foi corrigida (5.0.8), e o minimatch 3.x ainda pede ^1.1.7 — então não há atualização direta possível até o upstream subir o minimatch. É ferramenta de DEV (não roda em produção: `npm audit --omit=dev` já dava 0), mas o override zera o audit sem quebrar nada — validado com lint, type-check, testes, build e o ts-node-dev executando. REMOVER quando o upstream atualizar.",
+  "overrides": {
+    "brace-expansion": "^5.0.8"
   }
 }
