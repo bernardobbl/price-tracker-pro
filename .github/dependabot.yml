@@ -1,18 +1,49 @@
 version: 2
+
+# Política: aceitar patches e minors (segurança e correções chegam por aqui) e
+# NÃO abrir PR de major automaticamente.
+#
+# Por quê: majors quebram build/API e cada PR aberto reexecuta o CI inteiro. Num
+# repositório de portfólio público isso vira uma fila permanente de PRs vermelhos
+# ou obsoletos — que é a primeira coisa que alguém vê ao abrir o repo. Majors
+# (TypeScript 7, React 19, ESLint 10…) merecem uma sessão dedicada, com leitura do
+# changelog e migração, não um merge automático.
+#
+# Alertas de segurança continuam funcionando: o Dependabot **security update**
+# ignora `ignore` quando existe CVE, então uma falha crítica ainda gera PR.
+
 updates:
   - package-ecosystem: npm
     directory: /backend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # Agrupa o que sobrou num único PR por semana em vez de um por pacote.
+      backend-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

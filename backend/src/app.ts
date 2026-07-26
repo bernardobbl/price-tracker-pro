@@ -6,6 +6,7 @@ import fuelRouter from "./routes/fuelRoute";
 import fuelUserRouter from "./routes/fuelUserRoute";
 import { errorHandler } from "./middleware/errorHandler";
 import { sendError } from "./lib/httpError";
+import { isOriginAllowed, parseAllowedOrigins } from "./lib/corsOrigins";
 
 export const app = express();
 
@@ -17,8 +18,18 @@ app.set("trust proxy", 1);
 // consumida por outra origem, desligamos a CSP embutida (não serve HTML).
 app.use(helmet({ contentSecurityPolicy: false }));
 
+// CORS: `FRONTEND_URL` aceita **uma ou várias** origens separadas por vírgula
+// (domínio de produção + previews da Vercel + localhost). Regras puras e testadas
+// em `lib/corsOrigins.ts` — inclusive a normalização da barra final, que é a causa
+// clássica de "funciona local, quebra no deploy".
+export const allowedOrigins = parseAllowedOrigins(process.env.FRONTEND_URL);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: (origin, callback) =>
+    // Não lançamos erro para origem desconhecida: responder sem os headers de CORS
+    // já faz o navegador bloquear, e um throw viraria 500 no log a cada requisição
+    // (ruído + vetor de log-flood).
+    callback(null, isOriginAllowed(origin, allowedOrigins)),
   credentials: true,
 }));
 app.use(express.json());

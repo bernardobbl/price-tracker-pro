@@ -22,6 +22,7 @@ import {
 import {
   createTrackedSeries,
   deleteTrackedSeries,
+  getOwnedTrackedSeries,
   listTrackedSeries,
 } from "../services/trackedSeriesService";
 import {
@@ -83,6 +84,14 @@ router.post(
     if (!userId) return sendError(res, 401, "UNAUTHENTICATED", "Usuário não autenticado.");
 
     const { seriesId, thresholdPrice, currency, channel, enabled } = req.body;
+
+    // Posse da série: o backend usa a service_role (bypassa RLS), então o filtro
+    // por dono precisa ser explícito aqui — sem isso, um `series_id` de outra
+    // pessoa criaria um alerta válido e devolveria os dados dela no join.
+    // 404 (e não 403) para não revelar se o id existe.
+    const owned = await getOwnedTrackedSeries(seriesId, userId);
+    if (!owned) return sendError(res, 404, "SERIES_NOT_FOUND", "Série favoritada não encontrada.");
+
     const alert = await createOrUpdateFuelAlert({
       userId,
       seriesId,

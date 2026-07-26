@@ -128,14 +128,16 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-~125 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
+143 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
 - **Real public data over a scraping sandbox.** The project started scraping Mercado Livre (blocked + OAuth), moved to Books to Scrape (a static sandbox → *simulated* history), and finally to the **ANP open dataset** — real prices that move weekly. This fixed the product's core premise and turned the work into honest **data engineering** (ETL of large CSVs) rather than fragile HTML scraping.
 - **Idempotent ETL.** Upsert on a natural key + content-hash skip + conditional GET means reprocessing the same file never duplicates data and rarely re-downloads it. Safe to run on any schedule.
 - **Supabase as the single source of truth, with RLS.** `fuel_prices` is a *shared, read-only* reference table (public ANP data, written only by the service role); `tracked_series`/`alerts` are *per-user* with Row Level Security. No ephemeral local files.
-- **Heavy work out of the request path.** Ingestion runs only in the cron job / CLI, never inside an HTTP request — the API stays fast and the scraping/ETL can't stall a user.
+- **Heavy work out of the request path.** Ingestion runs only in the scheduled job / CLI, never inside an HTTP request — the API stays fast and the scraping/ETL can't stall a user.
+- **Scheduling that survives a sleeping free tier.** Free hosts hibernate the web process after minutes of inactivity, so an in-process cron may never fire. The weekly ingestion is therefore driven by a **GitHub Actions workflow** that runs the same CLI against Supabase, independent of the API being awake (`ANP_CRON=off` in production); the in-process cron stays as a local/self-hosted option, now pinned to `America/Sao_Paulo` so a UTC host doesn't shift the schedule by three hours.
+- **Authorization enforced in code, not only in RLS.** The backend talks to Supabase with the `service_role` key (the ETL must write the shared table), and that key **bypasses RLS** — so every user-scoped query filters by `user_id` explicitly, and any `series_id` coming from the client is ownership-checked before use. RLS remains the second line of defence for direct client access.
 - **Hardened public API.** Helmet sets security headers and `express-rate-limit` caps per-IP request bursts, so exposing the API publicly doesn't invite trivial abuse; `npm audit` is clean (0 vulnerabilities).
 - **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the ~99 tests cheap and meaningful.
 - **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.

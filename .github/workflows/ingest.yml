@@ -1,0 +1,78 @@
+name: ANP weekly ingest
+
+# Ingestão semanal da Série Histórica de Preços de Combustíveis (ANP).
+#
+# Por que aqui e não no backend: no free tier (Render/Railway) o processo web
+# hiberna após alguns minutos parado e reinicia sozinho — um cron in-process pode
+# simplesmente nunca chegar na hora marcada. O GitHub Actions roda independente do
+# backend estar acordado, é gratuito em repositório público e deixa o histórico de
+# execuções visível na aba Actions (que também vale como observabilidade).
+#
+# O job escreve direto no Supabase pela service_role (mesmo caminho do `npm run
+# ingest` local): baixa → parseia → normaliza → deduplica → valida → upsert
+# idempotente → reavalia alertas → aplica retenção.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   (obrigatórios)
+#   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM  (opcionais — sem eles
+#   os emails de alerta são apenas logados, e a ingestão segue normal)
+# Sem os secrets obrigatórios o job encerra com aviso, sem falhar o repositório.
+
+on:
+  schedule:
+    # Segunda-feira, 09:00 UTC = 06:00 em São Paulo (o Actions só aceita UTC).
+    - cron: "0 9 * * 1"
+  workflow_dispatch: # permite rodar sob demanda pelo botão "Run workflow"
+
+# Evita duas ingestões simultâneas (agendada + manual) mexendo na mesma tabela.
+concurrency:
+  group: anp-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Ingest ANP data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      # Retenção automática (Fase 9): mantém o banco no platô do free tier.
+      RETENTION_MONTHS: "12"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard — secrets configurados?
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY não configurados — ingestão pulada."
+            echo "skip=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Setup Node
+        if: env.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        if: env.skip != 'true'
+        run: npm ci
+
+      - name: Run ingest
+        if: env.skip != 'true'
+        run: npm run ingest

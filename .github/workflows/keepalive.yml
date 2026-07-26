@@ -1,0 +1,63 @@
+name: Keep-alive
+
+# Impede que o projeto do Supabase seja **pausado por inatividade** (~7 dias sem
+# uso no free tier) e, de quebra, acorda o backend antes de horários de pico de
+# visita ao portfólio.
+#
+# Por que não confiar só na ingestão semanal: ela roda a cada 7 dias — exatamente
+# no limite da janela de inatividade. Um atraso ou uma execução pulada (arquivo já
+# ingerido → 304) e o banco pode dormir. Este job toca o banco a cada 3 dias.
+#
+# **Inerte até ser configurado**: sem os secrets/variáveis abaixo cada passo é
+# pulado com um aviso, sem falhar.
+#   Secret  SUPABASE_URL, SUPABASE_ANON_KEY → mantém o Postgres acordado
+#   Variable BACKEND_URL (ex.: https://price-tracker-pro.onrender.com) → ping no /health
+
+on:
+  schedule:
+    - cron: "17 12 */3 * *" # a cada 3 dias (minuto quebrado evita o pico do :00)
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Supabase + backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Supabase (evita a pausa por inatividade)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::Secrets do Supabase ausentes — ping pulado."
+            exit 0
+          fi
+          # Consulta mínima (lista de UFs) só para registrar atividade no projeto.
+          # Só o header `apikey`: as chaves novas (sb_publishable_/sb_secret_) não são
+          # JWT e são rejeitadas se enviadas em `Authorization: Bearer`.
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "${SUPABASE_URL%/}/rest/v1/rpc/fuel_states" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            --max-time 30 -d '{}')
+          echo "Supabase respondeu HTTP $code"
+          # 2xx/4xx significam "projeto acordado e respondendo" — o que importa aqui.
+          # Só 000 (timeout/DNS) ou 5xx indicam problema real.
+          case "$code" in
+            5*|000) echo "::error::Supabase não respondeu (HTTP $code)"; exit 1 ;;
+          esac
+
+      - name: Backend /health
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+        run: |
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::warning::Variable BACKEND_URL não definida — ping pulado (defina após o deploy)."
+            exit 0
+          fi
+          # --max-time generoso: no free tier a 1ª requisição acorda o serviço (~30-60s).
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "${BACKEND_URL%/}/health")
+          echo "Backend respondeu HTTP $code"
+          [ "$code" = "200" ] || { echo "::error::/health não retornou 200 (HTTP $code)"; exit 1; }

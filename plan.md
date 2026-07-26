@@ -71,7 +71,11 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 
 - [x] Remover CSVs de dados do git e adicionar `backend/data/` ao `.gitignore` (mantido `.gitkeep`).
 - [x] Confirmar que nenhum `.env` real está versionado (só `.env.example`) — confirmado ok.
-- [ ] **Rotacionar a `SUPABASE_SERVICE_ROLE_KEY`** no painel do Supabase se ela já circulou fora do `.env` local (⚠️ ação manual do Bernardo antes de tornar o repo público).
+- [x] **Chaves rotacionadas** ✅ (26/jul/2026) — resolvido de forma definitiva: o projeto migrou para o
+  modelo novo de chaves do Supabase (`sb_publishable_` no front, `sb_secret_` no backend) e as **chaves
+  legadas JWT (`anon`/`service_role`) foram desativadas** no painel. A `service_role` antiga (válida até
+  2036, com bypass de RLS) deixou de existir na prática. Verificado após a desativação: login + favoritar
+  no app e `npm run db:stats` no backend, ambos ok.
 - [x] Padronizar `README.md` raiz com passos reais de setup (variáveis, `npm i`, `npm run dev`). Também completado o `backend/.env.example` (FRONTEND_URL + SMTP). _(READMEs de subpasta ficam para a Fase 8.)_
 - [x] Adicionar `LICENSE` (MIT).
 - [x] Criar `.nvmrc` + campo `engines` (`node >=20`) fixando a versão do Node.
@@ -453,17 +457,69 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 ### Fase 6.9 — Pendências operacionais pré-deploy (ações do Bernardo)
 **Meta:** fechar o que não é código antes de subir. Curta e objetiva.
 
-- [ ] **🔑 Rotacionar a `SUPABASE_SERVICE_ROLE_KEY`** no painel do Supabase (Settings → API →
-  "Reset" na service_role) e atualizar o `backend/.env` local. **⚠️ Pendente desde a Fase 0** —
-  obrigatório **antes de tornar o repo público** (a chave ignora RLS; se já circulou fora do `.env`,
-  considere-a comprometida). Se o repo já é público, fazer **imediatamente**.
-- [~] **Commit + push**: fixes 1–5 já commitados ✅; falta o commit da **Fase 9** (10 arquivos: retenção
-  + db:stats + docs). Antes: `rm -f .git/index.lock` (lock órfão do FUSE). Depois do push, **conferir o
-  CI verde** no GitHub (aba Actions) — dos dois commits.
+- [x] **🔑 Chaves do Supabase** ✅ (26/jul/2026) — feito melhor do que o previsto: em vez de resetar a
+  `service_role` legada, migramos para o **modelo novo de chaves** (publishable/secret) e **desativamos as
+  legadas** (Settings → API Keys → Legacy). Vantagens: a secret key não funciona no browser, dá para ter uma
+  por serviço (rotação isolada) e o projeto já sai do JWT compartilhado, que a Supabase descontinua no fim
+  de 2026. A desativação é reversível e não derruba sessões de usuário.
+  _Ajuste de código junto:_ o keep-alive passou a mandar a chave só no header `apikey` — as chaves novas
+  não são JWT e são rejeitadas em `Authorization: Bearer`.
+- [x] **Commit + push**: tudo commitado e pushado — o commit da Fase 9 (`343a570`) está em `origin/main`
+  e rodou como CI #55. _(Verificado nesta sessão: `main == origin/main`, working tree limpo.)_
 - [x] **Primeira impressão**: série padrão (Gasolina · São Paulo/SP) auto-carregada na abertura — feito (Fix 5).
 - [x] **Reexecutar `schema.sql`** no Supabase (funções `fuel_daily_series`/`fuel_latest_snapshot`) — feito e validado.
 
 **DoD:** chave rotacionada, CI verde no GitHub com o código atual, app abrindo com dados sem interação.
+
+---
+
+### Fase 6.95 — Auditoria pré-deploy e endurecimento ✅ CONCLUÍDA (26/jul/2026)
+**Meta:** varrer o projeto atrás de pontas soltas antes da Fase 7 e fechar tudo o que é código.
+
+**Auditoria (o que foi conferido, não presumido)**
+- [x] `git status` limpo, `main == origin/main`, Fase 9 pushada (CI #55).
+- [x] `lint` + `type-check` verdes nos dois lados; **143 testes** verdes (107 backend + 36 front) e `build` ok.
+- [x] **Nenhum segredo jamais entrou no git**: varredura de todo o histórico (`--all`) por `.env` e por
+  padrão de JWT → zero ocorrências. A rotação da service_role vira higiene preventiva, não incidente.
+- [x] Todas as 6 RPCs chamadas pelo código existem no `schema.sql`, com `revoke`/`grant` corretos.
+- [x] Zero `TODO`/`console.log`/`@ts-ignore`/menção obsoleta no código.
+
+**Correções aplicadas**
+- [x] **🔒 Posse da série no alerta (furo real)**: o backend usa a `service_role`, que **bypassa o RLS** —
+  então o RLS não era proteção efetiva nas rotas. `POST /api/fuel/alerts` aceitava um `series_id` de outro
+  usuário e devolvia os dados dele no join. Agora passa por `getOwnedTrackedSeries` (filtra por `id` **e**
+  `user_id`) e responde **404** quando não é do usuário — 404 e não 403 para não revelar se o id existe.
+  **+5 testes** (`test/trackedSeriesOwnership.test.ts`), incluindo o caso "falha fechado em erro de banco".
+- [x] **CORS multi-origem** (`lib/corsOrigins.ts`, puro e testado): `FRONTEND_URL` aceita lista separada por
+  vírgula (domínio + previews da Vercel + localhost) e **normaliza a barra final** — a causa clássica de
+  "funciona local, quebra no deploy", já que o header `Origin` nunca vem com barra. Origem desconhecida
+  responde sem os headers de CORS (o navegador bloqueia) em vez de lançar 500 a cada requisição. **+8 testes**.
+- [x] **Ingestão que não depende do backend acordado**: novo workflow `.github/workflows/ingest.yml` roda
+  `npm run ingest` toda segunda (09:00 UTC = 06:00 BRT), com `concurrency` e guard que pula com aviso se os
+  secrets não existirem. Motivo: no free tier o processo web hiberna e reinicia — o cron in-process podia
+  **nunca** disparar. O cron embutido continua disponível (`ANP_CRON`), agora com **timezone
+  `America/Sao_Paulo`** (host roda em UTC: "06:00" viraria 03:00) e aceitando `ANP_CRON=off` — o modo
+  recomendado em produção.
+- [x] **Keep-alive** (`.github/workflows/keepalive.yml`): a cada 3 dias toca o Supabase (evita a pausa por
+  ~7 dias de inatividade) e faz ping no `/health`. **Inerte até configurar** os secrets/`vars.BACKEND_URL`.
+  Fecha o último item aberto da Fase 9. _(A ingestão semanal sozinha não bastava: 7 dias é exatamente o
+  limite da janela, e uma execução pulada por 304 já arriscaria a pausa.)_
+- [x] **Cold start tratado no front**: `api/client.ts` ganhou timeout (45 s), **retry só em GET** (repetir
+  POST/DELETE duplicaria favorito/alerta) e um sinal de "requisição lenta" que a UI consome via
+  `useApiWaking` → faixa "Acordando o servidor…". **+5 testes** cobrindo os três comportamentos.
+- [x] **Dependabot sem majors**: `ignore` de `semver-major` + agrupamento de minor/patch num PR semanal.
+  Os 10 PRs abertos (TypeScript 7, React 19, ESLint 10…) eram ruído permanente num repo público — e
+  security updates continuam passando mesmo com o `ignore`.
+- [x] **Arquivos de deploy**: `render.yaml` (blueprint do backend, com `NODE_ENV=production`, `ANP_CRON=off`,
+  `RETENTION_MONTHS=12`, healthcheck e segredos como `sync: false`) e `frontend/vercel.json`.
+
+**Fica de fora de propósito**
+- `cheerio` órfão no `package.json` — remover exige regenerar o lockfile, que é a fonte da dor de CI da
+  Fase 5. Etapa dedicada, não no meio de um endurecimento.
+- Rotação da `SUPABASE_SERVICE_ROLE_KEY` e limpeza dos PRs antigos: ações manuais do Bernardo.
+
+**DoD:** ✅ lint/type-check/testes/build verdes, furo de autorização fechado com teste, deploy sem
+armadilhas conhecidas de CORS/agendamento/cold start.
 
 ---
 
@@ -476,9 +532,13 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
 > deploy, rodar `npm run ingest` contra o Supabase de produção **ou** subir com `ANP_INGEST_ON_BOOT=true` na 1ª vez.
 
 - [ ] **Banco**: Supabase (já é hospedado) — projeto de produção separado do de dev.
-- [ ] **Backend**: deploy no **Render** ou **Railway** (Express + cron). Configurar env vars (Supabase, SMTP, `FRONTEND_URL`).
-- [ ] **Frontend**: deploy no **Vercel** ou **Netlify**; setar `VITE_API_BASE_URL` e `VITE_SUPABASE_*`.
-- [ ] Ajustar **CORS** para aceitar o domínio do frontend em produção (hoje é origem única via env — validar).
+- [ ] **Backend**: deploy no **Render** (blueprint `render.yaml` pronto na Fase 6.95 — só preencher os
+  segredos marcados `sync: false` no painel).
+- [ ] **Frontend**: deploy no **Vercel** (`frontend/vercel.json` pronto); setar `VITE_API_BASE_URL` e `VITE_SUPABASE_*`.
+- [x] **CORS** pronto para produção: aceita lista de origens e normaliza barra final (Fase 6.95).
+  _Falta só preencher `FRONTEND_URL` com o domínio real._
+- [ ] **Secrets do GitHub Actions** (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, opcionalmente SMTP) para o
+  workflow semanal de ingestão, e a variable `BACKEND_URL` para o keep-alive.
 - [ ] Configurar **SMTP real** para os emails de alerta (ex: Resend/Brevo/Gmail app password) e testar ponta a ponta.
 - [ ] ~~Criar usuário de demo com credenciais no README~~ → **substituído pelo modo público**: a consulta
   já funciona **sem login** (Fix 3), então o recrutador não precisa de credenciais compartilhadas — que
@@ -534,8 +594,9 @@ scraping/realismo/domínio da rubrica sobem de ~3–4 para ~7–8.
   `RETENTION_MONTHS` (ex.: 9) — improvável com o padrão 12 (platô ~56%).
   _Alternativa futura se quiser histórico longo:_ agregar meses antigos numa tabela mensal compacta
   (`fuel_prices_monthly`: média/mín/máx por município+produto+mês) antes de apagar o detalhe.
-- [ ] **Keep-alive** (Supabase pausa após ~7 dias sem uso; backend free "dorme"): GitHub Action agendada
-  fazendo query mínima + ping no `/health` — detalhes no **Anexo (Seção 8)**. _Depende do deploy (Fase 7)._
+- [x] **Keep-alive** (Supabase pausa após ~7 dias sem uso; backend free "dorme"): implementado na Fase 6.95
+  (`.github/workflows/keepalive.yml`) — a cada 3 dias faz uma query mínima no Supabase + ping no `/health`.
+  Fica **inerte até** os secrets e a variable `BACKEND_URL` serem preenchidos no deploy (Fase 7).
 - [x] **⚠️ Ação manual**: schema.sql reexecutado no Supabase ✅ e baseline medido ✅.
 
 **📊 Baseline medido (25/jul/2026):** `npm run db:stats` → **209,9 MB / 500 MB (42%)** com 614.987

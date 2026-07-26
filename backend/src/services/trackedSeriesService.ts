@@ -104,6 +104,35 @@ export async function listTrackedSeries(userId?: string | null): Promise<Tracked
   return (data ?? []).map(mapRow);
 }
 
+/**
+ * Busca um favorito **do usuário** pelo id; devolve `null` se não existir ou se
+ * pertencer a outra pessoa.
+ *
+ * Por que existe: o backend usa a chave `service_role`, que **bypassa o RLS** —
+ * então as políticas do banco não são a proteção efetiva nas rotas, e sim o filtro
+ * explícito por `user_id`. Toda rota que recebe um `series_id` do cliente precisa
+ * passar por aqui antes de usá-lo (ex.: criação de alerta).
+ */
+export async function getOwnedTrackedSeries(
+  id: string,
+  userId?: string | null
+): Promise<TrackedSeries | null> {
+  if (!supabase || !userId) return null;
+
+  const { data, error } = await supabase
+    .from("tracked_series")
+    .select("id, product, state, municipality, brand, label, created_at")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    logger.error({ err: error.message }, "[trackedSeries] Erro ao verificar posse do favorito");
+    return null;
+  }
+  return data ? mapRow(data) : null;
+}
+
 export async function deleteTrackedSeries(id: string, userId?: string | null): Promise<void> {
   if (!supabase || !userId) return;
   const { error } = await supabase

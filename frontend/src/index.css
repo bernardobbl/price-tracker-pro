@@ -149,6 +149,46 @@ body {
   color: var(--muted);
 }
 
+/* Aviso de cold start: o backend no free tier hiberna e a 1ª requisição leva
+   ~30-60s. Faixa discreta (não bloqueia a UI) que aparece só durante a espera. */
+.waking-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.8rem;
+  color: var(--warn-deep);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+}
+
+.waking-spinner {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--warn);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: waking-spin 0.9s linear infinite;
+}
+
+@keyframes waking-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respeita quem pediu menos animação no sistema. */
+@media (prefers-reduced-motion: reduce) {
+  .waking-spinner {
+    animation: none;
+    border-top-color: var(--warn);
+    opacity: 0.5;
+  }
+}
+
 .auth-row--logged {
   display: flex;
   align-items: center;

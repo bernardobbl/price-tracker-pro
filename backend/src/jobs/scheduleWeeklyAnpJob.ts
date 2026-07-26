@@ -21,7 +21,16 @@ import { logger } from "../lib/logger";
  */
 
 // Padrão: segunda 06:00 (após o levantamento semanal). Sobrescreva via env ANP_CRON.
+// `ANP_CRON=off` desliga o agendamento embutido — é o modo recomendado em produção,
+// onde quem dispara a ingestão é o GitHub Actions (`.github/workflows/ingest.yml`).
+// Motivo: no free tier o processo web hiberna e reinicia, então um cron in-process
+// pode simplesmente nunca chegar na hora marcada. O Actions roda independente disso.
 const WEEKLY_CRON = process.env.ANP_CRON || "0 6 * * 1";
+
+// Fuso do agendamento. Hosts de deploy rodam em UTC, então "0 6 * * 1" dispararia
+// 03:00 no Brasil. Fixamos o fuso brasileiro (a ANP publica em horário local) e
+// deixamos configurável por env.
+const CRON_TIMEZONE = process.env.ANP_CRON_TZ || "America/Sao_Paulo";
 
 async function runIngest(trigger: string): Promise<void> {
   logger.info({ trigger }, "[CRON][ANP] Iniciando ingestão da ANP");
@@ -50,16 +59,18 @@ async function runIngest(trigger: string): Promise<void> {
 }
 
 export function scheduleWeeklyAnpJob(): void {
-  if (!cron.validate(WEEKLY_CRON)) {
+  const disabled = WEEKLY_CRON.trim().toLowerCase();
+  if (disabled === "off" || disabled === "false" || disabled === "0") {
+    logger.info("[CRON][ANP] ANP_CRON desligado — ingestão a cargo do GitHub Actions");
+  } else if (!cron.validate(WEEKLY_CRON)) {
     logger.error({ cron: WEEKLY_CRON }, "[CRON][ANP] Expressão cron inválida — job não agendado");
-    return;
+  } else {
+    cron.schedule(WEEKLY_CRON, () => void runIngest("cron"), { timezone: CRON_TIMEZONE });
+    logger.info(
+      { cron: WEEKLY_CRON, timezone: CRON_TIMEZONE },
+      "[CRON][ANP] Job semanal de ingestão agendado"
+    );
   }
-
-  cron.schedule(WEEKLY_CRON, () => {
-    void runIngest("cron");
-  });
-
-  logger.info({ cron: WEEKLY_CRON }, "[CRON][ANP] Job semanal de ingestão agendado");
 
   // Ingestão imediata no boot (útil no 1º deploy / demo). Desligado por padrão.
   if (process.env.ANP_INGEST_ON_BOOT === "true") {

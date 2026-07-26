@@ -1,0 +1,65 @@
+# Blueprint do Render para o backend (Fase 7 — deploy público).
+#
+# Como usar: Render → New → Blueprint → aponte para este repositório. O Render lê
+# este arquivo e cria o serviço já configurado; só as variáveis marcadas com
+# `sync: false` precisam ser preenchidas à mão no painel (são segredos, e por isso
+# não moram no git).
+#
+# Notas do free tier:
+#   - o serviço hiberna após ~15 min sem tráfego; a 1ª requisição leva ~30-60s
+#     (o frontend avisa o visitante — ver `useApiWaking`);
+#   - por isso a ingestão semanal NÃO depende deste processo: quem dispara é o
+#     GitHub Actions (`.github/workflows/ingest.yml`), com ANP_CRON=off aqui.
+
+services:
+  - type: web
+    name: price-tracker-pro-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      - key: NODE_ENV
+        value: production # liga o fail-closed do requireAuth
+
+      - key: NODE_VERSION
+        value: "20"
+
+      # Origens liberadas no CORS. Aceita lista separada por vírgula
+      # (produção + previews da Vercel). Preencher após o deploy do frontend.
+      - key: FRONTEND_URL
+        sync: false
+
+      # Cron embutido desligado: a ingestão semanal roda no GitHub Actions, que
+      # não depende deste processo estar acordado.
+      - key: ANP_CRON
+        value: "off"
+
+      # Retenção automática (Fase 9): mantém o banco no platô do free tier.
+      - key: RETENTION_MONTHS
+        value: "12"
+
+      # ── Segredos (preencher no painel do Render) ──────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # SMTP dos alertas — opcional: sem isso o email é apenas logado.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

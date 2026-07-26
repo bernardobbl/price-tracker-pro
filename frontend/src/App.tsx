@@ -10,6 +10,7 @@ import { useFuelSeries } from "./hooks/useFuelSeries";
 import { useFavorites } from "./hooks/useFavorites";
 import { useAlerts } from "./hooks/useAlerts";
 import { useToasts } from "./hooks/useToasts";
+import { useApiWaking } from "./hooks/useApiWaking";
 import { sameSeries } from "./lib/format";
 import { supabase } from "./supabaseClient";
 import type { TrackedSeries } from "./types";
@@ -27,6 +28,7 @@ function App() {
   const favorites = useFavorites(canManage);
   const { alerts, reload: reloadAlerts, remove: removeAlert } = useAlerts(canManage);
   const { toasts, push, remove: removeToast } = useToasts();
+  const apiWaking = useApiWaking();
 
   const [alertThreshold, setAlertThreshold] = useState("");
   const [alertSaving, setAlertSaving] = useState(false);
@@ -175,6 +177,15 @@ function App() {
           )
         )}
       </header>
+
+      {/* Cold start: no free tier o backend hiberna e a 1ª requisição leva ~30-60s
+          para acordá-lo. Explicar isso evita que a espera pareça um app quebrado. */}
+      {apiWaking && (
+        <div className="waking-banner" role="status" aria-live="polite">
+          <span className="waking-spinner" aria-hidden="true" />
+          Acordando o servidor… a primeira consulta pode levar até um minuto (hospedagem gratuita).
+        </div>
+      )}
 
       <main className="dashboard">
         <Sidebar
