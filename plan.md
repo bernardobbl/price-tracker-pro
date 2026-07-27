@@ -539,32 +539,62 @@ armadilhas conhecidas de CORS/agendamento/cold start.
 
 ---
 
-### Fase 7 — Deploy público (o marco final)
-**Meta:** link clicável funcionando, com dados de demo.
+### Fase 7 — Deploy público (o marco final) ✅ QUASE CONCLUÍDA (falta só o SMTP · 7.6)
+**Meta:** link clicável funcionando, com dados reais.
+
+> _Nota:_ a carga inicial de dados **não foi necessária no deploy** — como reusamos o Supabase de
+> desenvolvimento, os 615k registros já estavam lá. O `ANP_INGEST_ON_BOOT` continua existindo para quem
+> subir o projeto do zero.
 
 > ✅ **Pré-requisito da ingestão já resolvido (sessão de revisão):** a URL/estrutura real da ANP foi descoberta e
 > o ingestor ajustado — arquivos **mensais** em `.../shpc/dsan/ANO/precos-{gasolina-etanol,diesel-gnv}-MM.csv`,
 > configuráveis por `ANP_YEAR`/`ANP_MONTHS`. Carga inicial validada localmente (~75k linhas/mês, 27 UFs). No
 > deploy, rodar `npm run ingest` contra o Supabase de produção **ou** subir com `ANP_INGEST_ON_BOOT=true` na 1ª vez.
 
-- [ ] **Banco**: Supabase (já é hospedado) — projeto de produção separado do de dev.
-- [ ] **Backend**: deploy no **Render** (blueprint `render.yaml` pronto na Fase 6.95 — só preencher os
-  segredos marcados `sync: false` no painel).
-- [ ] **Frontend**: deploy no **Vercel** (`frontend/vercel.json` pronto); setar `VITE_API_BASE_URL` e `VITE_SUPABASE_*`.
-- [x] **CORS** pronto para produção: aceita lista de origens e normaliza barra final (Fase 6.95).
-  _Falta só preencher `FRONTEND_URL` com o domínio real._
-- [ ] **Secrets do GitHub Actions** (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, opcionalmente SMTP) para o
-  workflow semanal de ingestão, e a variable `BACKEND_URL` para o keep-alive.
-- [ ] Configurar **SMTP real** para os emails de alerta (ex: Resend/Brevo/Gmail app password) e testar ponta a ponta.
-- [ ] ~~Criar usuário de demo com credenciais no README~~ → **substituído pelo modo público**: a consulta
-  já funciona **sem login** (Fix 3), então o recrutador não precisa de credenciais compartilhadas — que
-  eram um risco real (qualquer um poderia trocar a senha da conta demo e trancar os próximos visitantes).
-  Quem quiser testar favoritos/alertas cria a própria conta. _(Na Fase 7, avaliar desativar a confirmação
-  de email no Supabase Auth para o signup da demo ser sem fricção.)_
-- [ ] Adicionar **healthcheck** e **uptime** (o `/health` já existe — usar num monitor grátis tipo UptimeRobot).
-- [ ] `Dockerfile` para o backend (opcional, mas fica bom no portfólio) + `docker-compose` para rodar local.
+## 🌐 NO AR (26/jul/2026)
+> **App:** https://precos-combustivel-br.vercel.app
+> **API:** https://price-tracker-pro-api.onrender.com
+> Custo mensal: **R$ 0** (Vercel Hobby + Render Free + Supabase Free).
 
-**DoD:** URL pública abre, login demo funciona, criar alerta dispara email real, gráfico mostra histórico seedado.
+- [x] **7.1 · Banco**: **decisão de reusar o projeto Supabase atual** em vez de criar um separado para produção.
+  Trade-off aceito conscientemente: economiza trabalho e mantém os 615k registros já ingeridos, mas dev e
+  produção passam a compartilhar banco e usuários — um `schema.sql` rodado errado localmente afeta o site no ar.
+  Configurado o Auth para produção: **Site URL** = domínio da Vercel, **Redirect URLs** = domínio + `localhost:5173`
+  (ambos com curinga `/**`). **Confirmação de email MANTIDA ligada** — revertendo a ideia original de desligá-la:
+  como a consulta é pública, ninguém precisa de conta para explorar, então desligar só abriria a porta para
+  alguém se cadastrar com o email de outra pessoa e disparar alertas para ela. Ganho pequeno, risco desnecessário.
+- [x] **7.2 · Backend no Render** via blueprint (Free, 512 MB, Oregon). **O 1º deploy falhou** e o motivo virou
+  aprendizado: o `render.yaml` define `NODE_ENV=production` (necessário em runtime para o fail-closed do
+  `requireAuth`), mas essa variável vale **também no build** — e o npm, ao vê-la, omite as devDependencies.
+  Como o TypeScript é uma delas, o build morria com `tsc: not found` (119 pacotes instalados em vez de 353).
+  Corrigido com `npm ci --include=dev && npm run build`, reproduzindo o ambiente do Render antes de aplicar.
+- [x] **7.3 · Frontend na Vercel** (Hobby, projeto `precos-combustivel-br`). Detalhe não óbvio: a Vercel detectou
+  o repositório como **multi-serviço** e queria publicar o backend Express junto. Resolvido apontando o
+  **Root Directory para `frontend`** — aí ela trata como app Vite comum e lê o `frontend/vercel.json`.
+- [x] **7.4 · CORS**: `FRONTEND_URL` preenchida no Render antes mesmo do deploy do front (o nome do projeto já
+  estava decidido), então o circuito fechou de primeira. Validado ponta a ponta: `/health` → `{"status":"ok"}`,
+  `/api/fuel/locations` → 27 UFs (prova que o Render fala com o Supabase pela `sb_secret_`), e a série de
+  Gasolina/SP com 128 pontos (out/2025→jun/2026).
+- [ ] **7.5 · Secrets do GitHub Actions** (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`) e a
+  variable `BACKEND_URL` — sem eles os workflows de ingestão e keep-alive ficam inertes (avisam e passam).
+- [ ] **7.6 · SMTP**: ⚠️ **descoberta que muda o plano** — o **Render Free bloqueia saída nas portas 25, 465 e 587**,
+  exatamente as de SMTP. O Gmail na 587 **não funciona** a partir do backend hospedado. Decisão: migrar para um
+  provedor transacional que ofereça a **porta 2525** (Brevo/Mailgun), que não é bloqueada — só variáveis de
+  ambiente, zero código. _Atenuante:_ a avaliação semanal de alertas roda no **GitHub Actions**, onde não há
+  bloqueio, então o alerta periódico funcionaria mesmo sem isso; o que quebra é só o email imediato ao criar.
+- [x] ~~Criar usuário de demo com credenciais no README~~ → **modo público**: a consulta funciona sem login.
+- [ ] Adicionar **uptime** externo (o `/health` já existe; o keep-alive do Actions já cobre parte disso).
+- [ ] ~~`Dockerfile` para o backend~~ → **não fazer**: o deploy roda com runtime nativo do Render, sem container.
+  Docker aqui seria enfeite de portfólio sem uso real (ver Anexo Seção 9 sobre por que foi usado uma vez).
+
+**Domínio próprio (adiado conscientemente):** avaliado `.com.br` no registro.br (**R$ 40/ano**, preço conferido
+no site oficial) e alternativas grátis (`is-a.dev`, `eu.org`, GitHub Student Pack). Decisão: **ficar no
+`.vercel.app` por enquanto** — para leitor técnico o sufixo não desqualifica nada, e sufixo grátis desconhecido
+(`.is-a.dev`) tende a gerar *mais* estranheza com cliente leigo do que um conhecido. A troca depois é rápida:
+3 configurações (Vercel, Supabase Auth, `FRONTEND_URL` no Render). Os dois planos grátis suportam domínio próprio,
+inclusive para a API (`api.dominio.com.br` → Render).
+
+**DoD:** ✅ URL pública abre com dados reais sem interação; ⏳ falta o alerta por email ponta a ponta (7.6).
 
 ---
 
@@ -661,11 +691,18 @@ Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não prec
   **descoberta de URLs pela listagem** (sobreviveu ao naming novo/typo/sem-extensão de 2026), agregação
   em **SQL** (fim do cap de 1000 linhas), **explorar sem login**, fim da demo compartilhada, série padrão
   na abertura. Banco: **614.987 linhas · out/2025→jun/2026 contínuo**.
-- [ ] **Fase 6.9 — Pendências operacionais** (Bernardo): rotacionar `SUPABASE_SERVICE_ROLE_KEY` (⚠️
-  pendente desde a Fase 0) + commit/push com CI verde.
-- [ ] Fase 7 — Deploy público + email real + demo
-- [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags
-  (dependem do deploy)
+- [x] **Fase 6.9 — Pendências operacionais** ✅: chaves do Supabase **migradas para o modelo novo**
+  (`sb_publishable_`/`sb_secret_`) e as **legadas JWT desativadas** — resolve de forma definitiva o item
+  aberto desde a Fase 0. Commit/push com CI verde.
+- [x] **Fase 6.95 — Auditoria pré-deploy** ✅: posse da série no alerta (furo real de autorização), CORS
+  multi-origem, ingestão semanal migrada para GitHub Actions, keep-alive, cold start tratado no front,
+  dependabot sob política, `render.yaml`/`vercel.json`. **143 testes.**
+- [x] **Baseline Node 22** ✅: o `@supabase/supabase-js` passou a exigir `>=22`; alinhados `.nvmrc`,
+  `engines`, os dois workflows e o `render.yaml`.
+- [~] **Fase 7 — Deploy público** ✅ **NO AR** (app na Vercel + API no Render + Supabase, R$ 0/mês);
+  falta só o **SMTP na porta 2525** (7.6 — o Render Free bloqueia 25/465/587) e os **secrets do Actions** (7.5).
+- [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags.
+  _(O bloqueio do deploy caiu: o link da demo já existe.)_
 - [x] Fase 9 — Operação contínua no free tier ✅ (**antecipada**): retenção automática ligada por padrão
   (`RETENTION_MONTHS=12`, calibrado por medição real: platô ~280 MB ≈ 56%, SQL + serviço + testes)
   e `npm run db:stats` para monitorar os 500 MB.
@@ -696,6 +733,12 @@ do projeto. Deploy + README (Fases 7–8) destravam a dimensão de apresentaçã
 > real da ANP validada ponta a ponta** (~75k linhas/mês, 27 UFs, 0 rejeitadas), então **Realismo** e **ETL**
 > atingiram (e sustentam) o alvo pós-6.8. **Apresentação** subiu com o **README de portfólio + diagrama Mermaid**;
 > falta só o que depende do **deploy** (link da demo, screenshots/GIF, post) para fechar a dimensão em ~9.
+
+> **📈 Atualização (26/jul/2026 — pós-deploy):** **Apresentação ~8.5** — o link público existe e abre com dados
+> reais; falta só screenshots/GIF e o post para chegar em 9. Duas dimensões subiram sem estarem no plano
+> original: **Segurança** (chaves legadas desativadas, autorização por posse validada em código e não só por
+> RLS) e **Operação** (agendamento que sobrevive ao free tier, keep-alive, cold start tratado na UI). O que
+> ainda não pode ser demonstrado ao vivo é o **alerta por email** — travado no item 7.6.
 
 ---
 

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
-![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3ECF8E?logo=supabase&logoColor=white)
 
 **Track real Brazilian fuel prices by city, decide whether it's a good time to fill up, and get an email when the price drops below your target — built on the [ANP open dataset](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis).**
@@ -18,9 +18,16 @@ The core of the product — price history, trend, a 0–100 *buy signal*, statio
 
 ## 🔗 Demo
 
-> **Deploy in progress** (see [Roadmap](#-roadmap)). Once live, **no login is needed to explore** —
-> price lookup (fuel → state → city → chart, buy signal, station ranking) is public, like
-> CamelCamelCamel/Keepa. Creating a free account is only required for favorites and email alerts.
+### ▶️ **[precos-combustivel-br.vercel.app](https://precos-combustivel-br.vercel.app)**
+
+**No login needed to explore.** Price lookup — fuel → state → city → chart, buy signal, cheapest-station
+ranking — is public, like CamelCamelCamel/Keepa. An account is only required for favorites and email alerts.
+
+> ⏳ **First load may take up to a minute.** The API runs on a free tier that sleeps after 15 minutes of
+> inactivity; the app shows a "waking up the server" notice while it spins back up. Every later request is fast.
+
+Live stack: frontend on Vercel, API on Render, Postgres + Auth on Supabase — **$0/month**, by design
+(see [Built to run free, forever](#-technical-decisions--trade-offs)).
 
 <!-- Screenshots / GIF go here after deploy:
 ![Dashboard](docs/screenshot-dashboard.png)
@@ -42,10 +49,11 @@ The core of the product — price history, trend, a 0–100 *buy signal*, statio
 flowchart LR
   ANP["ANP open data<br/>(monthly CSVs, weekly survey)"]
 
+  GHA["GitHub Actions<br/>weekly schedule"]
+
   subgraph Backend["Backend · Node + Express + TypeScript"]
     ETL["ETL pipeline<br/>parse → normalize → dedup → validate → upsert"]
     API["REST API<br/>/api/fuel/*"]
-    CRON["node-cron<br/>weekly ingest + alert eval"]
     MAIL["Nodemailer<br/>price alerts"]
   end
 
@@ -54,8 +62,8 @@ flowchart LR
   USER((User))
 
   ANP -->|"conditional GET"| ETL
-  CRON --> ETL
-  CRON --> MAIL
+  GHA -->|"npm run ingest"| ETL
+  ETL -->|"alert eval"| MAIL
   ETL --> DB
   API --> DB
   FE -->|HTTPS| API
@@ -68,7 +76,7 @@ flowchart LR
 
 ## ⚙️ How it works
 
-1. A **weekly job** (or the `npm run ingest` CLI) downloads the ANP monthly CSVs (`gasolina-etanol`, `diesel-gnv`) with **conditional GET** (ETag / `If-Modified-Since`) and timeout/retry. Target months are **derived from the run date** (current month + 2 previous, year rollover handled), and the actual file URLs are **discovered from the year folder's listing page** rather than guessed from a template — ANP changed its file naming in 2026 (month prefix, one typo'd filename, one file without extension), so pattern-guessing is unreliable. A month missing from the listing simply isn't published yet and is skipped.
+1. A **weekly GitHub Actions job** (the same `npm run ingest` CLI you can run locally) downloads the ANP monthly CSVs (`gasolina-etanol`, `diesel-gnv`) with **conditional GET** (ETag / `If-Modified-Since`) and timeout/retry. Target months are **derived from the run date** (current month + 2 previous, year rollover handled), and the actual file URLs are **discovered from the year folder's listing page** rather than guessed from a template — ANP changed its file naming in 2026 (month prefix, one typo'd filename, one file without extension), so pattern-guessing is unreliable. A month missing from the listing simply isn't published yet and is skipped.
 2. The **ETL** parses (header-driven, tolerant to accents/reordering), **normalizes** (canonical product names, digits-only CNPJ, plausible-price range), **deduplicates** by natural key `(cnpj, product, collected_at)`, passes a final **Zod** gate, and does an **idempotent upsert** into Supabase. Every run is recorded in `ingestion_runs` (rows read/inserted/rejected, hash, duration, status) for observability.
 3. Anyone picks **fuel → UF → city** (public, no login), and the API returns the **daily series** (avg/min/max) **aggregated in Postgres** (SQL functions — immune to PostgREST's 1000-row response cap as history grows) plus the **latest-survey snapshot** with the station ranking.
 4. Favorites + alerts require a free account (Supabase Auth) and are per-user (Row Level Security); the weekly job re-evaluates alerts after each ingestion and sends email via Nodemailer.
@@ -81,17 +89,17 @@ flowchart LR
 |---|---|
 | Frontend | React + Vite + TypeScript + Chart.js |
 | Backend | Node.js + Express + TypeScript (strict) |
-| ETL | Pure, testable functions (parse/normalize/dedup/validate) + `node-cron` |
+| ETL | Pure, testable functions (parse/normalize/dedup/validate), scheduled by GitHub Actions |
 | Database / Auth | Supabase (PostgreSQL + Row Level Security) |
 | Validation | Zod (request schemas + ETL row gate) |
 | Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**~125 tests**) |
+| Tests | Vitest + Testing Library + supertest (**143 tests**) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
 
-**Prerequisites:** Node 20+ (`nvm use`), a [Supabase](https://supabase.com) project (URL + anon key + service_role key), optional SMTP for alert emails.
+**Prerequisites:** Node 22+ (`nvm use`), a [Supabase](https://supabase.com) project (URL + publishable key + secret key), optional SMTP for alert emails.
 
 ### 1. Database
 
@@ -146,8 +154,9 @@ npm test        # in backend/ and frontend/
 
 ## 🗺️ Roadmap
 
-- **Public deploy** (Vercel frontend + Render/Railway backend + Supabase) with a live demo login and real SMTP.
+- **Email alerts in production**: the free tier of the API host blocks outbound SMTP ports (25/465/587), so alerts are moving to a transactional provider on port 2525. The weekly evaluation already runs in GitHub Actions, where SMTP is unrestricted.
 - **Screenshots + demo GIF** of the buy-signal flow.
+- **Custom domain** (the app currently lives on a `vercel.app` subdomain).
 - National (all-Brazil) aggregated series, reusing the same SQL-side aggregation approach.
 - More historical months for richer trends; optional GLP (13 kg) support.
 
