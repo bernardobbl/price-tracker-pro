@@ -49,6 +49,11 @@ jobs:
       EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
       # Retenção automática (Fase 9): mantém o banco no platô do free tier.
       RETENTION_MONTHS: "12"
+      # Contorna o "happy eyeballs" do Node: desde a v20 ele tenta IPv6 e IPv4 em
+      # paralelo com apenas 250 ms por família, então um IPv6 sem rota no runner
+      # vira ETIMEDOUT quase instantâneo — mesmo com timeout de 30 s configurado
+      # no axios. Priorizamos IPv4 e damos folga ao teste de família.
+      NODE_OPTIONS: "--dns-result-order=ipv4first --network-family-autoselection-attempt-timeout=5000"
 
     steps:
       - name: Checkout
@@ -72,6 +77,20 @@ jobs:
       - name: Install dependencies
         if: env.skip != 'true'
         run: npm ci
+
+      # Diagnóstico: separa "IPv6 quebrado no runner" de "gov.br bloqueia o GitHub".
+      # Nunca falha o job (`|| true`) — é só evidência nos logs.
+      - name: Diagnóstico de rede (gov.br)
+        if: env.skip != 'true'
+        continue-on-error: true
+        run: |
+          URL="https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/shpc/dsan/2026"
+          echo "--- forçando IPv4 ---"
+          curl -4 -sS -o /dev/null -m 30 -w "http=%{http_code} tempo=%{time_total}s ip=%{remote_ip}\n" "$URL" || echo "IPv4 falhou: $?"
+          echo "--- forçando IPv6 ---"
+          curl -6 -sS -o /dev/null -m 15 -w "http=%{http_code} tempo=%{time_total}s ip=%{remote_ip}\n" "$URL" || echo "IPv6 falhou: $?"
+          echo "--- padrão (como o Node faria) ---"
+          curl -sS -o /dev/null -m 30 -w "http=%{http_code} tempo=%{time_total}s ip=%{remote_ip}\n" "$URL" || echo "padrão falhou: $?"
 
       - name: Run ingest
         if: env.skip != 'true'
