@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
+import { traduzirErroAuth } from "../lib/authErrors";
 
 export type AuthMode = "login" | "signup";
 
@@ -64,11 +65,10 @@ export function useAuth() {
           }
         }
       } catch (err: unknown) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : (err as { message?: string })?.message ?? "Erro de autenticação";
-        setError(msg);
+        // A mensagem crua do provedor fica no console (útil para depurar); a tela
+        // recebe uma versão em português que não culpa o usuário por erro nosso.
+        console.error("[auth] erro do provedor:", err);
+        setError(traduzirErroAuth(err));
       } finally {
         setSubmitting(false);
       }

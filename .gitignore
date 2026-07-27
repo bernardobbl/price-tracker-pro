@@ -28,3 +28,5 @@ npm-debug.log*
 
 # Config local do assistente (settings específicos da máquina)
 .claude/
+.vercel
+.env*
