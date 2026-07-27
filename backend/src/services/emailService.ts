@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { logger } from "../lib/logger";
+import { montarConteudoAlerta, type SeriesRef } from "../lib/alertEmailContent";
 
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
@@ -34,37 +35,34 @@ function getTransporter() {
 
 export interface PriceAlertEmailParams {
   to: string;
-  productId: string;
-  productName: string;
+  /** Série do alerta (produto + local) — usada no texto e no link de volta. */
+  series: SeriesRef;
   thresholdPrice: number;
   currentPrice: number;
-  currency: string;
-  url: string;
+  currency?: string;
+  /** Data do levantamento que originou o alerta (opcional, dá contexto). */
+  collectedAt?: string | null;
 }
 
 export async function sendPriceAlertEmail(params: PriceAlertEmailParams) {
   const tx = getTransporter();
   if (!tx) return;
 
-  const { to, productId, productName, thresholdPrice, currentPrice, currency, url } = params;
-
-  const subject = `Alerta de preço - ${productName} (${productId})`;
-
-  const text = [
-    `O preço do produto "${productName}" atingiu o valor desejado.`,
-    "",
-    `Produto: ${productName} (${productId})`,
-    `Preço atual: ${currency} ${currentPrice.toFixed(2)}`,
-    `Alvo do alerta: ${currency} ${thresholdPrice.toFixed(2)}`,
-    "",
-    `Veja mais detalhes no link: ${url}`,
-    "",
-    "Se você não deseja mais receber este alerta, desative-o na sua conta."
-  ].join("\n");
+  // Assunto e corpo vivem numa função pura (testável sem enviar email).
+  // O link aponta para o próprio app, na série do alerta — antes apontava para a
+  // página da ANP, o que era inútil para quem só quer ver o próprio gráfico.
+  const { subject, text } = montarConteudoAlerta({
+    series: params.series,
+    thresholdPrice: params.thresholdPrice,
+    currentPrice: params.currentPrice,
+    currency: params.currency,
+    collectedAt: params.collectedAt,
+    appUrl: process.env.FRONTEND_URL,
+  });
 
   await tx.sendMail({
     from: EMAIL_FROM,
-    to,
+    to: params.to,
     subject,
     text
   });

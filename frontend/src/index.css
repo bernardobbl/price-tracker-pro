@@ -149,6 +149,19 @@ body {
   color: var(--muted);
 }
 
+/* Aviso do alerta: alvo já batido pelo preço atual. É orientação, não erro —
+   por isso tom âmbar (atenção) e não vermelho (falha). */
+.alert-hint {
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--warn-deep);
+  background: var(--warn-soft);
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+}
+
 /* Aviso de cold start: o backend no free tier hiberna e a 1ª requisição leva
    ~30-60s. Faixa discreta (não bloqueia a UI) que aparece só durante a espera. */
 .waking-banner {

@@ -101,10 +101,12 @@ async function currentSeriesAvg(series: SeriesInfo): Promise<number | null> {
 async function notifyAndMark(params: {
   alertId: string;
   userId: string;
-  seriesLabel: string;
+  /** Série completa: o email usa o rótulo no texto e produto/UF/município no link. */
+  series: SeriesInfo;
   thresholdPrice: number;
   currentPrice: number;
   currency: string;
+  collectedAt?: string | null;
 }): Promise<boolean> {
   if (!supabase) return false;
 
@@ -117,12 +119,11 @@ async function notifyAndMark(params: {
   try {
     await sendPriceAlertEmail({
       to: email,
-      productId: params.seriesLabel,
-      productName: params.seriesLabel,
+      series: params.series,
       thresholdPrice: params.thresholdPrice,
       currentPrice: params.currentPrice,
       currency: params.currency,
-      url: "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis",
+      collectedAt: params.collectedAt,
     });
 
     const { error } = await supabase
@@ -156,7 +157,7 @@ export async function evaluateFuelAlertImmediately(params: {
   return notifyAndMark({
     alertId: params.alertId,
     userId: params.userId,
-    seriesLabel: params.series.label,
+    series: params.series,
     thresholdPrice: params.thresholdPrice,
     currentPrice: avg,
     currency: params.currency,
@@ -214,7 +215,7 @@ export async function evaluateAllFuelAlerts(): Promise<{ evaluated: number; noti
       const ok = await notifyAndMark({
         alertId: alert.id,
         userId: alert.user_id,
-        seriesLabel: series.label,
+        series,
         thresholdPrice: threshold,
         currentPrice: avg,
         currency: alert.currency ?? "R$",

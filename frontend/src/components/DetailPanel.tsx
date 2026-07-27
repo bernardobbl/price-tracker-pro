@@ -8,6 +8,7 @@ import { seriesToHistory, ANP_SOURCE_URL } from "../lib/seriesToHistory";
 import { titleCase } from "../lib/seriesLabel";
 import { fmt, formatLocation, mapsUrl } from "../lib/format";
 import { useCountUp } from "../hooks/useCountUp";
+import { avaliarAlvo } from "../lib/alertThreshold";
 
 interface DetailPanelProps {
   view: SeriesView | null;
@@ -62,6 +63,11 @@ export function DetailPanel({
   const latestAvg = history.length ? history[history.length - 1].discountedPrice : 0;
   const animatedPrice = useCountUp(latestAvg);
   const collectedDate = snapshot?.date ?? (series.length ? series[series.length - 1].date : null);
+
+  // Preço de referência do alerta: é a MESMA média que o backend compara
+  // (snapshot do levantamento mais recente), para o aviso na tela não divergir
+  // do que vai realmente acontecer no servidor.
+  const avaliacaoAlvo = avaliarAlvo(alertThreshold, snapshot?.avgPrice ?? null);
 
   if (!view) {
     return (
@@ -295,6 +301,15 @@ export function DetailPanel({
                     </button>
                   </div>
                 </div>
+                {/* Alvo já batido: avisa ANTES de criar o alerta que o email sairia
+                    na hora. Não bloqueia — pode ser intencional — mas evita a
+                    sensação de alarme falso que o primeiro teste real expôs. */}
+                {avaliacaoAlvo.tipo === "ja-atingido" && (
+                  <p className="alert-hint" role="status">{avaliacaoAlvo.mensagem}</p>
+                )}
+                {avaliacaoAlvo.tipo === "invalido" && (
+                  <p className="error">{avaliacaoAlvo.mensagem}</p>
+                )}
                 {alertError && <p className="error">{alertError}</p>}
               </form>
             ) : (

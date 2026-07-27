@@ -8,6 +8,7 @@ import {
 } from "../api/client";
 import type { FuelSeriesPoint, SeriesView, SnapshotSummary } from "../types";
 import { buildSeriesLabel } from "../lib/seriesLabel";
+import { lerSerieDaUrl } from "../lib/seriesFromUrl";
 import { type Period } from "../lib/priceInsights";
 
 /**
@@ -46,13 +47,25 @@ export function useFuelSeries() {
   }, []);
 
   // Primeira impressão: com as opções carregadas e nada em exibição, abre uma
-  // série padrão (Gasolina · São Paulo/SP quando disponível) — o visitante vê o
-  // produto funcionando (gráfico, sinal, ranking) sem precisar escolher nada.
+  // série. Prioridade: (1) a série pedida na URL — é assim que o link do email de
+  // alerta abre exatamente a série do alerta, e o que torna qualquer consulta
+  // compartilhável; (2) o padrão Gasolina · São Paulo/SP, para o visitante que
+  // chega na home ver o produto funcionando sem escolher nada.
   // Roda uma única vez e nunca sobrescreve uma escolha do usuário (guarda `view`).
   const autoLoaded = useRef(false);
   useEffect(() => {
     if (autoLoaded.current || view || products.length === 0 || states.length === 0) return;
     autoLoaded.current = true;
+
+    const daUrl = lerSerieDaUrl(window.location.search);
+    if (daUrl) {
+      openView({
+        ...daUrl,
+        label: buildSeriesLabel(daUrl.product, daUrl.state, daUrl.municipality, daUrl.brand),
+      });
+      return;
+    }
+
     void (async () => {
       const product = products.includes("GASOLINA") ? "GASOLINA" : products[0];
       const state = states.includes("SP") ? "SP" : states[0];
