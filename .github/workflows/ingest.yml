@@ -16,6 +16,13 @@ name: ANP weekly ingest
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   (obrigatórios)
 #   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM  (opcionais — sem eles
 #   os emails de alerta são apenas logados, e a ingestão segue normal)
+# Variable necessária:
+#   FRONTEND_URL (ex.: https://precos-combustivel-br.vercel.app) — é daqui que sai
+#   o link "ver o histórico" dentro do email de alerta. **É uma variable, não um
+#   secret**: a URL é pública e precisa ser conferível. Sem ela o email ainda sai,
+#   só que sem o link — que é justamente o defeito corrigido na Fase 7.7, e que
+#   voltava por esta porta, porque este workflow (e não o backend) é quem avalia
+#   os alertas recorrentes em produção (ANP_CRON=off no Render).
 # Sem os secrets obrigatórios o job encerra com aviso, sem falhar o repositório.
 
 on:
@@ -47,6 +54,10 @@ jobs:
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASS: ${{ secrets.SMTP_PASS }}
       EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      # URL pública do app: monta o link da série dentro do email de alerta.
+      # Aceita lista separada por vírgula (mesma convenção do CORS); o gerador do
+      # email usa a primeira. Ausente → email sai sem link, sem quebrar nada.
+      FRONTEND_URL: ${{ vars.FRONTEND_URL }}
       # Retenção automática (Fase 9): mantém o banco no platô do free tier.
       RETENTION_MONTHS: "12"
       # Contorna o "happy eyeballs" do Node: desde a v20 ele tenta IPv6 e IPv4 em
@@ -64,6 +75,11 @@ jobs:
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
             echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY não configurados — ingestão pulada."
             echo "skip=true" >> "$GITHUB_ENV"
+          fi
+          # Não bloqueia: só torna visível na aba Actions que os emails desta
+          # rodada sairiam sem o link de volta para o app.
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "::warning::Variable FRONTEND_URL não definida — os emails de alerta sairão sem o link para a série."
           fi
 
       - name: Setup Node

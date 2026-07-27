@@ -16,6 +16,13 @@ describe("API", () => {
     expect(res.body).toContain("ETANOL");
   });
 
+  // Regressão: GLP chegou a ser oferecido no seletor, mas o ingestor descarta os
+  // arquivos de GLP (escopo automotivo) — quem escolhesse caía num estado vazio.
+  it("GET /api/fuel/products não oferece combustível que o ETL não ingere (GLP)", async () => {
+    const res = await request(app).get("/api/fuel/products");
+    expect(res.body).not.toContain("GLP");
+  });
+
   it("GET /api/fuel/series sem parâmetros retorna 400 padronizado", async () => {
     const res = await request(app).get("/api/fuel/series");
     expect(res.status).toBe(400);

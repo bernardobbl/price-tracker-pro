@@ -22,10 +22,15 @@ import {
 } from "../lib/fuelAggregate";
 
 /**
- * Lista canônica de produtos (saída do `canonicalProduct`). É estável e pequena,
- * então serve de opções do seletor sem varrer a tabela inteira.
+ * Fallback da lista de produtos: usado só quando o banco não está disponível
+ * (dev sem Supabase) ou quando a RPC `fuel_products` ainda não foi criada.
+ *
+ * **Não inclui GLP de propósito.** O ingestor descarta os arquivos de GLP
+ * (`classifyAnpGroup` → null, escopo automotivo), então GLP nunca entra em
+ * `fuel_prices` — oferecê-lo no seletor levava o usuário direto para um "sem
+ * dados de preço para esta série". A lista real vem do banco (`listProducts`).
  */
-export const FUEL_PRODUCTS = [
+export const FALLBACK_FUEL_PRODUCTS = [
   "GASOLINA",
   "GASOLINA ADITIVADA",
   "ETANOL",
@@ -33,11 +38,30 @@ export const FUEL_PRODUCTS = [
   "DIESEL S10",
   "DIESEL S500",
   "GNV",
-  "GLP",
 ] as const;
 
-export function listProducts(): string[] {
-  return [...FUEL_PRODUCTS];
+/**
+ * Produtos que **de fato existem** no banco, via `fuel_products()` (DISTINCT no
+ * servidor, mesma abordagem de UF/município). Antes esta lista era fixa no
+ * código, o que oferecia combustíveis sem dado nenhum: a UI prometia algo que a
+ * ingestão não entrega. Derivar do dado mantém as duas pontas sempre coerentes.
+ *
+ * A RPC ordena pela sequência canônica (gasolina → etanol → diesel → GNV), então
+ * o seletor abre no combustível mais procurado, e não em ordem alfabética.
+ */
+export async function listProducts(): Promise<string[]> {
+  if (!supabase) return [...FALLBACK_FUEL_PRODUCTS];
+
+  const { data, error } = await supabase.rpc("fuel_products");
+  if (error) {
+    logger.error({ err: error.message }, "[fuelQuery] Erro ao listar produtos — usando fallback");
+    return [...FALLBACK_FUEL_PRODUCTS];
+  }
+
+  const rows = (data ?? []) as Array<{ product: string | null }>;
+  const products = rows.map((r) => r.product).filter((p): p is string => Boolean(p));
+  // Banco vazio (antes da 1ª ingestão) não deve zerar o seletor.
+  return products.length > 0 ? products : [...FALLBACK_FUEL_PRODUCTS];
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * Rotas de consulta do domínio combustível (ANP) — dado público, leitura.
- *   GET /api/fuel/products                          → produtos disponíveis
+ *   GET /api/fuel/products                          → produtos com dado no banco
  *   GET /api/fuel/locations[?state=UF]              → UFs, ou municípios de uma UF
  *   GET /api/fuel/series?product=&state=&municipality=   → série agregada (média/mín/máx por data)
  *   GET /api/fuel/snapshot?product=&state=&municipality= → levantamento mais recente + ranking de postos
@@ -23,7 +23,7 @@ const router = Router();
 router.get(
   "/products",
   asyncHandler(async (_req, res) => {
-    res.json(listProducts());
+    res.json(await listProducts());
   })
 );
 

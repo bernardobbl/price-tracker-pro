@@ -769,6 +769,11 @@ Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não prec
   para o app. **177 testes.**
 - [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags.
   _(O bloqueio do deploy caiu: o link da demo já existe.)_
+- [x] **Sessão de revisão crítica 4** ✅ (27/jul/2026) — auditoria com o projeto já no ar:
+  READMEs de `backend/` e `frontend/` (ainda da era Books to Scrape) reescritos, **GLP fantasma**
+  no seletor eliminado com a RPC `fuel_products()`, e `FRONTEND_URL` restaurada no workflow de
+  ingestão (o email do alerta semanal saía sem link). **178 testes.** Duas ações manuais pendentes:
+  reexecutar o `schema.sql` e criar a variable `FRONTEND_URL` no GitHub.
 - [x] Fase 9 — Operação contínua no free tier ✅ (**antecipada**): retenção automática ligada por padrão
   (`RETENTION_MONTHS=12`, calibrado por medição real: platô ~280 MB ≈ 56%, SQL + serviço + testes)
   e `npm run db:stats` para monitorar os 500 MB.
@@ -1110,6 +1115,96 @@ Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pe
    próprios CSVs da ANP (44.330 lidas → 44.326 upsert em fev).
 - **Estado final do banco: 614.987 linhas · 27 UFs · série contínua out/2025 → jun/2026.**
   Quando a ANP publicar jul/2026, o job semanal pega sozinho.
+
+### ✅ Sessão de revisão crítica 4 — auditoria pós-conclusão (27/jul/2026)
+
+> Revisão crítica com o projeto **já no ar e dado como pronto**. Método: rodar tudo do zero
+> em ambiente limpo antes de opinar, e conferir cada alegação do plan.md contra o código.
+
+**O que se confirmou (medido, não presumido)**
+- **177 testes verdes** (120 backend + 57 frontend), `tsc --noEmit` e `eslint` limpos nos dois
+  lados, `build` ok, `npm audit --omit=dev` = 0.
+- `main == origin/main`, working tree limpo, nenhum `.env` rastreado (só os `.example`).
+- Autorização por posse (`getOwnedTrackedSeries`), CORS multi-origem, fail-closed do
+  `requireAuth`, retenção e observabilidade do ETL: tudo como o diário descreve.
+- **O diário se sustenta.** As correções das fases anteriores estão de fato no código.
+
+**🐛 Ponta solta 1 · Os READMEs de subpasta ficaram na era pré-Fase 0.**
+`backend/README.md` ainda anunciava "Axios + Cheerio (web scraping Books to Scrape)",
+persistência em CSV local, job diário com `PRODUCTS_TO_TRACK` e o endpoint
+`GET /api/prices/:productId`; o `frontend/README.md` falava em `productId = "ps5"`. Nada
+disso existe desde a Fase 1/6.8 (o `cheerio` foi até desinstalado). **Como escapou:** a Fase 0
+adiou explicitamente os READMEs de subpasta "para a Fase 8", e a Fase 8 só cobriu o README
+raiz — a pendência caiu no vão entre as duas. Num repositório público de portfólio, é a
+segunda coisa que alguém abre, e contradizia tudo que o raiz vende.
+**Feito:** os dois reescritos para o domínio atual (endpoints reais, pipeline do ETL,
+scripts, estrutura de pastas, decisões de segurança, deploy).
+_Lição:_ "adiar para a fase X" só funciona se o item for **reescrito** na fase X — senão
+ele desaparece junto com a fase que o adiou.
+
+**🐛 Ponta solta 2 · GLP no seletor, sem nunca ter dado (bug de produto real).**
+`FUEL_PRODUCTS` era uma lista **fixa no código** e incluía `GLP` — mas o ingestor descarta os
+arquivos de GLP de propósito (`classifyAnpGroup` → `null`, escopo automotivo). Quem escolhesse
+GLP caía direto em "Sem dados de preço para esta série ainda": o produto mentindo sobre o
+próprio catálogo. **Causa raiz:** UF e município já vinham de `DISTINCT` no servidor, mas
+produto não — a única das três listas que podia divergir do dado, e divergiu.
+**Feito:** RPC `fuel_products()` no `schema.sql` (mesmo padrão de `fuel_states`/
+`fuel_municipalities`), com ordenação **canônica** e não alfabética (`array_position`), para o
+seletor continuar abrindo em Gasolina. O serviço passou a `async` com **fallback** para a
+lista estática (agora sem GLP) quando não há Supabase ou a RPC ainda não existe — nunca
+quebra, degrada. Combustível novo que a ANP publique aparece **sem deploy**. **+1 teste** de
+regressão (`/api/fuel/products` não pode devolver GLP).
+
+**🐛 Ponta solta 3 · O email do alerta semanal saía sem o link para o app.**
+`ingest.yml` definia `SUPABASE_*` e `SMTP_*`, mas **não** `FRONTEND_URL` — então
+`montarLinkDaSerie` devolvia `null` e a linha "ver o histórico e os postos mais baratos"
+simplesmente não era escrita. **O detalhe que torna isso grave:** com `ANP_CRON=off` no
+Render, o GitHub Actions é o **único** caminho de produção do alerta recorrente. Ou seja: a
+correção da Fase 7.7 funcionava só na avaliação imediata (POST /alerts, no Render, onde a
+variável existe) e voltava a falhar exatamente no caso que o usuário de verdade recebe.
+**Feito:** `FRONTEND_URL: ${{ vars.FRONTEND_URL }}` no workflow (variable, não secret — a URL
+é pública e precisa ser conferível) + aviso no guard quando estiver ausente.
+_Lição:_ **mover um job de host troca o conjunto de variáveis de ambiente com ele.** Ao migrar
+a ingestão para o Actions (Fase 6.95), migramos os segredos que faziam o job *rodar* e
+esquecemos os que fazem o job *comunicar bem*. Vale a regra: ao mudar onde algo executa,
+comparar o env do destino com o da origem, item a item.
+
+**Higiene junto (README raiz)**
+- "npm run ingest uses `ANP_YEAR`/`ANP_MONTHS` to build the file list" → contradizia a própria
+  seção "How it works" e o `.env.example`: o padrão é **derivado da data**, o env é override
+  de backfill. Reescrito.
+- "~99 tests" → **177** (o resto do documento já dizia 177).
+- "min/**median**/max" → não existe mediana no `computePriceStats`; é média.
+
+**Verificação:** `tsc` ✓, `eslint` ✓, **121 testes backend** (120 + 1 novo) e **57 frontend**
+= **178** ✓, `build` ✓, `schema.sql` re-parseado (53 statements, a função nova sem fallback).
+
+**⚠️ Duas ações manuais do Bernardo (sem elas as correções 2 e 3 não valem em produção):**
+1. **Reexecutar `backend/supabase/schema.sql`** no SQL Editor do Supabase (idempotente) para
+   criar a `fuel_products()`. Enquanto não rodar, o fallback mantém o app funcionando — só
+   que com a lista estática (já sem GLP, então o bug visível some de qualquer jeito).
+2. **Criar a variable `FRONTEND_URL`** no GitHub (Settings → Secrets and variables → Actions
+   → **Variables**) com `https://precos-combustivel-br.vercel.app`.
+
+**Pontas soltas menores registradas, ainda abertas (avaliadas e adiadas conscientemente):**
+- A Fase 6.95 afirma "todas as 6 RPCs com `revoke`/`grant` corretos" — na prática só
+  `fuel_prices_retention` e `fuel_db_stats` têm. As de leitura seguem executáveis por
+  `anon`/`authenticated`, mas são **security invoker**: o RLS de `fuel_prices` continua
+  valendo e `anon` não tem policy de select, então não há vazamento. É a **afirmação** que
+  está mais forte que o código, não o código que está frouxo.
+- `.gitignore` termina com `.env*`, que casa com `.env.example` (os atuais sobrevivem por já
+  estarem rastreados, mas um novo seria ignorado em silêncio) — falta um `!.env.example`.
+- `backend/dist/` local ainda guarda `mercadoLivreScraper.js`/`booksToScrapeScraper.js` de
+  builds antigos e `backend/data/` os 11 CSVs de PS5/iPhone. Não versionados; só confundem.
+- `supabaseClient.ts` do front desliga o Web Locks API com comentário "para evitar timeout em
+  dev" — mas isso vai para produção (risco de corrida no refresh de token com várias abas).
+  Condicionar a `import.meta.env.DEV`.
+- `alerts.enabled` existe no banco e é filtrado pelo job, mas não tem UI: só dá para excluir,
+  não pausar. Feature meio-implementada.
+- Bundle do front num chunk único de 617 KB (185 KB gzip), com o aviso do Vite no build —
+  code-split do Chart.js resolveria.
+- **Não verificável daqui:** se a ingestão semanal do Actions rodou verde desde o deploy e se
+  jul/2026 já entrou. Conferir na aba Actions.
 
 ---
 

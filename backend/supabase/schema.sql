@@ -161,6 +161,36 @@ as $$
   order by fp.municipality;
 $$;
 
+-- Produtos que realmente têm dado ingerido. Existe pelo mesmo motivo das duas
+-- funções acima, mas conserta um problema concreto: a lista vivia fixa no código
+-- e incluía GLP, que o ingestor descarta (escopo automotivo) — o seletor oferecia
+-- um combustível que nunca teria série. Derivar do dado mantém UI e ETL coerentes.
+--
+-- A ordenação NÃO é alfabética: segue a sequência canônica (gasolina → etanol →
+-- diesel → GNV) para o seletor abrir no combustível mais procurado. Produtos que
+-- a ANP venha a publicar e ainda não estejam na lista caem no fim, em ordem
+-- alfabética — aparecem sozinhos, sem precisar de deploy.
+create or replace function public.fuel_products()
+returns table (product text)
+language sql
+stable
+as $$
+  select p.product
+  from (select distinct fp.product from public.fuel_prices fp) p
+  order by
+    coalesce(
+      array_position(
+        array[
+          'GASOLINA', 'GASOLINA ADITIVADA', 'ETANOL',
+          'DIESEL', 'DIESEL S10', 'DIESEL S500', 'GNV'
+        ],
+        p.product
+      ),
+      99
+    ),
+    p.product;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Funções de agregação (série e snapshot no servidor)
 -- ---------------------------------------------------------------------------
