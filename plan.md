@@ -116,11 +116,11 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 **Meta:** código que passa numa code review de vaga sênior.
 
 - [x] **Zod** no backend: `/products`, `/track/:productId`, `/prices/:productId`, `/alerts` e `/search` validados por um middleware reutilizável (`validate()` + schemas em `schemas/requestSchemas.ts`).
-- [~] Tipos compartilhados: **decisão deliberada** de manter `TrackedProduct`/`PriceHistoryItem` por-projeto (são 2 interfaces pequenas e alinhadas). Um pacote `shared/` complicaria os deploys separados (Vercel/Render) sem ganho real agora. Revisitar só se a duplicação crescer.
+- [x] Tipos compartilhados: **decisão deliberada** de manter os tipos por-projeto. Um pacote `shared/` complicaria os deploys separados (Vercel/Render) sem ganho real. _(Atualizado após a virada de domínio: os tipos citados na versão original — `TrackedProduct`/`PriceHistoryItem` do domínio livros — não existem mais. Hoje a duplicação se resume a `TrackedSeries`/`SnapshotSummary`, pequenas e alinhadas; a decisão segue valendo.)_
 - [x] Respostas de erro padronizadas (`{ error: { code, message, details? } }` via `sendError`) + **error handler central** (`errorHandler`) + `asyncHandler` para propagar erros sem try/catch repetido.
 - [x] Logger **pino** (`lib/logger.ts`) substituindo **todos** os `console.*` do backend (logs JSON estruturados).
 - [x] Front: **todo** `fetch` unificado em `api/client.ts` (`searchProducts`, `createAlert` adicionados; `handleSearch`/`handleCreateAlert` não usam mais `fetch` cru) + parsing de erro no novo formato.
-- [~] Hooks (`useProducts`, `usePriceHistory`, `useAlerts`): **adiados para a Fase 6** (rework de UI), onde encaixam melhor — evita refatorar o `App.tsx` duas vezes.
+- [x] Hooks: adiados daqui para a Fase 6 (rework de UI), onde encaixavam melhor — evitou refatorar o `App.tsx` duas vezes. **Feitos**, e depois ampliados na desmonolitização do `App.tsx`: `useAuth`, `useFuelSeries`, `useFavorites`, `useAlerts`, `useToasts`, `useApiWaking`, `useCountUp`.
 - [x] `type-check` adicionado aos scripts dos dois projetos; `lint` + `tsc --noEmit` limpos.
 
 **DoD:** ✅ `lint` + `type-check` limpos nos dois projetos; toda entrada da API validada. Verificado **rodando**: boot ok, `/health` ok, `/api/search` sem `q` → 400 com erro padronizado + detalhes Zod, logs pino estruturados.
@@ -179,7 +179,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [~] Acessibilidade **básica**: `aria-label` nos botões de ícone, `role="status"`/`aria-live` nos toasts, labels nos inputs. (Auditoria completa fica para depois.)
 - [ ] Skill **ui-ux-pro-max** para revisar paleta/tipografia — **opcional, não feito** (o design atual já está coeso).
 - [x] **Favicon** (SVG inline), `title` descritivo e `meta description`/`theme-color` no `index.html`.
-- [~] **Toggle dark/light**: **não feito** — o dark theme atual já está bom; adiar (baixo ROI agora).
+- [x] ~~**Toggle dark/light**~~ → **superado pela Fase 6.6.** Este item nasceu quando o app era dark e a ideia era oferecer um claro alternativo. A 6.6 trocou a identidade inteira para o **tema claro editorial**, que virou o único tema — um toggle passou a não ter o que alternar. Fechado por obsolescência, não por adiamento.
 
 **DoD:** ✅ criar/excluir produto, ver stats e gráfico, gerenciar alertas, feedback por toast, skeletons e layout responsivo. Verificação **visual rodando** pendente (fazer com o Supabase real).
 
@@ -212,9 +212,11 @@ CamelCamelCamel (filtros de período + simplicidade), Pricefy (busca em dashboar
 **Frente B — Busca viva (unir buscar + rastrear)**
 - [x] **B1 · Resultado rico**: cada item da busca mostra o **preço atual** direto na linha. _(feito: backend
   `searchBooks` agora devolve `price`/`currency`; front exibe por item.)_
-- [~] **B2 · Mini-sparkline por item**: **adiado deliberadamente** — itens da busca ainda **não são rastreados**,
-  logo não têm histórico pra desenhar. Sparkline faz sentido nos **cards de produto rastreado** (fica pra um
-  próximo passo, quando o histórico de cada produto for carregado na sidebar). Por ora o item mostra preço + status.
+- [x] ~~**B2 · Mini-sparkline por item**~~ → **item extinto na Fase 6.8.** Foi adiado aqui porque os itens da
+  busca não eram rastreados e não tinham histórico para desenhar; depois a **busca de produtos deixou de existir**
+  junto com o Books to Scrape — a navegação virou seletores encadeados (combustível → UF → município) sobre uma
+  série que já vem completa. A ideia de sparkline sobreviveria só nos **cards de favorito** da sidebar; fica
+  registrada como possibilidade, não como dívida.
 - [x] **B3 · Botão "Rastrear" inline**: adiciona ao monitoramento sem sair da busca (`handleTrackFromSearch`:
   cria produto + dispara scraping + seleciona). Mostra "✓ Rastreando" se já existe. _(maior ganho de UX.)_
 - [x] **B4 · Busca instantânea** com debounce (~350ms) via `useEffect`, com spinner. Submit manual removido.
@@ -273,8 +275,10 @@ no wordmark/preço/títulos, ícones de verdade, números tabulares. Zero gradie
 - [x] **E6 · Toasts, skeletons e estados vazios** coerentes com o tema claro.
 
 **Frente F — Detalhes que elevam**
-- [~] **F1 · Acessibilidade de cor**: usei tinta escura sobre claro e tons "deep" para texto colorido (bom contraste);
-  **auditoria AA formal pendente** — revisar com ferramenta antes do deploy.
+- [x] **F1 · Acessibilidade de cor**: tinta escura sobre claro e tons "deep" para texto colorido.
+  A **auditoria AA formal**, que ficou pendente aqui, foi **feita na Fase 6.7 (Passo 2)**: ratios WCAG
+  calculados par a par, `--muted` (#6e7180→#5c5f70) e `--faint` (#a2a4b0→#686b7e) ajustados para passarem
+  AA sobre o papel (5.68 / 4.73).
 - [x] **F2 · Ritmo e alinhamento**: stat-grid mais denso (6 colunas), hairlines e espaçamento consistentes (lição do Keepa).
 - [x] **F3 · Microinterações sóbrias**: count-up mantido; fade-in do detalhe; transições curtas e uniformes.
 - [x] **F4 · Responsivo** revisado (stat-grid colapsa 6→3→2; sidebar deixa de ser sticky no mobile).
@@ -671,7 +675,11 @@ ponta a ponta (criar conta → favoritar → definir alvo → email na caixa de 
 - [ ] **GIF de demonstração** do fluxo (explorar → favoritar → alerta) — usar a skill de gravação do navegador.
 - [x] Seção **"O que eu aprendi / trade-offs"** — feita (decisões técnicas & trade-offs no README).
 - [ ] Post de LinkedIn: problema → solução → stack → link da demo → aprendizado.
-- [ ] Adicionar tópicos/tags no GitHub (`fuel-prices`, `etl`, `react`, `typescript`, `supabase`, `open-data`).
+- [x] **Caixa "About" do repositório** ✅ (27/jul/2026) — description, link da demo e **topics** preenchidos.
+  Critério usado nos topics: metade descreve o **domínio** (`fuel-prices`, `etl`, `open-data`,
+  `data-engineering`, `brazil`) e metade a **stack** (`react`, `typescript`, `nodejs`, `express`,
+  `supabase`, `postgresql`, `vite`). Só stack faria o projeto virar mais um `react typescript` no meio de
+  milhões; é o domínio que faz alguém interessado no assunto chegar até ele.
 
 **DoD:** um estranho entende o projeto em 30s pelo README e consegue testar a demo sem te perguntar nada.
 
@@ -767,7 +775,8 @@ Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não prec
 - [x] **Fase 7.7 — Correções do primeiro uso real** ✅ — chave truncada na Vercel (diagnóstico completo
   registrado), mensagens de erro traduzidas, e o email de alerta reescrito para dizer a verdade e apontar
   para o app. **177 testes.**
-- [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags.
+- [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs + **About do repositório (description, link
+  da demo, topics)** feitos; falta **screenshots/GIF** e o **post de LinkedIn**.
   _(O bloqueio do deploy caiu: o link da demo já existe.)_
 - [x] **Sessão de revisão crítica 4** ✅ (27/jul/2026) — auditoria com o projeto já no ar:
   READMEs de `backend/` e `frontend/` (ainda da era Books to Scrape) reescritos, **GLP fantasma**
@@ -1185,6 +1194,26 @@ comparar o env do destino com o da origem, item a item.
    que com a lista estática (já sem GLP, então o bug visível some de qualquer jeito).
 2. **Criar a variable `FRONTEND_URL`** no GitHub (Settings → Secrets and variables → Actions
    → **Variables**) com `https://precos-combustivel-br.vercel.app`.
+
+**Higiene do próprio diário — cinco itens `[~]` que envelheceram mal**
+O README raiz linka este arquivo como "the full history", então ele é **artefato público**. A varredura
+dos itens ainda abertos achou cinco pendências fantasma, todas sobrevivendo porque estavam marcadas como
+*parcial* — e ninguém revisita parcial. Fechadas com o motivo real de cada uma:
+- **Toggle dark/light** (Fase 6) dizia "o dark theme atual já está bom" — mas a 6.6 trocou a identidade
+  para o **tema claro**. A linha contradizia o documento poucas seções abaixo. Fechado por **obsolescência**:
+  não há o que alternar quando existe um tema só.
+- **Hooks adiados para a Fase 6** (Fase 3) já tinham sido feitos — e depois ampliados na desmonolitização
+  do `App.tsx`. Marcado `[x]` com a lista real dos sete hooks.
+- **Tipos compartilhados** (Fase 3) justificava a decisão citando `TrackedProduct`/`PriceHistoryItem`, que
+  não existem desde a virada de domínio. A decisão continua válida; só a evidência estava velha.
+- **B2 · mini-sparkline** (Fase 6.5) falava em "itens da busca" — a busca de produtos morreu junto com o
+  Books to Scrape. Item **extinto**, não pendente.
+- **F1 · contraste AA** (Fase 6.6) dizia "auditoria AA formal pendente — revisar antes do deploy", mas a
+  auditoria **foi feita na Fase 6.7** (ratios calculados, `--muted`/`--faint` ajustados). Um mesmo item
+  registrado como aberto num lugar e como resolvido em outro: o caso mais perigoso, porque some do radar
+  sem estar fechado — ou, como aqui, assusta sem motivo.
+_Lição:_ `[~]` é um estado que não cobra revisão de ninguém. Ou o item vira `[x]` com o motivo, ou vira
+`[ ]` com dono — "parcial" é onde a dívida se esconde de quem está lendo rápido.
 
 **Pontas soltas menores registradas, ainda abertas (avaliadas e adiadas conscientemente):**
 - A Fase 6.95 afirma "todas as 6 RPCs com `revoke`/`grant` corretos" — na prática só
