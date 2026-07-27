@@ -24,7 +24,8 @@ The core of the product — price history, trend, a 0–100 *buy signal*, statio
 ranking — is public, like CamelCamelCamel/Keepa. An account is only required for favorites and email alerts.
 
 > ⏳ **First load may take up to a minute.** The API runs on a free tier that sleeps after 15 minutes of
-> inactivity; the app shows a "waking up the server" notice while it spins back up. Every later request is fast.
+> inactivity; while it spins back up the app shows a plain-language notice making clear the wait is a
+> one-off ("only the first lookup is slow"). Every later request is fast.
 
 Live stack: frontend on Vercel, API on Render, Postgres + Auth on Supabase — **$0/month**, by design
 (see [Built to run free, forever](#-technical-decisions--trade-offs)).

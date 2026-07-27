@@ -1215,6 +1215,31 @@ dos itens ainda abertos achou cinco pendências fantasma, todas sobrevivendo por
 _Lição:_ `[~]` é um estado que não cobra revisão de ninguém. Ou o item vira `[x]` com o motivo, ou vira
 `[ ]` com dono — "parcial" é onde a dívida se esconde de quem está lendo rápido.
 
+**🐛 Ponta solta 4 · Sidebar grudada no mobile (achada pelo Bernardo, usando o app no celular).**
+O `position: sticky` da `.sidebar` vivia numa regra solta, e a correção que o desativava morava num
+breakpoint **diferente** (`max-width: 640px`) do que criava as duas colunas (`min-width: 960px`).
+Entre **641px e 959px** o layout já era de coluna única mas o painel continuava grudado, flutuando
+por cima dos cards de estatística e do ranking de postos ao rolar. **Feito:** o `sticky` passou para
+dentro do mesmo `@media (min-width: 960px)` do grid, e o `position: static` de correção foi removido.
+_Lição:_ quando uma propriedade é ligada num breakpoint e desligada em outro, a faixa entre os dois é
+uma zona morta que ninguém testa. Regra e contra-regra do mesmo comportamento têm que morar no mesmo
+ponto de corte — aí não existe faixa para dar errado. _(A verificação visual em largura de celular fica
+como item do Bernardo; o CSS agora não tem como aplicar sticky fora do layout de duas colunas.)_
+
+**✍️ Copy do cold start reescrita (em duas rodadas — a segunda por correção do Bernardo).**
+A faixa dizia _"Acordando o servidor… a primeira consulta pode levar até um minuto (hospedagem gratuita)"_.
+Defeitos: "acordando" é coloquial demais; "(hospedagem gratuita)" soa como desculpa e entrega uma decisão
+de custo que ninguém perguntou; e a frase cobrava um minuto **sem dizer o que vinha depois**.
+A 1ª reescrita corrigiu isso mas errou para o outro lado — _"Iniciando o servidor — ele hiberna quando
+fica ocioso…"_ é vocabulário de **quem construiu**, não de quem usa. O Bernardo apontou e estava certo.
+**Texto final:** _"Carregando os dados… só a primeira consulta demora."_
+A restrição que guiou a escolha: a faixa só aparece **após 3,5s** e pode ficar **até um minuto** na tela,
+então um "carregando" genérico não serve — spinner parado por 45s é exatamente o que um site quebrado
+parece. As quatro últimas palavras são o que separa "lento mas funcionando" de "travou"; todo o resto do
+jargão foi cortado. README raiz alinhado.
+_Lição:_ escrever para o usuário e escrever com precisão técnica puxam para lados opostos. O acerto não é
+escolher um lado — é cortar o jargão **mantendo a única informação que muda o comportamento de quem lê**.
+
 **Pontas soltas menores registradas, ainda abertas (avaliadas e adiadas conscientemente):**
 - A Fase 6.95 afirma "todas as 6 RPCs com `revoke`/`grant` corretos" — na prática só
   `fuel_prices_retention` e `fuel_db_stats` têm. As de leitura seguem executáveis por

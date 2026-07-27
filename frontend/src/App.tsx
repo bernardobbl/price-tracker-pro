@@ -179,11 +179,15 @@ function App() {
       </header>
 
       {/* Cold start: no free tier o backend hiberna e a 1ª requisição leva ~30-60s
-          para acordá-lo. Explicar isso evita que a espera pareça um app quebrado. */}
+          para subir. A faixa só aparece depois de 3,5s de espera, e pode ficar até
+          um minuto na tela — por isso ela não pode ser um "carregando" genérico:
+          um spinner parado por 45s é exatamente o que um site quebrado parece.
+          O texto é deliberadamente leigo (nada de "servidor"/"hiberna"), mas mantém
+          as quatro palavras que sustentam a espera: isso só acontece desta vez. */}
       {apiWaking && (
         <div className="waking-banner" role="status" aria-live="polite">
           <span className="waking-spinner" aria-hidden="true" />
-          Acordando o servidor… a primeira consulta pode levar até um minuto (hospedagem gratuita).
+          Carregando os dados… só a primeira consulta demora.
         </div>
       )}
 

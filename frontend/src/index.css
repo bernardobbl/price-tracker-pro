@@ -273,18 +273,28 @@ body {
   align-items: start;
 }
 
-@media (min-width: 960px) {
-  .dashboard {
-    grid-template-columns: minmax(290px, 330px) minmax(0, 1fr);
-  }
-}
-
 .sidebar {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  position: sticky;
-  top: 1.5rem;
+}
+
+/* A sidebar só É uma sidebar — e portanto só faz sentido grudar na tela — quando
+   o dashboard vira duas colunas. Por isso o `sticky` mora AQUI, no mesmo
+   breakpoint do grid, e não solto lá em cima com um `position: static` de
+   correção num breakpoint diferente. Aquele arranjo deixava uma faixa
+   (641px–959px) em que o layout já era de uma coluna mas o painel continuava
+   grudado, flutuando por cima do conteúdo ao rolar. Amarrar as duas regras ao
+   mesmo ponto elimina a faixa por construção. */
+@media (min-width: 960px) {
+  .dashboard {
+    grid-template-columns: minmax(290px, 330px) minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 1.5rem;
+  }
 }
 
 .panel,
@@ -1567,7 +1577,8 @@ input[type="number"] {
 /* ── Responsivo ── */
 @media (max-width: 640px) {
   .dashboard { padding: 1rem 1rem 2rem; }
-  .sidebar { position: static; }
+  /* (o reset de `position` que existia aqui saiu: o sticky agora só é aplicado
+     a partir de 960px, então não há mais o que desfazer neste breakpoint) */
   .header { padding: 1rem 1.25rem; }
   .segmented { width: 100%; justify-content: space-between; }
 }
