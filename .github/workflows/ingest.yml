@@ -78,20 +78,6 @@ jobs:
         if: env.skip != 'true'
         run: npm ci
 
-      # Diagnóstico: separa "IPv6 quebrado no runner" de "gov.br bloqueia o GitHub".
-      # Nunca falha o job (`|| true`) — é só evidência nos logs.
-      - name: Diagnóstico de rede (gov.br)
-        if: env.skip != 'true'
-        continue-on-error: true
-        run: |
-          URL="https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/shpc/dsan/2026"
-          echo "--- forçando IPv4 ---"
-          curl -4 -sS -o /dev/null -m 30 -w "http=%{http_code} tempo=%{time_total}s ip=%{remote_ip}\n" "$URL" || echo "IPv4 falhou: $?"
-          echo "--- forçando IPv6 ---"
-          curl -6 -sS -o /dev/null -m 15 -w "http=%{http_code} tempo=%{time_total}s ip=%{remote_ip}\n" "$URL" || echo "IPv6 falhou: $?"
-          echo "--- padrão (como o Node faria) ---"
-          curl -sS -o /dev/null -m 30 -w "http=%{http_code} tempo=%{time_total}s ip=%{remote_ip}\n" "$URL" || echo "padrão falhou: $?"
-
       - name: Run ingest
         if: env.skip != 'true'
         run: npm run ingest

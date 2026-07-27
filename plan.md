@@ -575,8 +575,22 @@ armadilhas conhecidas de CORS/agendamento/cold start.
   estava decidido), então o circuito fechou de primeira. Validado ponta a ponta: `/health` → `{"status":"ok"}`,
   `/api/fuel/locations` → 27 UFs (prova que o Render fala com o Supabase pela `sb_secret_`), e a série de
   Gasolina/SP com 128 pontos (out/2025→jun/2026).
-- [ ] **7.5 · Secrets do GitHub Actions** (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`) e a
-  variable `BACKEND_URL` — sem eles os workflows de ingestão e keep-alive ficam inertes (avisam e passam).
+- [x] **7.5 · Secrets do GitHub Actions** ✅ — `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`
+  cadastrados via `gh secret set` (prompt interativo, sem passar pelo histórico do shell) e a variable
+  `BACKEND_URL`. **Keep-alive verde em 25s.** A ingestão manual validou a cadeia inteira.
+  > 🐛 **Bug de infraestrutura que valeu o diagnóstico (o melhor caso da sessão):** a 1ª execução da ingestão
+  > falhou com `ETIMEDOUT` nos 6 arquivos — **em 2,3s**, sendo que o timeout do axios é de **30s**. Essa
+  > incoerência foi a pista: timeout real não falha antes do timeout. Causa: desde o Node 20 o *happy eyeballs*
+  > tenta IPv6 e IPv4 em paralelo com **250 ms por família**; o runner do GitHub **não tem rota IPv6**, o
+  > `gov.br` publica AAAA, e o erro virava `ETIMEDOUT` quase instantâneo. Provado com um passo de diagnóstico
+  > temporário no workflow: `curl -4` → **HTTP 200 em 3,2s**; `curl -6` → **falha em 129 ms**. Corrigido com
+  > `NODE_OPTIONS=--dns-result-order=ipv4first --network-family-autoselection-attempt-timeout=5000`.
+  > _Lição:_ quando o tempo até a falha não bate com o timeout configurado, o problema não é a rede remota —
+  > é a camada de resolução local.
+  > **Bônus:** o log da execução boa mostrou os nomes reais dos arquivos —
+  > `05-dados-abertos-precos-gasolina-etanol.csv` e `06-dados-abertos-precos-2026-06-gasolina-etanol.csv`,
+  > dois padrões diferentes em meses consecutivos. É a prova prática de que **descobrir pela listagem** (em vez
+  > de montar o nome por template) foi a decisão certa; o padrão de fallback já não corresponde à realidade.
 - [ ] **7.6 · SMTP**: ⚠️ **descoberta que muda o plano** — o **Render Free bloqueia saída nas portas 25, 465 e 587**,
   exatamente as de SMTP. O Gmail na 587 **não funciona** a partir do backend hospedado. Decisão: migrar para um
   provedor transacional que ofereça a **porta 2525** (Brevo/Mailgun), que não é bloqueada — só variáveis de
