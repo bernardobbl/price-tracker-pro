@@ -94,7 +94,7 @@ flowchart LR
 | Validation | Zod (request schemas + ETL row gate) |
 | Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**143 tests**) |
+| Tests | Vitest + Testing Library + supertest (**177 tests**) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
@@ -136,7 +136,7 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-143 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
+177 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, alert-email copy and threshold rules, auth error mapping, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
@@ -154,9 +154,8 @@ npm test        # in backend/ and frontend/
 
 ## 🗺️ Roadmap
 
-- **Email alerts in production**: the free tier of the API host blocks outbound SMTP ports (25/465/587), so alerts are moving to a transactional provider on port 2525. The weekly evaluation already runs in GitHub Actions, where SMTP is unrestricted.
+- **Custom domain**: the app lives on a `vercel.app` subdomain today. A real domain would also fix email deliverability — alerts are currently sent from a freemail address, which can't be DKIM-signed and so risks spam filtering.
 - **Screenshots + demo GIF** of the buy-signal flow.
-- **Custom domain** (the app currently lives on a `vercel.app` subdomain).
 - National (all-Brazil) aggregated series, reusing the same SQL-side aggregation approach.
 - More historical months for richer trends; optional GLP (13 kg) support.
 

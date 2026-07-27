@@ -146,7 +146,7 @@ Princípio norteador: **menos features novas, mais confiabilidade e acabamento.*
 - [x] **Badge de CI** (+ badge de licença) no topo do README.
 - [x] `dependabot.yml` (npm backend/frontend + github-actions, semanal).
 - [x] _Extra:_ sincronizei os `package-lock.json` (estavam faltando deps nativas) e validei o pipeline **localmente com `npm ci`** — verde nos dois projetos, então o CI abre verde no primeiro push.
-- [ ] Deploy automático a partir da `main` → configurado na **Fase 7** (junto com os hosts).
+- [x] Deploy automático a partir da `main` ✅ — Vercel e Render redeployam a cada push (`autoDeploy: true`).
 
 **DoD:** ✅ **CI verde no GitHub** (run em `ca1e4b8`, jobs `backend -> success` e `frontend -> success`).
 
@@ -307,7 +307,8 @@ Status real de cada um dos 14 itens originais (confirmado, não só esperado):
 - [x] **#10 gestão de produto/alertas na UI** → resolvido (Fase 6). ✅
 - [x] **#11 estatísticas** → resolvido (Fase 6/6.5). ✅
 - [x] **#12 skeletons/estados/responsivo/tema** → resolvido (6/6.6); agora é **tema claro editorial**. ✅
-- [ ] **#13 README fraco** → segue aberto → é a **Fase 8** (único item da Seção 1 ainda em aberto).
+- [x] **#13 README fraco** → **resolvido** (Fase 8): pitch, badges, diagrama Mermaid, decisões/trade-offs,
+  link da demo e nota honesta sobre `npm audit`. **A Seção 1 está 100% reconciliada.**
 - [x] **#14 fetch cru no front** → resolvido (Fase 3). ✅
 
 **Passo 2 — Fechar as pendências técnicas reais** ✅
@@ -539,7 +540,7 @@ armadilhas conhecidas de CORS/agendamento/cold start.
 
 ---
 
-### Fase 7 — Deploy público (o marco final) ✅ QUASE CONCLUÍDA (falta só o SMTP · 7.6)
+### Fase 7 — Deploy público (o marco final) ✅ CONCLUÍDA
 **Meta:** link clicável funcionando, com dados reais.
 
 > _Nota:_ a carga inicial de dados **não foi necessária no deploy** — como reusamos o Supabase de
@@ -554,7 +555,9 @@ armadilhas conhecidas de CORS/agendamento/cold start.
 ## 🌐 NO AR (26/jul/2026)
 > **App:** https://precos-combustivel-br.vercel.app
 > **API:** https://price-tracker-pro-api.onrender.com
-> Custo mensal: **R$ 0** (Vercel Hobby + Render Free + Supabase Free).
+> Custo mensal: **R$ 0** (Vercel Hobby + Render Free + Supabase Free + Brevo Free).
+> **Fluxo completo funcionando:** explorar sem login → criar conta → favoritar → definir alvo → **email de
+> alerta na caixa de entrada**. Ingestão semanal e keep-alive rodando sozinhos no GitHub Actions.
 
 - [x] **7.1 · Banco**: **decisão de reusar o projeto Supabase atual** em vez de criar um separado para produção.
   Trade-off aceito conscientemente: economiza trabalho e mantém os 615k registros já ingeridos, mas dev e
@@ -591,11 +594,14 @@ armadilhas conhecidas de CORS/agendamento/cold start.
   > `05-dados-abertos-precos-gasolina-etanol.csv` e `06-dados-abertos-precos-2026-06-gasolina-etanol.csv`,
   > dois padrões diferentes em meses consecutivos. É a prova prática de que **descobrir pela listagem** (em vez
   > de montar o nome por template) foi a decisão certa; o padrão de fallback já não corresponde à realidade.
-- [ ] **7.6 · SMTP**: ⚠️ **descoberta que muda o plano** — o **Render Free bloqueia saída nas portas 25, 465 e 587**,
-  exatamente as de SMTP. O Gmail na 587 **não funciona** a partir do backend hospedado. Decisão: migrar para um
-  provedor transacional que ofereça a **porta 2525** (Brevo/Mailgun), que não é bloqueada — só variáveis de
-  ambiente, zero código. _Atenuante:_ a avaliação semanal de alertas roda no **GitHub Actions**, onde não há
-  bloqueio, então o alerta periódico funcionaria mesmo sem isso; o que quebra é só o email imediato ao criar.
+- [x] **7.6 · SMTP** ✅ **ALERTA FUNCIONANDO EM PRODUÇÃO** — email recebido na **caixa de entrada** (não spam).
+  ⚠️ **Descoberta que mudou o plano:** o **Render Free bloqueia saída nas portas 25, 465 e 587**, exatamente as
+  de SMTP — o Gmail na 587 **não funciona** a partir do backend hospedado. Solução: **Brevo na porta 2525**
+  (não bloqueada), só variáveis de ambiente, zero código. As mesmas credenciais foram para os secrets do
+  GitHub, para o alerta semanal do Actions também enviar.
+  _Ressalva conhecida:_ o remetente é um `@gmail.com`, e o Brevo avisa que isso não cumpre os requisitos de
+  Google/Yahoo/Microsoft (não dá para assinar DKIM num domínio que não é nosso). Funcionou no teste, mas a
+  entregabilidade só fica sólida com **domínio próprio autenticado** — mais um argumento a favor dos R$ 40.
 - [x] ~~Criar usuário de demo com credenciais no README~~ → **modo público**: a consulta funciona sem login.
 - [ ] Adicionar **uptime** externo (o `/health` já existe; o keep-alive do Actions já cobre parte disso).
 - [ ] ~~`Dockerfile` para o backend~~ → **não fazer**: o deploy roda com runtime nativo do Render, sem container.
@@ -608,7 +614,50 @@ no site oficial) e alternativas grátis (`is-a.dev`, `eu.org`, GitHub Student Pa
 3 configurações (Vercel, Supabase Auth, `FRONTEND_URL` no Render). Os dois planos grátis suportam domínio próprio,
 inclusive para a API (`api.dominio.com.br` → Render).
 
-**DoD:** ✅ URL pública abre com dados reais sem interação; ⏳ falta o alerta por email ponta a ponta (7.6).
+**DoD:** ✅ **CUMPRIDO** — URL pública abre com dados reais sem interação **e** o alerta por email funciona
+ponta a ponta (criar conta → favoritar → definir alvo → email na caixa de entrada).
+
+---
+
+### Fase 7.7 — Correções nascidas do primeiro uso real ✅ (27/jul/2026)
+**Meta:** consertar o que só aparece quando o produto roda de verdade, com um usuário de verdade.
+
+**🐛 Cadeia de bugs do cadastro (vale como estudo de caso de depuração)**
+- [x] **Erro exibido:** `Invalid API key` ao criar conta. **Três hipóteses foram descartadas com evidência
+  antes de achar a causa:** (1) chave inválida — testei a chave direto contra `/auth/v1/settings` do projeto
+  e ela respondeu 200; (2) projeto errado na URL — o host respondia normalmente; (3) bundle com chave legada.
+  **Causa real:** a chave na Vercel estava **truncada em 1 caractere** (faltava o `D` final), perdido numa
+  seleção de texto ao copiar. Achada olhando o header `apikey` na aba Rede do navegador — a única fonte que
+  mostra o que o cliente **de fato** envia.
+  _Lições:_ (a) quando o sintoma diz "credencial inválida" mas a credencial funciona isoladamente, compare
+  **byte a byte** o que está sendo enviado; (b) copiar segredo por seleção manual é frágil — usar
+  `printf '%s' "$KEY" | pbcopy` a partir do arquivo elimina a classe inteira de erro; (c) marcar variável
+  `VITE_*` como "Sensitive" na Vercel só atrapalha (ela é pública por natureza — vai no bundle) e impede
+  justamente a conferência que resolveria o problema em 10 segundos.
+- [x] **Mensagens de erro traduzidas** (`lib/authErrors.ts`, **+8 testes**): erro técnico do provedor não vaza
+  mais para o usuário. Regra adotada: **falha de configuração nossa nunca vira culpa de quem usa** — nesses
+  casos a mensagem diz que o problema é do nosso lado. Erro desconhecido cai em mensagem genérica sem expor
+  `JWT`/`PGRST301`; o texto cru vai para o console, que é onde o desenvolvedor quer.
+- [x] **Confirmação de email do Supabase**: o mailer embutido é só para desenvolvimento e não entregou.
+  Diagnóstico: o usuário **já existia** (criado em 22/jul), e o Supabase responde sucesso genérico para email
+  já cadastrado — proteção contra enumeração de usuários. Não era falha. _Pendência opcional:_ apontar o SMTP
+  do Supabase Auth para o Brevo, para as confirmações saírem pelo mesmo relay.
+
+**📧 O alerta que funcionou mas estava errado (feedback do Bernardo no 1º email real)**
+- [x] **Link do email ia para a ANP** — sobra de quando não existia site publicado. Agora aponta para o app,
+  **na série do alerta** (`/?produto=…&uf=…&municipio=…`). Para isso o front passou a ler parâmetros da URL
+  (`lib/seriesFromUrl.ts`), o que de quebra tornou **qualquer consulta compartilhável por link**.
+- [x] **Texto dizia "atingiu o valor desejado"** com preço em R$ 6,41 e alvo em R$ 9,00 — descrevia um evento
+  que não aconteceu. Reescrito em `lib/alertEmailContent.ts` (puro e testável): agora informa a posição real
+  ("R$ 2,590 (29%) abaixo do seu alvo"), diferencia "exatamente no alvo", inclui a data do levantamento e
+  **não duplica** mais o nome da série (dois campos recebiam o mesmo rótulo). **+13 testes.**
+- [x] **Correção de raiz na UI** (`lib/alertThreshold.ts`, **+9 testes**): ao digitar um alvo que o preço atual
+  já cumpre, o formulário avisa **antes** de criar o alerta que o email sairia na hora, e sugere um valor menor.
+  Não bloqueia (pode ser intencional), só para de fingir novidade.
+  > _Nota conceitual:_ a comparação `preço ≤ alvo` **estava correta** — o defeito era de experiência e de
+  > texto, não de lógica. Vale registrar porque a tentação era "consertar a conta" e o problema era outro.
+
+**Total após esta fase: 177 testes** (120 backend + 57 frontend), lint/type-check/build limpos.
 
 ---
 
@@ -713,8 +762,11 @@ Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não prec
   dependabot sob política, `render.yaml`/`vercel.json`. **143 testes.**
 - [x] **Baseline Node 22** ✅: o `@supabase/supabase-js` passou a exigir `>=22`; alinhados `.nvmrc`,
   `engines`, os dois workflows e o `render.yaml`.
-- [~] **Fase 7 — Deploy público** ✅ **NO AR** (app na Vercel + API no Render + Supabase, R$ 0/mês);
-  falta só o **SMTP na porta 2525** (7.6 — o Render Free bloqueia 25/465/587) e os **secrets do Actions** (7.5).
+- [x] **Fase 7 — Deploy público** ✅ **CONCLUÍDA** — app na Vercel + API no Render + Supabase + Brevo,
+  R$ 0/mês, com o alerta por email validado ponta a ponta em produção.
+- [x] **Fase 7.7 — Correções do primeiro uso real** ✅ — chave truncada na Vercel (diagnóstico completo
+  registrado), mensagens de erro traduzidas, e o email de alerta reescrito para dizer a verdade e apontar
+  para o app. **177 testes.**
 - [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs **feitos**; falta GIF/screenshots + post + tags.
   _(O bloqueio do deploy caiu: o link da demo já existe.)_
 - [x] Fase 9 — Operação contínua no free tier ✅ (**antecipada**): retenção automática ligada por padrão
