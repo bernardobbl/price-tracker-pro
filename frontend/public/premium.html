@@ -1,0 +1,548 @@
+<!--
+  ============================================================================
+  PRICE TRACKER PRO — página de validação do Premium ("porta falsa")
+  ----------------------------------------------------------------------------
+  ⚠️ ESTE ARQUIVO SÓ EXISTE NA BRANCH `feat/premium-landing`.
+     Não faça merge na main sem o critério de sucesso da Fase 10 do plan.md.
+
+  OBJETIVO: medir se o motorista comum PAGA, sem construir a infra de assinatura.
+  Servida em /premium (ver rewrite em frontend/vercel.json).
+
+  MODELO DE PREÇO (decidido em 29/jul/2026 — Fase 10 do plan.md):
+    • R$ 6,90/mês no mensal
+    • R$ 60/ano no anual  ->  R$ 5,00/mês  (~28% off)
+    • Vitalício DESCARTADO: receita que morre com despesa que não morre.
+
+  3 COISAS PRA CONFIGURAR (procure por "TODO" no código):
+    1. LINK DE COBRANÇA (Stripe Payment Link ou AbacatePay): cole no botão.
+       Enquanto não colar, o botão só mostra um aviso.
+    2. CAPTURA DE EMAIL: troque o endpoint do formulário por um Formspree
+       (formspree.io, grátis) ou pela sua própria API.
+    3. ANALYTICS: cole o script do Vercel Analytics ou Plausible no <head>
+       pra medir visitantes -> cliques -> pagamentos. Os eventos já disparam
+       nos pontos certos (procure por trackEvent).
+
+  DICA DE TESTE: rode 2-4 semanas. Sinal forte = alguém PAGA de verdade.
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f4f3ee" />
+<title>Price Tracker Pro Premium — abasteça na hora certa</title>
+<meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 6,90/mês ou R$ 60/ano." />
+<meta name="robots" content="noindex" />
+
+<!-- TODO 3: cole aqui o script do Vercel Analytics ou Plausible -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:wght@500;600;700;900&family=Doto:wght@400;700;900&display=swap" rel="stylesheet" />
+
+<style>
+  /* ==========================================================================
+     PALETA — espelha frontend/src/index.css (tokens do app).
+     Não invente cores novas aqui: a landing tem que parecer o mesmo produto.
+     ========================================================================== */
+  :root{
+    --paper:       #f4f3ee;
+    --surface:     #ffffff;
+    --surface-soft:#faf9f4;
+    --ink:         #20222e;
+    --ink-soft:    #45485a;
+    --muted:       #5c5f70;
+    --line:        #e4e2da;
+    --line-strong: #d4d2c8;
+    --brand:       #3b4a8c;
+    --brand-deep:  #2c3a73;
+    --brand-soft:  #eef0f8;
+    --camel:       #b08a4b;
+    --good:        #3e7b57;
+    --good-deep:   #2f6446;
+    --good-soft:   #e7f0e9;
+    --warn-deep:   #8a611c;
+    --warn-soft:   #f7efdd;
+
+    --panel:       #20222e;  /* totem escuro = --ink */
+    --panel-2:     #2a2d3b;
+    --led:         #d8a95c;  /* dígitos do totem: --camel clareado p/ contraste */
+
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --shadow: 0 1px 2px rgba(36,31,26,.04), 0 1px 3px rgba(36,31,26,.05);
+    --shadow-md: 0 2px 6px rgba(36,31,26,.05), 0 6px 16px rgba(36,31,26,.06);
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+    --maxw: 1080px;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--font-ui);
+    font-size:16.5px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  a{ color:inherit; }
+  h1,h2,h3{ margin:0; font-family:var(--font-display); font-weight:700; letter-spacing:-0.015em; line-height:1.1; }
+  p{ margin:0; }
+
+  /* ---------- NAV ---------- */
+  .nav{ padding:22px 0; border-bottom:1px solid var(--line); background:var(--surface); }
+  .nav .wrap{ display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:700; font-family:var(--font-display); letter-spacing:-0.02em; }
+  .brand .dot{
+    width:13px; height:13px; border-radius:4px;
+    background:var(--brand); box-shadow:0 0 0 3px var(--brand-soft);
+  }
+  .brand .tag{
+    font-family:var(--font-ui);
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em;
+    background:var(--camel); color:#fff; padding:3px 8px; border-radius:var(--radius-sm);
+  }
+  .nav-link{ font-size:14px; font-weight:600; color:var(--brand); text-decoration:none; }
+  .nav-link:hover{ text-decoration:underline; }
+
+  /* ---------- HERO ---------- */
+  .hero{ padding:52px 0 60px; }
+  .hero .wrap{ display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center; }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.14em;
+    color:var(--good-deep);
+  }
+  .eyebrow .pulse{
+    width:8px; height:8px; border-radius:50%; background:var(--good);
+    animation:pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.35; transform:scale(1.5);} }
+
+  .hero h1{
+    font-size:clamp(2.2rem, 4.8vw, 3.5rem);
+    font-weight:900; margin:16px 0 18px;
+  }
+  .hero h1 em{ font-style:normal; color:var(--brand); }
+  .hero .lede{ font-size:1.1rem; color:var(--ink-soft); max-width:36ch; }
+
+  .cta-row{ margin-top:30px; display:flex; flex-direction:column; gap:14px; max-width:430px; }
+  .btn{
+    font-family:var(--font-ui); font-size:1rem; font-weight:700; letter-spacing:-0.01em;
+    border:none; border-radius:var(--radius); padding:15px 22px; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    text-decoration:none;
+    transition:transform .12s ease, box-shadow .12s ease, background .15s ease;
+  }
+  .btn:active{ transform:translateY(1px); }
+  .btn-primary{ background:var(--brand); color:#fff; box-shadow:var(--shadow-md); }
+  .btn-primary:hover{ background:var(--brand-deep); }
+  .btn-ghost{ background:var(--surface); color:var(--ink); border:1px solid var(--line-strong); }
+  .btn-ghost:hover{ background:var(--surface-soft); }
+  .btn-sub{ font-size:13px; color:var(--muted); text-align:center; margin-top:-4px; }
+
+  /* email inline */
+  .email-form{ display:flex; gap:8px; }
+  .email-form input{
+    flex:1; min-width:0; font-family:inherit; font-size:.97rem; color:var(--ink);
+    border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px 15px; background:var(--surface);
+  }
+  .email-form input:focus{ outline:none; border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft); }
+  .form-note{ font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .form-ok{ color:var(--good-deep); font-weight:600; }
+
+  /* ---------- TOTEM (o painel de posto) ---------- */
+  .totem{
+    background:var(--panel);
+    border-radius:18px;
+    padding:26px 26px 30px;
+    box-shadow:0 24px 50px -28px rgba(32,34,46,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    position:relative;
+  }
+  .totem::before{ /* poste */
+    content:""; position:absolute; bottom:-34px; left:50%; width:16px; height:40px;
+    transform:translateX(-50%); background:linear-gradient(var(--panel), #14161f); border-radius:0 0 4px 4px;
+  }
+  .totem-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+  .totem-station{ color:#9a9cab; font-size:12px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; }
+  .totem-live{ display:flex; align-items:center; gap:7px; color:#7fc39c; font-size:11px; font-weight:700; letter-spacing:.1em; }
+  .totem-live .d{ width:7px; height:7px; border-radius:50%; background:#7fc39c; box-shadow:0 0 8px #7fc39c; animation:pulse 2s ease-in-out infinite; }
+
+  .fuel-label{ color:#83869a; font-size:13px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; }
+  .price-line{ display:flex; align-items:baseline; gap:6px; }
+  .cur{ color:var(--led); font-family:"Doto", monospace; font-weight:700; font-size:1.55rem; opacity:.85; }
+  .price{
+    font-family:"Doto", monospace; font-weight:900;
+    font-size:clamp(3.2rem, 10.5vw, 4.8rem);
+    color:var(--led); line-height:1;
+    text-shadow:0 0 18px rgba(216,169,92,.35);
+    letter-spacing:.02em;
+  }
+  .per{ color:#83869a; font-family:"Doto",monospace; font-weight:700; font-size:1rem; }
+  .drop-tag{
+    margin-top:18px; display:inline-flex; align-items:center; gap:8px;
+    background:rgba(62,123,87,.20); color:#8fd0aa;
+    border:1px solid rgba(127,195,156,.35);
+    padding:8px 13px; border-radius:var(--radius); font-weight:700; font-size:.94rem;
+    opacity:0; transform:translateY(6px); transition:opacity .5s ease, transform .5s ease;
+  }
+  .drop-tag.show{ opacity:1; transform:none; }
+  .totem-foot{ margin-top:20px; color:#6e7183; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; }
+
+  /* ---------- SECTIONS ---------- */
+  .section{ padding:60px 0; }
+  .section-head{ max-width:46ch; margin-bottom:34px; }
+  .section-head h2{ font-size:clamp(1.6rem,3.2vw,2.2rem); }
+  .section-head p{ color:var(--ink-soft); margin-top:12px; }
+
+  .cards{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  .card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg);
+    padding:26px 24px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow);
+  }
+  .card .ic{
+    width:40px; height:40px; border-radius:var(--radius); display:grid; place-items:center;
+    background:var(--brand-soft); font-weight:700; font-family:"Doto",monospace; color:var(--brand); font-size:1.2rem;
+  }
+  .card h3{ font-size:1.12rem; }
+  .card p{ color:var(--ink-soft); font-size:.96rem; }
+
+  /* ---------- OFERTA / PREÇO ---------- */
+  .offer{ background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:40px; box-shadow:var(--shadow-md); }
+  .offer .wrap-inner{ display:grid; grid-template-columns:1.1fr 1fr; gap:40px; align-items:center; }
+  .offer h2{ font-size:clamp(1.7rem,3.2vw,2.2rem); }
+  .offer .offer-lede{ color:var(--ink-soft); margin-top:14px; max-width:42ch; }
+  .offer ul{ margin:18px 0 0; padding:0; list-style:none; display:grid; gap:8px; }
+  .offer li{ color:var(--ink-soft); font-size:.96rem; display:flex; gap:9px; }
+  .offer li::before{ content:"✓"; color:var(--good); font-weight:700; }
+
+  /* toggle mensal/anual */
+  .toggle{
+    display:inline-flex; background:var(--paper); border:1px solid var(--line-strong);
+    border-radius:999px; padding:3px; gap:2px; margin-bottom:20px;
+  }
+  .toggle button{
+    font-family:var(--font-ui); font-size:13px; font-weight:600; color:var(--muted);
+    background:none; border:none; padding:8px 16px; border-radius:999px; cursor:pointer;
+  }
+  .toggle button[aria-pressed="true"]{ background:var(--surface); color:var(--ink); box-shadow:var(--shadow); }
+  .toggle .save{ color:var(--good-deep); font-weight:700; }
+
+  .price-box{ background:var(--surface-soft); border:1px solid var(--line); border-radius:var(--radius-lg); padding:26px; }
+  .plan-kicker{ font-size:11.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--camel); }
+  .big-price{ font-family:"Doto",monospace; font-weight:900; font-size:3rem; color:var(--ink); line-height:1; margin:10px 0 2px; }
+  .big-price small{ font-family:var(--font-ui); font-size:.9rem; font-weight:600; color:var(--muted); }
+  .plan-note{ color:var(--muted); font-size:.92rem; margin-top:6px; min-height:1.4em; }
+  .price-box .btn{ width:100%; margin-top:20px; background:var(--good); color:#fff; }
+  .price-box .btn:hover{ background:var(--good-deep); }
+  .slots{ font-size:12.5px; color:var(--muted); margin-top:12px; text-align:center; }
+
+  /* ---------- FAQ ---------- */
+  .faq{ display:grid; gap:1px; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--line); background:var(--line); }
+  .faq details{ background:var(--surface); }
+  .faq summary{
+    cursor:pointer; padding:19px 22px; font-weight:600; font-size:1.02rem; list-style:none;
+    display:flex; justify-content:space-between; align-items:center; gap:16px;
+  }
+  .faq summary::-webkit-details-marker{ display:none; }
+  .faq summary::after{ content:"+"; font-family:"Doto",monospace; font-weight:900; color:var(--brand); }
+  .faq details[open] summary::after{ content:"–"; }
+  .faq .a{ padding:0 22px 22px; color:var(--ink-soft); font-size:.97rem; }
+
+  /* ---------- FOOTER ---------- */
+  footer{ padding:40px 0 60px; color:var(--muted); font-size:13.5px; border-top:1px solid var(--line); margin-top:20px; }
+  footer .wrap{ display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+
+  /* ---------- MODAL ---------- */
+  .backdrop{
+    position:fixed; inset:0; background:rgba(32,34,46,.45); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; padding:20px; z-index:50;
+  }
+  .backdrop.open{ display:flex; }
+  .modal{ background:var(--surface); border-radius:16px; padding:30px; max-width:420px; width:100%; box-shadow:0 40px 80px -30px rgba(32,34,46,.45); }
+  .modal h3{ font-size:1.35rem; }
+  .modal p{ color:var(--ink-soft); margin-top:12px; font-size:.97rem; }
+  .modal .btn{ width:100%; margin-top:20px; background:var(--good); color:#fff; }
+  .modal .btn:hover{ background:var(--good-deep); }
+  .modal .close{ background:none; border:none; float:right; font-size:22px; cursor:pointer; color:var(--muted); line-height:1; }
+  .modal .warn{ margin-top:14px; font-size:12.5px; color:var(--warn-deep); background:var(--warn-soft); border-radius:var(--radius); padding:10px 12px; }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:860px){
+    .hero .wrap{ grid-template-columns:1fr; gap:40px; }
+    .cards{ grid-template-columns:1fr; }
+    .offer{ padding:28px 22px; }
+    .offer .wrap-inner{ grid-template-columns:1fr; gap:28px; }
+    .cta-row{ max-width:none; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{ animation:none !important; transition:none !important; }
+    .drop-tag{ opacity:1; transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <div class="brand">
+      <span class="dot"></span> Price Tracker Pro <span class="tag">Premium</span>
+    </div>
+    <a class="nav-link" href="/">← voltar aos preços grátis</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow"><span class="pulse"></span> Preço de fundador · primeiros assinantes</span>
+      <h1>Chegue no posto <em>na hora certa</em> de abastecer.</h1>
+      <p class="lede">A gente vigia o preço do combustível na sua cidade com os dados da ANP e te avisa quando ele cai. Você só aparece pra economizar.</p>
+
+      <div class="cta-row">
+        <button class="btn btn-primary" id="openPix">Assinar o Premium</button>
+        <span class="btn-sub">R$ 6,90/mês · ou R$ 60/ano (R$ 5/mês) · cancela quando quiser</span>
+
+        <form class="email-form" id="emailForm" novalidate>
+          <!-- TODO 2: troque a action por seu endpoint do Formspree -->
+          <input type="email" name="email" placeholder="Ainda em dúvida? Seu email" aria-label="Seu email" required />
+          <button class="btn btn-ghost" type="submit">Me avise</button>
+        </form>
+        <span class="form-note" id="formNote">Te aviso quando o Premium abrir. Sem spam.</span>
+      </div>
+    </div>
+
+    <!-- ASSINATURA VISUAL: totem de preço estilo posto -->
+    <div class="totem" aria-label="Painel de preço de posto">
+      <div class="totem-top">
+        <span class="totem-station">Sua cidade</span>
+        <span class="totem-live"><span class="d"></span> AO VIVO</span>
+      </div>
+      <div class="fuel-label">Gasolina comum</div>
+      <div class="price-line">
+        <span class="cur">R$</span>
+        <span class="price" id="price">6,29</span>
+        <span class="per">/L</span>
+      </div>
+      <div class="drop-tag" id="dropTag">▼ caiu R$ 0,45 na última semana</div>
+      <div class="totem-foot">Fonte: dados abertos ANP</div>
+    </div>
+  </div>
+</header>
+
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>O grátis mostra o preço. O Premium te faz agir.</h2>
+      <p>O que muda quando você assina:</p>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <div class="ic">!</div>
+        <h3>Alertas que valem dinheiro</h3>
+        <p>Escolha os combustíveis e as cidades que te interessam. Quando a média cai, seu celular avisa — sem você abrir o app toda hora.</p>
+      </div>
+      <div class="card">
+        <div class="ic">→</div>
+        <h3>Do jeito que você anda</h3>
+        <p>Cadastre as cidades da sua rotina e da estrada. Compare tudo num lugar só, na palma da mão.</p>
+      </div>
+      <div class="card">
+        <div class="ic">z</div>
+        <h3>Chega no WhatsApp</h3>
+        <p>Receba o aviso onde você já olha o dia inteiro. Nada de email perdido no meio de mil outros.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="offer">
+      <div class="wrap-inner">
+        <div>
+          <h2>Menos de um café por mês.</h2>
+          <p class="offer-lede">Um tanque cheio custa uns R$ 300. Acertar o dia de abastecer já paga a assinatura do ano inteiro — várias vezes.</p>
+          <ul>
+            <li>Alertas ilimitados de queda de preço</li>
+            <li>Histórico completo, não só os últimos dias</li>
+            <li>Cancela em 1 clique, sem ligar pra ninguém</li>
+            <li>Preço de fundador travado enquanto você for assinante</li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="toggle" role="group" aria-label="Escolha o plano">
+            <button type="button" id="tabMensal" aria-pressed="true">Mensal</button>
+            <button type="button" id="tabAnual" aria-pressed="false">Anual <span class="save">−28%</span></button>
+          </div>
+
+          <div class="price-box">
+            <span class="plan-kicker" id="planKicker">Plano mensal</span>
+            <!-- TODO: preços editáveis pra você testar (ver também o objeto PLANS no script). -->
+            <div class="big-price" id="planPrice">R$ 6,90 <small>/mês</small></div>
+            <div class="plan-note" id="planNote">Cobrado mês a mês. Cancela quando quiser.</div>
+            <button class="btn" id="openPix2">Assinar agora</button>
+            <div class="slots" id="slots">Pagamento por Pix ou cartão</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="section-head"><h2>Perguntas rápidas</h2></div>
+    <div class="faq">
+      <details>
+        <summary>De onde vêm os preços?</summary>
+        <div class="a">Dos dados abertos da ANP, a agência que regula os combustíveis no Brasil. São preços reais coletados nos postos de todo o país.</div>
+      </details>
+      <details>
+        <summary>Por que não tem plano vitalício?</summary>
+        <div class="a">Porque o custo de vigiar os preços é todo mês — servidor, banco, envio de alerta. Um pagamento único acabaria e a conta continuaria chegando; em algum momento o serviço morreria. Assinatura barata é o que mantém o app vivo e melhorando.</div>
+      </details>
+      <details>
+        <summary>Posso cancelar?</summary>
+        <div class="a">Sim, a qualquer momento, em um clique. Você continua com acesso até o fim do período já pago e não é cobrado de novo.</div>
+      </details>
+      <details>
+        <summary>Como eu pago?</summary>
+        <div class="a">Pix ou cartão. No anual, um pagamento de R$ 60 cobre 12 meses (sai R$ 5/mês).</div>
+      </details>
+      <details>
+        <summary>O app grátis vai continuar?</summary>
+        <div class="a">Sim. A consulta de preços e os gráficos seguem grátis. O Premium é para quem quer ser avisado em vez de ficar olhando.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Price Tracker Pro · dados abertos da ANP</span>
+    <span>Estamos medindo o interesse antes de lançar. Obrigado por fazer parte.</span>
+  </div>
+</footer>
+
+<!-- MODAL DE CHECKOUT -->
+<div class="backdrop" id="backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <button class="close" id="closeModal" aria-label="Fechar">×</button>
+    <h3 id="modalTitle">Assinar o Premium</h3>
+    <p id="modalText">Plano mensal de <strong>R$ 6,90</strong>. Assim que o Premium abrir, seu acesso é liberado no email cadastrado.</p>
+    <!-- TODO 1: cole o link de cobrança (Stripe Payment Link / AbacatePay) no href -->
+    <a class="btn" id="pixLink" href="#" data-configured="false">Ir para o pagamento</a>
+    <div class="warn" id="pixWarn" style="display:none">
+      Configure o link de cobrança no código antes de publicar. Procure por “TODO 1”.
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- Analytics helper (plugue Vercel/Plausible) ----
+  function trackEvent(name, props){
+    // TODO 3: dispare seu evento real aqui, ex.:
+    // if (window.plausible) plausible(name, { props });
+    // if (window.va) va('event', { name, ...props });
+    console.log('[track]', name, props || {});
+  }
+
+  // ---- Planos (fonte única de verdade dos preços da landing) ----
+  var PLANS = {
+    mensal: {
+      kicker: 'Plano mensal',
+      price:  'R$ 6,90 <small>/mês</small>',
+      note:   'Cobrado mês a mês. Cancela quando quiser.',
+      modal:  'Plano mensal de <strong>R$ 6,90</strong>.'
+    },
+    anual: {
+      kicker: 'Plano anual · melhor preço',
+      price:  'R$ 60 <small>/ano</small>',
+      note:   'Sai R$ 5,00 por mês — 28% mais barato que o mensal.',
+      modal:  'Plano anual de <strong>R$ 60</strong> (R$ 5,00/mês).'
+    }
+  };
+  var current = 'mensal';
+
+  var elKicker = document.getElementById('planKicker');
+  var elPrice  = document.getElementById('planPrice');
+  var elNote   = document.getElementById('planNote');
+  var elModalText = document.getElementById('modalText');
+  var tabs = { mensal: document.getElementById('tabMensal'), anual: document.getElementById('tabAnual') };
+
+  function selectPlan(key){
+    current = key;
+    var p = PLANS[key];
+    elKicker.textContent = p.kicker;
+    elPrice.innerHTML = p.price;
+    elNote.textContent = p.note;
+    elModalText.innerHTML = p.modal + ' Assim que o Premium abrir, seu acesso é liberado no email cadastrado.';
+    tabs.mensal.setAttribute('aria-pressed', String(key === 'mensal'));
+    tabs.anual.setAttribute('aria-pressed', String(key === 'anual'));
+    trackEvent('select_plan', { plan: key });
+  }
+  tabs.mensal.addEventListener('click', function(){ selectPlan('mensal'); });
+  tabs.anual.addEventListener('click', function(){ selectPlan('anual'); });
+
+  // ---- Totem: anima uma queda de preço ao carregar ----
+  (function animatePrice(){
+    var el = document.getElementById('price');
+    var tag = document.getElementById('dropTag');
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var steps = ['6,29','6,18','6,04','5,97','5,88','5,84'];
+    if (reduce){ el.textContent = '5,84'; tag.classList.add('show'); return; }
+    var i = 0;
+    var iv = setInterval(function(){
+      i++;
+      if (i >= steps.length){ clearInterval(iv); tag.classList.add('show'); return; }
+      el.textContent = steps[i];
+    }, 260);
+  })();
+
+  // ---- Modal ----
+  var backdrop = document.getElementById('backdrop');
+  var pixLink = document.getElementById('pixLink');
+  var pixWarn = document.getElementById('pixWarn');
+  function openCheckout(source){
+    trackEvent('click_subscribe', { source: source, plan: current });
+    if (pixLink.getAttribute('data-configured') !== 'true'){
+      pixWarn.style.display = 'block';
+    }
+    backdrop.classList.add('open');
+    document.getElementById('closeModal').focus();
+  }
+  function closeCheckout(){ backdrop.classList.remove('open'); }
+  document.getElementById('openPix').addEventListener('click', function(){ openCheckout('hero'); });
+  document.getElementById('openPix2').addEventListener('click', function(){ openCheckout('oferta'); });
+  document.getElementById('closeModal').addEventListener('click', closeCheckout);
+  backdrop.addEventListener('click', function(e){ if (e.target === backdrop) closeCheckout(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeCheckout(); });
+  pixLink.addEventListener('click', function(){ trackEvent('click_checkout', { plan: current }); });
+
+  // ---- Captura de email ----
+  var form = document.getElementById('emailForm');
+  var note = document.getElementById('formNote');
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var email = form.email.value.trim();
+    if (!email || email.indexOf('@') < 0){
+      note.textContent = 'Coloque um email válido pra eu te avisar.';
+      note.classList.remove('form-ok'); return;
+    }
+    trackEvent('signup_email', { plan: current });
+    // TODO 2: envie 'email' pro seu Formspree/endpoint aqui (fetch).
+    note.textContent = 'Pronto! Te aviso assim que o Premium abrir. ✓';
+    note.classList.add('form-ok');
+    form.reset();
+  });
+</script>
+</body>
+</html>
