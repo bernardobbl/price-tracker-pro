@@ -727,6 +727,59 @@ Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não prec
 
 ---
 
+### Fase 10 — Experimento de monetização (⚠️ FORA DA MAIN — branch `feat/premium-landing`)
+**Meta:** descobrir se o motorista comum **paga** pelo alerta de preço, **antes** de construir
+assinatura, cobrança, webhook e área logada. Isto é um **experimento**, não uma feature: pode ser
+revertido inteiro apagando uma branch.
+
+> **Status:** 🧪 EM EXPERIMENTAÇÃO (aberta em 29/jul/2026). Não é parte do escopo "10x de portfólio" —
+> a main continua sendo o projeto público estável. Se o experimento falhar, **nada** volta para a main
+> além desta anotação e do aprendizado.
+
+**Regra de ouro desta fase:** nenhum commit deste experimento entra na `main` sem sinal de mercado.
+A `main` é o que o recrutador vê e o que está no ar em produção; ela não pode carregar página de
+preço de um produto que talvez ninguém queira.
+
+#### Convenção de branches (vale para qualquer experimento futuro)
+| Item | Regra |
+|---|---|
+| Nome | `feat/<assunto>` para feature, `exp/<assunto>` para experimento descartável. Aqui: `feat/premium-landing`. |
+| Origem | Sempre criada a partir da `main` atualizada (`git switch main && git pull && git switch -c feat/premium-landing`). |
+| O que vive nela | Só os arquivos do experimento (a landing `/premium`, config de rota, script de analytics). |
+| O que **não** vive nela | Refactor de código de produção, bump de dependência, correção de bug — isso vai direto na `main` e a branch faz `rebase`. |
+| Deploy | **Preview deploy** do Vercel (a Vercel gera uma URL própria por branch). Produção não muda. |
+| Como o plan.md acompanha | Esta fase mora na `main` (o roadmap é fonte única de verdade e não pode divergir), mas o **código** mora só na branch. Ou seja: a main sabe que o experimento existe; a main não executa o experimento. |
+| Merge | Só via PR, e **só se o critério de sucesso abaixo for atingido**. Se falhar: `git branch -D feat/premium-landing` + registrar o aprendizado na seção 7. |
+| Sincronização | Enquanto o experimento estiver vivo, `git rebase main` de vez em quando, para não acumular divergência. |
+
+#### Hipótese de preço (decidida em 29/jul/2026)
+- **R$ 6,90/mês** no plano mensal.
+- **R$ 5,00/mês no plano anual** (R$ 60/ano) — âncora de desconto (~28% off) e caixa antecipado.
+- ❌ **Vitalício descartado.** Motivo registrado para não reabrir a discussão: pagamento único com
+  custo de infra recorrente é receita que morre e despesa que não morre. Também impede reajuste e
+  destrói a métrica que importa num SaaS (MRR/retenção). Ficaria "barato" hoje e caro para sempre.
+
+#### Tarefas
+- [ ] Criar a branch `feat/premium-landing` a partir da `main`.
+- [ ] Landing `/premium` ("porta falsa"): promessa, prova com dado real da ANP, preço, FAQ, captura de e-mail.
+- [ ] **Paleta = paleta do site** (`--paper`, `--brand`, `--camel`, `--good` de `frontend/src/index.css`).
+  O protótipo nasceu com uma paleta própria (concreto + LED âmbar); foi reconciliado com os tokens do app.
+- [ ] Captura de e-mail funcionando (Formspree ou endpoint próprio) — a lista é o ativo real deste teste.
+- [ ] Analytics de funil (Vercel Analytics/Plausible): visita → clique em "assinar" → e-mail → pagamento.
+- [ ] Link de cobrança Pix/cartão só quando decidir cobrar de verdade (Stripe ou AbacatePay).
+- [ ] Rodar **2 a 4 semanas** divulgando em canais reais (grupos de motorista/app, Reddit BR, LinkedIn).
+
+#### Critério de sucesso / kill (definir antes de olhar o número, para não se enganar)
+- ✅ **Sinal forte:** alguém **paga** sem você pedir por favor. Ou ≥ 30 e-mails com intenção declarada.
+- ⚠️ **Sinal fraco:** tráfego bom, cliques em "assinar", zero e-mail → a promessa não convence.
+- ❌ **Kill:** < 5 e-mails em 4 semanas com tráfego razoável → apagar a branch, manter o app grátis
+  e registrar o aprendizado. Nada de "construir mais features para ver se aí vende".
+
+**DoD:** landing no preview do Vercel, funil medido, decisão escrita (merge ou kill) na seção 7 —
+e a `main` exatamente como estava antes, se o experimento morrer.
+
+---
+
 ## 4. Decisões de stack (mantém o que já é bom)
 
 | Camada | Hoje | Manter / Mudar |
