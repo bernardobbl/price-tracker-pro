@@ -307,7 +307,7 @@
 
       <div class="cta-row">
         <button class="btn btn-primary" id="openPix">Assinar o Premium</button>
-        <span class="btn-sub">R$ 6,90/mês · ou R$ 60/ano (R$ 5/mês) · cancela quando quiser</span>
+        <span class="btn-sub">R$ 60/ano (sai R$ 5/mês) · ou R$ 6,90 no mensal · cancela quando quiser</span>
 
         <form class="email-form" id="emailForm" novalidate>
           <!-- TODO 2: troque a action por seu endpoint do Formspree -->
@@ -354,9 +354,9 @@
         <p>Cadastre as cidades da sua rotina e da estrada. Compare tudo num lugar só, na palma da mão.</p>
       </div>
       <div class="card">
-        <div class="ic">z</div>
-        <h3>Chega no WhatsApp</h3>
-        <p>Receba o aviso onde você já olha o dia inteiro. Nada de email perdido no meio de mil outros.</p>
+        <div class="ic">@</div>
+        <h3>No email, na hora</h3>
+        <p>O aviso chega no seu email assim que a média cai. <strong>WhatsApp está no plano</strong> — mas só prometemos quando estiver pronto.</p>
       </div>
     </div>
   </div>
@@ -370,24 +370,27 @@
           <h2>Menos de um café por mês.</h2>
           <p class="offer-lede">Um tanque cheio custa uns R$ 300. Acertar o dia de abastecer já paga a assinatura do ano inteiro — várias vezes.</p>
           <ul>
-            <li>Alertas ilimitados de queda de preço</li>
-            <li>Histórico completo, não só os últimos dias</li>
-            <li>Cancela em 1 clique, sem ligar pra ninguém</li>
+            <li>Alertas de queda em quantas séries você quiser</li>
+            <li>12 meses de histórico, com comparação entre cidades</li>
+            <li>Cancela quando quiser, sem falar com ninguém</li>
             <li>Preço de fundador travado enquanto você for assinante</li>
           </ul>
         </div>
 
         <div>
+          <!-- O ANUAL NASCE SELECIONADO DE PROPÓSITO: a taxa fixa do gateway (~R$0,80/transação)
+               come 12% de uma mensalidade de R$6,90 e só 1,3% de um anual de R$60.
+               Ver docs/fase10-pagamentos.md, seção 3. -->
           <div class="toggle" role="group" aria-label="Escolha o plano">
-            <button type="button" id="tabMensal" aria-pressed="true">Mensal</button>
-            <button type="button" id="tabAnual" aria-pressed="false">Anual <span class="save">−28%</span></button>
+            <button type="button" id="tabMensal" aria-pressed="false">Mensal</button>
+            <button type="button" id="tabAnual" aria-pressed="true">Anual <span class="save">−28%</span></button>
           </div>
 
           <div class="price-box">
-            <span class="plan-kicker" id="planKicker">Plano mensal</span>
+            <span class="plan-kicker" id="planKicker">Plano anual · melhor preço</span>
             <!-- TODO: preços editáveis pra você testar (ver também o objeto PLANS no script). -->
-            <div class="big-price" id="planPrice">R$ 6,90 <small>/mês</small></div>
-            <div class="plan-note" id="planNote">Cobrado mês a mês. Cancela quando quiser.</div>
+            <div class="big-price" id="planPrice">R$ 60 <small>/ano</small></div>
+            <div class="plan-note" id="planNote">Sai R$ 5,00 por mês — 28% mais barato que o mensal.</div>
             <button class="btn" id="openPix2">Assinar agora</button>
             <div class="slots" id="slots">Pagamento por Pix ou cartão</div>
           </div>
@@ -437,7 +440,7 @@
   <div class="modal">
     <button class="close" id="closeModal" aria-label="Fechar">×</button>
     <h3 id="modalTitle">Assinar o Premium</h3>
-    <p id="modalText">Plano mensal de <strong>R$ 6,90</strong>. Assim que o Premium abrir, seu acesso é liberado no email cadastrado.</p>
+    <p id="modalText">Plano anual de <strong>R$ 60</strong> (R$ 5,00/mês). Assim que o Premium abrir, seu acesso é liberado no email cadastrado.</p>
     <!-- TODO 1: cole o link de cobrança (Stripe Payment Link / AbacatePay) no href -->
     <a class="btn" id="pixLink" href="#" data-configured="false">Ir para o pagamento</a>
     <div class="warn" id="pixWarn" style="display:none">
@@ -470,7 +473,7 @@
       modal:  'Plano anual de <strong>R$ 60</strong> (R$ 5,00/mês).'
     }
   };
-  var current = 'mensal';
+  var current = 'anual';   // default = anual (ver comentário no HTML e docs/fase10-pagamentos.md)
 
   var elKicker = document.getElementById('planKicker');
   var elPrice  = document.getElementById('planPrice');
