@@ -6,6 +6,7 @@
   "installCommand": "npm ci",
   "rewrites": [
     { "source": "/premium", "destination": "/premium.html" },
+    { "source": "/premium/checkout", "destination": "/checkout.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

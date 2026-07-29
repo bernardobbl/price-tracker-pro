@@ -8,19 +8,19 @@
   OBJETIVO: medir se o motorista comum PAGA, sem construir a infra de assinatura.
   Servida em /premium (ver rewrite em frontend/vercel.json).
 
-  MODELO DE PREÇO (decidido em 29/jul/2026 — Fase 10 do plan.md):
-    • R$ 6,90/mês no mensal
-    • R$ 60/ano no anual  ->  R$ 5,00/mês  (~28% off)
+  MODELO DE PREÇO (decidido em 29/jul/2026, mensal reajustado em 29/jul/2026):
+    • R$ 60/ano no anual   ->  R$ 5,00/mês   <- PLANO PRINCIPAL
+    • R$ 16,90/mês no mensal (âncora: 12x16,90 = R$202,80, o anual fica 70% menor)
     • Vitalício DESCARTADO: receita que morre com despesa que não morre.
 
-  3 COISAS PRA CONFIGURAR (procure por "TODO" no código):
-    1. LINK DE COBRANÇA (Stripe Payment Link ou AbacatePay): cole no botão.
-       Enquanto não colar, o botão só mostra um aviso.
-    2. CAPTURA DE EMAIL: troque o endpoint do formulário por um Formspree
+  2 COISAS PRA CONFIGURAR (procure por "TODO" no código):
+    1. CAPTURA DE EMAIL: troque o endpoint do formulário por um Formspree
        (formspree.io, grátis) ou pela sua própria API.
-    3. ANALYTICS: cole o script do Vercel Analytics ou Plausible no <head>
+    2. ANALYTICS: cole o script do Vercel Analytics ou Plausible no <head>
        pra medir visitantes -> cliques -> pagamentos. Os eventos já disparam
        nos pontos certos (procure por trackEvent).
+
+  O checkout vive em /premium/checkout (frontend/public/checkout.html).
 
   DICA DE TESTE: rode 2-4 semanas. Sinal forte = alguém PAGA de verdade.
   ============================================================================
@@ -32,7 +32,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#f4f3ee" />
 <title>Price Tracker Pro Premium — abasteça na hora certa</title>
-<meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 6,90/mês ou R$ 60/ano." />
+<meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 60/ano ou R$ 16,90/mês." />
 <meta name="robots" content="noindex" />
 
 <!-- TODO 3: cole aqui o script do Vercel Analytics ou Plausible -->
@@ -259,20 +259,6 @@
   footer{ padding:40px 0 60px; color:var(--muted); font-size:13.5px; border-top:1px solid var(--line); margin-top:20px; }
   footer .wrap{ display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
 
-  /* ---------- MODAL ---------- */
-  .backdrop{
-    position:fixed; inset:0; background:rgba(32,34,46,.45); backdrop-filter:blur(3px);
-    display:none; align-items:center; justify-content:center; padding:20px; z-index:50;
-  }
-  .backdrop.open{ display:flex; }
-  .modal{ background:var(--surface); border-radius:16px; padding:30px; max-width:420px; width:100%; box-shadow:0 40px 80px -30px rgba(32,34,46,.45); }
-  .modal h3{ font-size:1.35rem; }
-  .modal p{ color:var(--ink-soft); margin-top:12px; font-size:.97rem; }
-  .modal .btn{ width:100%; margin-top:20px; background:var(--good); color:#fff; }
-  .modal .btn:hover{ background:var(--good-deep); }
-  .modal .close{ background:none; border:none; float:right; font-size:22px; cursor:pointer; color:var(--muted); line-height:1; }
-  .modal .warn{ margin-top:14px; font-size:12.5px; color:var(--warn-deep); background:var(--warn-soft); border-radius:var(--radius); padding:10px 12px; }
-
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:860px){
     .hero .wrap{ grid-template-columns:1fr; gap:40px; }
@@ -306,11 +292,11 @@
       <p class="lede">A gente vigia o preço do combustível na sua cidade com os dados da ANP e te avisa quando ele cai. Você só aparece pra economizar.</p>
 
       <div class="cta-row">
-        <button class="btn btn-primary" id="openPix">Assinar o Premium</button>
-        <span class="btn-sub">R$ 60/ano (sai R$ 5/mês) · ou R$ 6,90 no mensal · cancela quando quiser</span>
+        <a class="btn btn-primary" id="ctaHero" href="/premium/checkout?plan=anual">Assinar o Premium</a>
+        <span class="btn-sub">R$ 60/ano (sai R$ 5/mês) · ou R$ 16,90 no mensal · cancela quando quiser</span>
 
         <form class="email-form" id="emailForm" novalidate>
-          <!-- TODO 2: troque a action por seu endpoint do Formspree -->
+          <!-- TODO 1: troque a action por seu endpoint do Formspree -->
           <input type="email" name="email" placeholder="Ainda em dúvida? Seu email" aria-label="Seu email" required />
           <button class="btn btn-ghost" type="submit">Me avise</button>
         </form>
@@ -379,20 +365,21 @@
 
         <div>
           <!-- O ANUAL NASCE SELECIONADO DE PROPÓSITO: a taxa fixa do gateway (~R$0,80/transação)
-               come 12% de uma mensalidade de R$6,90 e só 1,3% de um anual de R$60.
+               come 4,7% de uma mensalidade de R$16,90 e só 1,3% de um anual de R$60 —
+               e no mensal ela é cobrada 12 vezes por ano, no anual uma vez.
                Ver docs/fase10-pagamentos.md, seção 3. -->
           <div class="toggle" role="group" aria-label="Escolha o plano">
             <button type="button" id="tabMensal" aria-pressed="false">Mensal</button>
-            <button type="button" id="tabAnual" aria-pressed="true">Anual <span class="save">−28%</span></button>
+            <button type="button" id="tabAnual" aria-pressed="true">Anual <span class="save">−70%</span></button>
           </div>
 
           <div class="price-box">
             <span class="plan-kicker" id="planKicker">Plano anual · melhor preço</span>
             <!-- TODO: preços editáveis pra você testar (ver também o objeto PLANS no script). -->
             <div class="big-price" id="planPrice">R$ 60 <small>/ano</small></div>
-            <div class="plan-note" id="planNote">Sai R$ 5,00 por mês — 28% mais barato que o mensal.</div>
-            <button class="btn" id="openPix2">Assinar agora</button>
-            <div class="slots" id="slots">Pagamento por Pix ou cartão</div>
+            <div class="plan-note" id="planNote">Sai R$ 5,00 por mês — 70% mais barato que pagar mês a mês.</div>
+            <a class="btn" id="ctaOffer" href="/premium/checkout?plan=anual">Assinar agora</a>
+            <div class="slots" id="slots">Pix (na hora) ou cartão (renova sozinho)</div>
           </div>
         </div>
       </div>
@@ -418,7 +405,11 @@
       </details>
       <details>
         <summary>Como eu pago?</summary>
-        <div class="a">Pix ou cartão. No anual, um pagamento de R$ 60 cobre 12 meses (sai R$ 5/mês).</div>
+        <div class="a">No Pix, lendo o QR Code ou colando o código copia e cola no app do seu banco — cai na hora. No cartão, a cobrança renova sozinha e você cancela quando quiser. O anual são R$ 60 uma vez, cobrindo 12 meses.</div>
+      </details>
+      <details>
+        <summary>Meus dados de pagamento ficam com vocês?</summary>
+        <div class="a">Não. O pagamento é processado pela AbacatePay, uma instituição de pagamento regulada. Nós nunca vemos número de cartão nem seus dados bancários — só recebemos a confirmação de que o pagamento foi aprovado.</div>
       </details>
       <details>
         <summary>O app grátis vai continuar?</summary>
@@ -435,20 +426,6 @@
   </div>
 </footer>
 
-<!-- MODAL DE CHECKOUT -->
-<div class="backdrop" id="backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-  <div class="modal">
-    <button class="close" id="closeModal" aria-label="Fechar">×</button>
-    <h3 id="modalTitle">Assinar o Premium</h3>
-    <p id="modalText">Plano anual de <strong>R$ 60</strong> (R$ 5,00/mês). Assim que o Premium abrir, seu acesso é liberado no email cadastrado.</p>
-    <!-- TODO 1: cole o link de cobrança (Stripe Payment Link / AbacatePay) no href -->
-    <a class="btn" id="pixLink" href="#" data-configured="false">Ir para o pagamento</a>
-    <div class="warn" id="pixWarn" style="display:none">
-      Configure o link de cobrança no código antes de publicar. Procure por “TODO 1”.
-    </div>
-  </div>
-</div>
-
 <script>
   // ---- Analytics helper (plugue Vercel/Plausible) ----
   function trackEvent(name, props){
@@ -462,15 +439,13 @@
   var PLANS = {
     mensal: {
       kicker: 'Plano mensal',
-      price:  'R$ 6,90 <small>/mês</small>',
-      note:   'Cobrado mês a mês. Cancela quando quiser.',
-      modal:  'Plano mensal de <strong>R$ 6,90</strong>.'
+      price:  'R$ 16,90 <small>/mês</small>',
+      note:   'Cobrado mês a mês. Cancela quando quiser.'
     },
     anual: {
       kicker: 'Plano anual · melhor preço',
       price:  'R$ 60 <small>/ano</small>',
-      note:   'Sai R$ 5,00 por mês — 28% mais barato que o mensal.',
-      modal:  'Plano anual de <strong>R$ 60</strong> (R$ 5,00/mês).'
+      note:   'Sai R$ 5,00 por mês — 70% mais barato que pagar mês a mês.'
     }
   };
   var current = 'anual';   // default = anual (ver comentário no HTML e docs/fase10-pagamentos.md)
@@ -478,7 +453,8 @@
   var elKicker = document.getElementById('planKicker');
   var elPrice  = document.getElementById('planPrice');
   var elNote   = document.getElementById('planNote');
-  var elModalText = document.getElementById('modalText');
+  var ctaHero  = document.getElementById('ctaHero');
+  var ctaOffer = document.getElementById('ctaOffer');
   var tabs = { mensal: document.getElementById('tabMensal'), anual: document.getElementById('tabAnual') };
 
   function selectPlan(key){
@@ -487,7 +463,9 @@
     elKicker.textContent = p.kicker;
     elPrice.innerHTML = p.price;
     elNote.textContent = p.note;
-    elModalText.innerHTML = p.modal + ' Assim que o Premium abrir, seu acesso é liberado no email cadastrado.';
+    // o plano escolhido viaja na URL — o checkout confirma o preço no backend, nunca no front
+    ctaHero.href  = '/premium/checkout?plan=' + key;
+    ctaOffer.href = '/premium/checkout?plan=' + key;
     tabs.mensal.setAttribute('aria-pressed', String(key === 'mensal'));
     tabs.anual.setAttribute('aria-pressed', String(key === 'anual'));
     trackEvent('select_plan', { plan: key });
@@ -510,25 +488,9 @@
     }, 260);
   })();
 
-  // ---- Modal ----
-  var backdrop = document.getElementById('backdrop');
-  var pixLink = document.getElementById('pixLink');
-  var pixWarn = document.getElementById('pixWarn');
-  function openCheckout(source){
-    trackEvent('click_subscribe', { source: source, plan: current });
-    if (pixLink.getAttribute('data-configured') !== 'true'){
-      pixWarn.style.display = 'block';
-    }
-    backdrop.classList.add('open');
-    document.getElementById('closeModal').focus();
-  }
-  function closeCheckout(){ backdrop.classList.remove('open'); }
-  document.getElementById('openPix').addEventListener('click', function(){ openCheckout('hero'); });
-  document.getElementById('openPix2').addEventListener('click', function(){ openCheckout('oferta'); });
-  document.getElementById('closeModal').addEventListener('click', closeCheckout);
-  backdrop.addEventListener('click', function(e){ if (e.target === backdrop) closeCheckout(); });
-  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeCheckout(); });
-  pixLink.addEventListener('click', function(){ trackEvent('click_checkout', { plan: current }); });
+  // ---- Ida para o checkout (mede o funil antes de navegar) ----
+  ctaHero.addEventListener('click', function(){ trackEvent('click_subscribe', { source: 'hero', plan: current }); });
+  ctaOffer.addEventListener('click', function(){ trackEvent('click_subscribe', { source: 'oferta', plan: current }); });
 
   // ---- Captura de email ----
   var form = document.getElementById('emailForm');

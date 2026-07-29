@@ -56,7 +56,8 @@ esteira industrial para carregar uma caixa.
 **Fatos apurados na documentação oficial (29/jul/2026):**
 
 - API REST + JSON, base `https://api.abacatepay.com/v2`, autenticação `Authorization: Bearer <api-key>`.
-- **Valores em centavos.** `690` = R$ 6,90. Errar isso cobra R$ 690,00 de alguém. Escreva um helper e um teste.
+- **Valores em centavos.** `1690` = R$ 16,90. Errar isso cobra R$ 1.690,00 de alguém. Escreva um
+  helper e um teste — este é o bug mais caro possível neste projeto.
 - Respostas vêm num envelope: `{ "data": {...}, "success": true, "error": null }`.
 - **Assinatura exige um "produto" com `cycle`** (`WEEKLY`, `MONTHLY`, `SEMIANNUALLY`, `ANNUALLY`),
   criado antes via `POST /products/create`. O checkout de assinatura aceita **exatamente 1 item**.
@@ -91,29 +92,35 @@ esteira industrial para carregar uma caixa.
 **cartão 3,5% + R$ 0,60 por parcela**. Saque: **R$ 0,80** por saque, mínimo R$ 3,50.
 _Confirme os números atuais na página de preços antes de implementar — taxa muda._
 
+**Preços vigentes (reajuste de 29/jul/2026):** mensal **R$ 16,90**, anual **R$ 60**.
+O mensal virou **âncora**: 12 × R$ 16,90 = **R$ 202,80**, então o anual é **70% mais barato**.
+Isso é precificação clássica de SaaS — o plano que você quer vender parece obviamente melhor sem
+você precisar convencer ninguém.
+
 | Plano | Bruto | Taxa | Líquido | Taxa como % |
 |---|---|---|---|---|
-| Mensal, cartão | R$ 6,90 | R$ 0,84 | **R$ 6,06** | **12,2%** 🚨 |
-| Mensal, Pix | R$ 6,90 | R$ 0,80 | R$ 6,10 | 11,6% 🚨 |
+| Mensal, cartão | R$ 16,90 | R$ 1,19 | R$ 15,71 | 7,0% |
+| Mensal, Pix | R$ 16,90 | R$ 0,80 | R$ 16,10 | 4,7% |
 | **Anual, Pix** | R$ 60,00 | R$ 0,80 | **R$ 59,20** | **1,3%** ✅ |
-| Anual, cartão | R$ 60,00 | R$ 2,70 | R$ 57,30 | 4,5% ✅ |
+| Anual, cartão | R$ 60,00 | R$ 2,70 | R$ 57,30 | 4,5% |
 
-**Leitura honesta:** taxa fixa por transação destrói ticket baixo. No mensal você entrega o serviço
-o ano todo e perde **1 mês e meio de receita** só em taxa — e ainda paga taxa 12 vezes em vez de 1.
+**O que o reajuste consertou:** com R$ 6,90 a taxa comia 12% da receita e o mensal era um mau
+negócio para os dois lados. A R$ 16,90 a taxa cai para 4,7–7% **e** o anual passa a ser
+irresistível. Quem escolher o mensal está pagando pela flexibilidade, o que é justo.
 
-> **Recomendação:** venda o **anual (R$ 60, Pix) como plano principal** e trate o mensal (R$ 6,90,
-> cartão) como opção secundária, para quem não quer compromisso. Isso não muda seu preço nem sua
-> promessa — muda só o que a página destaca. E resolve de graça o problema do Pix recorrente.
+> **Decisão registrada:** o **anual (R$ 60, Pix) é o plano principal** — nasce selecionado na
+> landing e no checkout. O mensal existe para quem não quer compromisso. Bônus: o anual resolve
+> de graça o problema do Pix recorrente, porque é um pagamento único.
 
 **Custo do outro lado (o que você paga hoje):** infra R$ 0 (free tier, com retenção de 12 meses
-garantindo o platô — Fase 9). Mas a landing promete **WhatsApp**, e WhatsApp Business API é
-**custo por mensagem + aprovação de template pela Meta**. Ou seja: a única promessa da página que
-tem custo variável é justamente a mais chamativa. Ver seção 8.
+garantindo o platô — Fase 9). **Alerta é só por email**, usando o Nodemailer/SMTP que já existe —
+custo marginal ~zero. **WhatsApp está fora do escopo** (decisão de 29/jul/2026): custa por mensagem
+e depende de aprovação de template pela Meta. Não se promete o que não está pronto.
 
 **Ponto de equilíbrio, se você formalizar (MEI):** o DAS do MEI é da ordem de ~R$ 75–80/mês
-(_confirme o valor de 2026_). Com R$ 6,06 líquidos por assinante mensal, **você precisa de ~13
-assinantes só para pagar o imposto** — antes de sobrar 1 real. Com o anual: ~16 assinantes/ano.
-Este número é o teto de realidade do projeto: ele não é "renda", é validação de produto.
+(_confirme o valor de 2026_). Com R$ 16,10 líquidos por assinante mensal no Pix, são **~5
+assinantes mensais** para cobrir o imposto — ou **~16 assinantes anuais por ano**. Muito melhor que
+os 13 do preço antigo, mas o recado continua: isso é validação de produto, não renda.
 
 ---
 
@@ -257,7 +264,8 @@ backend/test/subscription.test.ts
 
 | Método | Rota | Auth | O que faz |
 |---|---|---|---|
-| POST | `/api/billing/checkout` | JWT Supabase | Cria o checkout na AbacatePay com `metadata.user_id` e devolve a `url`. Não confia em preço vindo do front — o plano é `'monthly' \| 'annual'` e o preço mora no backend. |
+| POST | `/api/billing/checkout` | JWT Supabase | Cria a cobrança na AbacatePay com `metadata.user_id`. **Pix:** `POST /transparents/create` → devolve `{ chargeId, brCode, brCodeBase64, expiresAt }` para a página renderizar QR + copia e cola. **Cartão:** `POST /subscriptions/create` → devolve `{ url }` para redirecionar. Não confia em preço vindo do front — recebe `plan: 'anual' \| 'mensal'` e o valor mora no backend. |
+| GET | `/api/billing/charge/:id` | pública (id opaco) | `{ status: 'pending' \| 'paid' \| 'expired' }`, consultando `GET /transparents/check`. Serve **só para a tela atualizar**; não libera nada. |
 | GET | `/api/billing/me` | JWT Supabase | `{ premium: boolean, plan, until, status }` lido do Supabase. |
 | POST | `/api/billing/cancel` | JWT Supabase | Chama `POST /subscriptions/cancel` e marca `status='canceled'` mantendo o período pago. |
 | POST | `/webhooks/abacatepay` | **secret + HMAC** | Recebe os eventos. **Fora de `/api`** (ver abaixo). |
@@ -298,14 +306,61 @@ motivo para o item 4 não ser opcional. O keep-alive de 3 dias (Fase 6.95) ajuda
 
 ---
 
+## 6.5 Privacidade: de quem é o nome que aparece no Pix?
+
+Você perguntou se é boa ideia colocar seu nome "na cara dura" no QR Code. Resposta honesta:
+
+**No Pix, o pagador *sempre* vê um nome de beneficiário antes de confirmar.** Isso não é opção do
+desenvolvedor — é do desenho do arranjo Pix: o app do banco tem que identificar quem vai receber.
+A pergunta certa não é "escondo o nome?", é **"qual nome aparece ali?"**. E isso depende de quem é o
+recebedor da transação:
+
+| Caminho | Quem aparece para o pagador | Consequência |
+|---|---|---|
+| **Chave Pix pessoal** (QR estático gerado no app do seu banco, colado na página) | **Seu nome civil completo + CPF mascarado + seu banco** | ❌ Nome e instituição expostos numa página pública, para sempre, para qualquer robô. |
+| **Cobrança dinâmica via gateway** (AbacatePay) | Tipicamente a **instituição de pagamento / o nome de loja** cadastrado — o dinheiro entra na conta dela e é repassado a você | ✅ Seu nome pessoal não é o rosto da cobrança. |
+
+**Portanto: nunca publique sua chave Pix pessoal na landing.** Além da privacidade, o QR estático
+é tecnicamente ruim aqui:
+
+- **Você não sabe quem pagou.** Sem `txid`/`metadata`, chega "R$ 60 de João" e você não tem como
+  ligar isso a um usuário. Reconciliação manual, e erro garantido quando dois Joões pagarem.
+- **Não dá para expirar** nem para variar o valor por plano.
+- **Não existe webhook.** Você fica olhando o extrato, e o app não libera acesso sozinho.
+- **Convida fraude social:** print de comprovante falso é o golpe mais comum do Brasil em venda por
+  Pix estático. Com cobrança dinâmica, quem confirma é o gateway, não a foto que o cliente mandou.
+
+⚠️ **Duas cautelas que eu não posso resolver por você, só apontar:**
+
+1. **Confirme empiricamente o nome exibido.** Não confie neste documento nem no marketing do
+   gateway: gere **uma cobrança real de R$ 1,00**, pague do seu próprio celular e **leia o que o seu
+   app de banco mostra** na tela de confirmação e no comprovante. Custa R$ 1 + R$ 0,80 de taxa e é a
+   única prova que vale. Se aparecer seu nome civil e isso te incomodar, você descobriu **antes** de
+   divulgar a página.
+2. **O cadastro do gateway (KYC) vai pedir seus documentos de qualquer forma** — isso é lei
+   (prevenção à lavagem de dinheiro), e nenhum gateway sério foge disso. A privacidade que se ganha
+   aqui é **em relação ao público**, não em relação à instituição financeira ou à Receita.
+
+**Recomendação prática:** cadastre o **nome de loja como "Price Tracker Pro"** no painel da
+AbacatePay, use sempre cobrança dinâmica, e verifique com o teste de R$ 1,00 antes de divulgar.
+No checkout, deixe explícito quem processa o pagamento — isso aumenta a conversão (o pagador
+desconfia menos) e é honesto.
+
+---
+
 ## 7. Fiscal e jurídico — a parte que realmente travaria você
 
 Isto não é conselho jurídico ou contábil; é o mapa do que perguntar a um contador antes de aceitar
 o primeiro real.
 
-- **Receber dinheiro recorrente de terceiros pede CNPJ.** Cair na conta pessoal (PF) gera
-  movimentação sem lastro e é dor de cabeça futura. MEI resolve barato, mas tem custo mensal fixo
-  (DAS) que, como mostrou a seção 3, exige ~13 assinantes só para empatar.
+- **Receber dinheiro recorrente de terceiros pede CNPJ.** Mas — decisão sua, registrada em
+  29/jul/2026 e razoável — **não se abre empresa antes de existir receita.** A sequência aceita aqui
+  é: _receber os primeiros reais → ver se recorre → formalizar._ O que **não** dá para postergar,
+  mesmo como pessoa física: **guardar o registro de tudo** (quem pagou, quanto, quando) e declarar o
+  que entrou. O gateway já mantém esse histórico; exporte e guarde. E combine com um contador **o
+  gatilho** de virar MEI (ex.: "quando passar de R$ X/mês ou de N assinantes") — assim a decisão já
+  está tomada quando a hora chegar, em vez de virar susto. Problema do futuro, sim; mas com data
+  marcada, não esquecido.
 - **Nota fiscal de serviço** é obrigação municipal (ISS). O gateway não emite por você.
 - **Direito de arrependimento:** compra online no Brasil tem 7 dias (CDC art. 49). Sua política de
   reembolso precisa existir por escrito **antes** da primeira venda, e o fluxo de estorno
@@ -339,16 +394,34 @@ falha. E te deixa livre para ligar o dinheiro real no dia em que houver demanda 
 
 Achados críticos ao comparar o que a página vende com o que o app faz **hoje**:
 
-| A landing promete | Realidade no código | O que fazer |
+| A landing prometia | Realidade no código | Resolvido em 29/jul/2026 |
 |---|---|---|
-| "Alertas que valem dinheiro" | **Alertas já existem e são grátis** (tabela `alerts`, `fuelAlertService`, sem nenhum limite por plano). | Você não pode vender o que já deu. Ou o grátis passa a ter **limite** (ex.: 1 alerta) e quem já usa é **grandfathered** (mantém o que tem), ou o Premium vende outra coisa (mais séries, mais frequência, WhatsApp). |
-| "Chega no WhatsApp" | Não existe. WhatsApp Business API custa por mensagem e exige aprovação de template pela Meta. | É a promessa mais caríssima da página. Rotule como **"em breve"** ou troque por e-mail, que já funciona. Prometer e não entregar em produto pago = chargeback. |
-| "Histórico completo" | A retenção é de **12 meses** por decisão da Fase 9 (custo zero). | Diga "12 meses de histórico". Preciso é melhor que "completo". |
-| "Cancela em 1 clique" | Precisa do `POST /subscriptions/cancel` + tela. | Ou implementa, ou muda para "cancele respondendo um e-mail". Não anuncie botão que não existe. |
+| "Alertas que valem dinheiro" | **Alertas já existem e são grátis** (tabela `alerts`, `fuelAlertService`, sem limite por plano). | Copy trocada para "alertas em quantas séries você quiser". ⚠️ **Continua sendo um pré-requisito bloqueante** — ver o quadro abaixo. |
+| "Chega no WhatsApp" | Não existe; custa por mensagem + aprovação da Meta. | **Removido.** Alerta é só por email, com o SMTP que já funciona. |
+| "Histórico completo" | Retenção de **12 meses** (Fase 9). | Trocado por "12 meses de histórico". Preciso é melhor que "completo". |
+| "Cancela em 1 clique" | Precisa do `POST /subscriptions/cancel` + tela. | Trocado por "cancela quando quiser, sem falar com ninguém" — verdade que não depende de código ainda. |
+
+### ⛔ PRÉ-REQUISITO BLOQUEANTE: limitar os alertas do plano grátis
+
+**Se esta branch algum dia for implementada, isto tem que acontecer ANTES de cobrar de alguém.**
+Hoje qualquer usuário logado cria **alertas ilimitados de graça**. Vender "alertas" nessa situação é
+vender algo que a pessoa já tem — e o assinante que descobrir isso pede reembolso com razão.
+
+Regras que este experimento se obriga a seguir:
+
+1. **Plano grátis passa a ter limite** — proposta: **1 alerta ativo** e **1 série favorita**.
+   (Número a calibrar olhando o uso real antes de decidir.)
+2. **Grandfathering obrigatório:** contas criadas **antes** da data de corte mantêm tudo o que já
+   tinham, para sempre. O limite vale só para contas novas. Implementação: comparar
+   `auth.users.created_at` com uma constante `FREE_LIMIT_CUTOFF` — nada de migration destrutiva.
+3. **Nada é apagado.** Quem estiver acima do limite continua com o que tem; só não pode criar mais.
+4. **Aviso antes, não surpresa depois:** email para os usuários atuais explicando o que muda e
+   dizendo, com clareza, que **eles não perdem nada**.
+5. **Teste automatizado provando os itens 2 e 3** — é a única garantia de que um refactor futuro não
+   vai silenciosamente rebaixar quem já estava aqui.
 
 **Retirar funcionalidade que hoje é grátis é o risco número um deste experimento.** Um usuário que
-perde o que já tinha reclama muito mais alto do que um novo que nunca teve. Regra: **o gate só se
-aplica a contas criadas depois da data de corte.**
+perde o que já tinha reclama muito mais alto do que um novo que nunca teve.
 
 ---
 
@@ -358,7 +431,16 @@ Nenhuma etapa começa sem o portão da anterior. Se um portão não abre, **o ex
 a branch é apagada. Isso não é fracasso; é o teste funcionando.
 
 ### Etapa 0 — Porta falsa (✅ já feita nesta branch)
-Landing `/premium` com preço, captura de e-mail e analytics de funil.
+Landing `/premium` com preço, captura de e-mail e analytics de funil, mais o checkout
+`/premium/checkout` em **modo DEMO** (`DEMO = true` no topo do script): escolha de plano, forma de
+pagamento, e-mail, QR + Pix copia e cola com botão de copiar, contador de 15 min, estado
+"aguardando pagamento" e tela de sucesso. Nenhuma linha de backend, nenhum centavo real.
+
+Por que já construir o checkout antes de ter backend: **ele é metade da conversão** e o funil só
+mede de verdade quando existe a tela onde a pessoa desiste. E, para portfólio, é a peça que mostra
+que você pensou no fluxo inteiro. A faixa amarela de "modo demonstração" fica visível de propósito —
+ninguém pode achar que está pagando.
+
 **Portão:** ≥ 30 e-mails **ou** 1 pagamento manual em 2–4 semanas.
 
 ### Etapa 1 — Cobrança manual (0 linhas de backend)
@@ -375,14 +457,18 @@ e um evento repetido **não** dobrando o período. README atualizado com a nota 
 **Portão:** você consegue explicar o fluxo inteiro em voz alta, sem olhar o código.
 
 ### Etapa 3 — Gate de feature (com carinho)
-`requirePremium` + limite no plano grátis + data de corte que preserva usuários atuais + estado de
-UI ("você atingiu o limite do plano grátis") sem tela quebrada.
+`requirePremium` + **limite no plano grátis com grandfathering** (o quadro bloqueante da seção 8) +
+estado de UI ("você atingiu o limite do plano grátis") sem tela quebrada.
 **DoD:** teste provando que conta antiga não perde nada e conta nova bate no limite.
-**Portão:** só siga para a Etapa 4 se a Etapa 1 já tiver clientes pagando de verdade.
+**Portão:** só siga se a Etapa 1 já tiver clientes pagando de verdade.
 
-### Etapa 4 — Dinheiro real (só com a casa em ordem)
-CNPJ/MEI, termos, privacidade, reembolso, nota fiscal, chaves de produção no Render (**nunca** no
-front), webhook de produção cadastrado, `devMode` bloqueado em produção.
+### Etapa 4 — Dinheiro real (o mínimo indispensável, não a burocracia toda)
+Ordem deliberada: **primeiro receber, depois formalizar.** O que é obrigatório já na primeira venda:
+chaves de produção no Render (**nunca** no front), webhook de produção cadastrado, `devMode`
+bloqueado em produção, **política de reembolso escrita** (7 dias, CDC art. 49), Termos e Política de
+Privacidade publicados, e registro de quem pagou o quê.
+**Fica para quando recorrer:** CNPJ/MEI e nota fiscal — com o gatilho combinado com um contador
+(seção 7), não no improviso.
 **DoD:** um pagamento real, de outra pessoa, liberando acesso sozinho, com log auditável.
 
 ### Etapa 5 — Operação (o que ninguém planeja e todo mundo sofre)
@@ -395,7 +481,7 @@ relatório mensal de MRR/churn; runbook de "cliente pagou e não liberou" — qu
 
 Vocês já têm Vitest + supertest, então isso é barato:
 
-- [ ] `money`: `690` centavos ⇄ `R$ 6,90`, ida e volta, incluindo arredondamento.
+- [ ] `money`: `1690` ⇄ `R$ 16,90` e `6000` ⇄ `R$ 60,00`, ida e volta, incluindo arredondamento.
 - [ ] Webhook **sem** `webhookSecret` → 401 e **nada** escrito no banco.
 - [ ] Webhook com secret certo e **HMAC errado** → 401.
 - [ ] Webhook válido `subscription.completed` → cria `subscriptions` com `current_period_end` futuro.
@@ -426,6 +512,11 @@ Vocês já têm Vitest + supertest, então isso é barato:
 9. ❌ Fazer merge desta branch na `main` "só para não perder o trabalho". O trabalho está no git;
    a branch é o lugar dele.
 10. ❌ Tirar do plano grátis algo que os usuários atuais já usam.
+11. ❌ **Publicar sua chave Pix pessoal / QR estático na página.** Expõe seu nome civil, não diz quem
+    pagou, não expira e é o formato preferido do golpe do comprovante falso (seção 6.5).
+12. ❌ Gerar o BR Code no frontend. Isso só é possível com a chave no navegador — ou seja, pública.
+    O QR vem pronto do gateway (`brCodeBase64`).
+13. ❌ Confiar em print de comprovante enviado pelo cliente. Quem confirma pagamento é o webhook.
 
 ---
 
@@ -435,7 +526,7 @@ Vocês já têm Vitest + supertest, então isso é barato:
 # backend/.env  (e no painel do Render — nunca no repositório)
 ABACATEPAY_API_KEY=            # secreta. Rotacione se vazar.
 ABACATEPAY_WEBHOOK_SECRET=     # o segredo que vai na query string do webhook
-ABACATEPAY_PRODUCT_MONTHLY=    # id do produto cycle=MONTHLY  (R$ 6,90 = 690)
+ABACATEPAY_PRODUCT_MONTHLY=    # id do produto cycle=MONTHLY  (R$ 16,90 = 1690)
 ABACATEPAY_PRODUCT_ANNUAL=     # id do produto cycle=ANNUALLY (R$ 60,00 = 6000)
 ABACATEPAY_DEV_MODE=true       # true até a Etapa 4
 BILLING_ENABLED=false          # kill switch: desliga as rotas sem redeploy de código
@@ -449,9 +540,10 @@ acidente, **nada de cobrança liga em produção**. É o cinto de segurança do 
 ## 13. Arquivos que este experimento adiciona (isolamento)
 
 ```
-docs/fase10-pagamentos.md          ← este arquivo
+docs/fase10-pagamentos.md           ← este arquivo
 frontend/public/premium.html        ← a landing (Etapa 0)
-frontend/vercel.json                ← +1 rewrite para /premium
+frontend/public/checkout.html       ← o checkout Pix/cartão (Etapa 0, em modo DEMO)
+frontend/vercel.json                ← +2 rewrites: /premium e /premium/checkout
                                     ── daqui pra baixo, só a partir da Etapa 2 ──
 backend/supabase/migrations/010_subscriptions.sql
 backend/src/routes/billingRoute.ts

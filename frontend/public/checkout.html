@@ -1,0 +1,629 @@
+<!--
+  ============================================================================
+  PRICE TRACKER PRO — CHECKOUT (/premium/checkout)
+  ----------------------------------------------------------------------------
+  ⚠️ SÓ EXISTE NA BRANCH `feat/premium-landing`. Ver docs/fase10-pagamentos.md.
+
+  ESTADO: MODO DEMONSTRAÇÃO. Nenhum pagamento real acontece aqui.
+  A constante DEMO abaixo controla tudo. Com DEMO = true a página funciona
+  inteira com dados falsos (útil para portfólio, print e teste de UX).
+  Com DEMO = false ela chama o backend nos 3 pontos marcados com "TODO API".
+
+  CONTRATO ESPERADO DO BACKEND (a implementar na Etapa 2 do plano):
+    POST /api/billing/checkout   { plan: 'anual'|'mensal', method: 'pix'|'card', email }
+      -> pix : { chargeId, brCode, brCodeBase64, expiresAt, amountCents }
+      -> card: { url }                       // redireciona para o checkout hospedado
+    GET  /api/billing/charge/:id -> { status: 'pending'|'paid'|'expired' }
+
+  REGRAS DE OURO (não negocie com elas):
+    • O PREÇO EXIBIDO AQUI É DECORATIVO. Quem decide o valor é o backend, a
+      partir do `plan`. Nunca envie valor pelo front.
+    • O ACESSO NÃO É LIBERADO POR ESTA PÁGINA. Ela só mostra "pago" quando o
+      backend confirma — e o backend só confirma via webhook + reconsulta na API.
+    • O QR Code vem PRONTO do gateway (`brCodeBase64`). Não gere Pix no front:
+      isso exigiria a chave Pix pessoal no navegador. Nunca faça isso.
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f4f3ee" />
+<title>Checkout · Price Tracker Pro Premium</title>
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:wght@500;600;700;900&family=Doto:wght@700;900&display=swap" rel="stylesheet" />
+<style>
+  /* Paleta idêntica a frontend/src/index.css — não inventar cor nova aqui. */
+  :root{
+    --paper:#f4f3ee; --surface:#ffffff; --surface-soft:#faf9f4;
+    --ink:#20222e; --ink-soft:#45485a; --muted:#5c5f70;
+    --line:#e4e2da; --line-strong:#d4d2c8;
+    --brand:#3b4a8c; --brand-deep:#2c3a73; --brand-soft:#eef0f8;
+    --camel:#b08a4b; --good:#3e7b57; --good-deep:#2f6446; --good-soft:#e7f0e9;
+    --warn:#b7822b; --warn-deep:#8a611c; --warn-soft:#f7efdd;
+    --bad:#b0432e; --bad-soft:#f6e7e2;
+    --radius-sm:6px; --radius:10px; --radius-lg:14px;
+    --shadow:0 1px 2px rgba(36,31,26,.04), 0 1px 3px rgba(36,31,26,.05);
+    --shadow-md:0 2px 6px rgba(36,31,26,.05), 0 6px 16px rgba(36,31,26,.06);
+    --font-ui:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-display:"Fraunces",Georgia,serif;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-ui); font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3{ margin:0; font-family:var(--font-display); font-weight:700; letter-spacing:-.015em; line-height:1.15; }
+  p{ margin:0; }
+  a{ color:var(--brand); }
+  .wrap{ max-width:1000px; margin:0 auto; padding:0 22px; }
+
+  /* faixa de aviso do modo demo */
+  .demo-bar{ background:var(--warn-soft); color:var(--warn-deep); border-bottom:1px solid #e8d9b6; font-size:13px; font-weight:600; }
+  .demo-bar .wrap{ padding:10px 22px; display:flex; gap:10px; align-items:center; justify-content:center; text-align:center; }
+
+  /* topo */
+  header.top{ background:var(--surface); border-bottom:1px solid var(--line); }
+  header.top .wrap{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 22px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-weight:700; }
+  .brand .dot{ width:13px; height:13px; border-radius:4px; background:var(--brand); box-shadow:0 0 0 3px var(--brand-soft); }
+  .secure{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); font-weight:600; }
+  .secure svg{ flex:none; }
+
+  /* passos */
+  .steps{ display:flex; gap:8px; align-items:center; padding:22px 0 4px; flex-wrap:wrap; }
+  .step{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--muted); }
+  .step .n{ width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:12px; background:var(--line); color:var(--muted); }
+  .step[data-on="true"]{ color:var(--ink); }
+  .step[data-on="true"] .n{ background:var(--brand); color:#fff; }
+  .step[data-done="true"] .n{ background:var(--good); color:#fff; }
+  .step-sep{ width:22px; height:1px; background:var(--line-strong); }
+
+  /* layout */
+  .grid{ display:grid; grid-template-columns:1.35fr .9fr; gap:26px; align-items:start; padding:18px 0 60px; }
+  .panel{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); box-shadow:var(--shadow); }
+  .panel + .panel{ margin-top:18px; }
+  .panel-head{ padding:20px 22px 0; }
+  .panel-head h2{ font-size:1.15rem; }
+  .panel-head .hint{ color:var(--muted); font-size:13.5px; margin-top:5px; }
+  .panel-body{ padding:18px 22px 22px; }
+
+  /* plano */
+  .plan-opt{ display:flex; gap:13px; align-items:flex-start; border:1px solid var(--line-strong); border-radius:var(--radius); padding:15px 16px; cursor:pointer; background:var(--surface); }
+  .plan-opt + .plan-opt{ margin-top:10px; }
+  .plan-opt:hover{ border-color:var(--brand); }
+  .plan-opt[aria-checked="true"]{ border-color:var(--brand); background:var(--brand-soft); box-shadow:0 0 0 1px var(--brand); }
+  .plan-radio{ width:18px; height:18px; border-radius:50%; border:2px solid var(--line-strong); flex:none; margin-top:2px; position:relative; background:var(--surface); }
+  .plan-opt[aria-checked="true"] .plan-radio{ border-color:var(--brand); }
+  .plan-opt[aria-checked="true"] .plan-radio::after{ content:""; position:absolute; inset:3px; border-radius:50%; background:var(--brand); }
+  .plan-main{ flex:1; min-width:0; }
+  .plan-title{ font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .badge{ font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:999px; }
+  .badge-good{ background:var(--good-soft); color:var(--good-deep); }
+  .badge-camel{ background:#f3ead9; color:var(--camel); }
+  .plan-sub{ color:var(--muted); font-size:13.5px; margin-top:3px; }
+  .plan-amount{ font-family:"Doto",monospace; font-weight:900; font-size:1.35rem; white-space:nowrap; }
+
+  /* forma de pagamento */
+  .methods{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .method{ border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px; cursor:pointer; background:var(--surface); text-align:left; font-family:inherit; }
+  .method:hover{ border-color:var(--brand); }
+  .method[aria-checked="true"]{ border-color:var(--brand); background:var(--brand-soft); box-shadow:0 0 0 1px var(--brand); }
+  .method .m-t{ font-weight:700; font-size:.97rem; display:flex; align-items:center; gap:7px; }
+  .method .m-s{ color:var(--muted); font-size:12.5px; margin-top:3px; }
+
+  /* email */
+  label.lbl{ display:block; font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:6px; }
+  input[type=email]{ width:100%; font-family:inherit; font-size:1rem; color:var(--ink); background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius); padding:13px 14px; }
+  input[type=email]:focus{ outline:none; border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft); }
+  input[type=email][aria-invalid="true"]{ border-color:var(--bad); }
+  .field-err{ color:var(--bad); font-size:12.5px; margin-top:6px; display:none; }
+  .field-err.show{ display:block; }
+  .field-help{ color:var(--muted); font-size:12.5px; margin-top:7px; }
+
+  /* botões */
+  .btn{ font-family:inherit; font-size:1rem; font-weight:700; border:none; border-radius:var(--radius); padding:15px 20px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:9px; text-decoration:none; transition:background .15s ease, transform .12s ease; }
+  .btn:active{ transform:translateY(1px); }
+  .btn[disabled]{ opacity:.55; cursor:not-allowed; }
+  .btn-primary{ background:var(--good); color:#fff; width:100%; }
+  .btn-primary:hover:not([disabled]){ background:var(--good-deep); }
+  .btn-quiet{ background:var(--surface); color:var(--ink); border:1px solid var(--line-strong); font-size:.9rem; font-weight:600; padding:10px 14px; }
+  .btn-quiet:hover{ background:var(--surface-soft); }
+
+  /* área Pix */
+  .pix{ display:none; }
+  .pix.show{ display:block; }
+  .pix-grid{ display:grid; grid-template-columns:172px 1fr; gap:20px; align-items:start; }
+  .qr-box{ background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius); padding:10px; display:grid; place-items:center; }
+  .qr-box img{ width:150px; height:150px; display:block; image-rendering:pixelated; }
+  .qr-ph{ width:150px; height:150px; display:grid; place-items:center; text-align:center; color:var(--muted); font-size:11px; padding:8px; background:repeating-conic-gradient(var(--line) 0% 25%, var(--surface) 0% 50%) 0 0/12px 12px; border-radius:4px; }
+  .qr-cap{ text-align:center; font-size:11.5px; color:var(--muted); margin-top:8px; }
+  .brcode{ width:100%; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--ink-soft); background:var(--surface-soft); border:1px solid var(--line); border-radius:var(--radius); padding:12px; resize:none; height:78px; word-break:break-all; }
+  .copy-row{ display:flex; gap:8px; margin-top:9px; align-items:center; flex-wrap:wrap; }
+  .copied{ color:var(--good-deep); font-size:12.5px; font-weight:700; opacity:0; transition:opacity .2s ease; }
+  .copied.show{ opacity:1; }
+  .howto{ margin:16px 0 0; padding:0 0 0 20px; color:var(--ink-soft); font-size:13.5px; }
+  .howto li{ margin:3px 0; }
+
+  /* status */
+  .status{ display:flex; align-items:center; gap:10px; margin-top:16px; padding:12px 14px; border-radius:var(--radius); font-size:13.5px; font-weight:600; }
+  .status-wait{ background:var(--warn-soft); color:var(--warn-deep); }
+  .status-ok{ background:var(--good-soft); color:var(--good-deep); }
+  .status-bad{ background:var(--bad-soft); color:var(--bad); }
+  .spin{ width:14px; height:14px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin .8s linear infinite; flex:none; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .timer{ font-family:"Doto",monospace; font-weight:900; }
+
+  /* resumo */
+  .summary{ position:sticky; top:18px; }
+  .sum-line{ display:flex; justify-content:space-between; gap:12px; font-size:14.5px; padding:7px 0; }
+  .sum-line.muted{ color:var(--muted); font-size:13.5px; }
+  .sum-total{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; border-top:1px solid var(--line); margin-top:10px; padding-top:14px; }
+  .sum-total .v{ font-family:"Doto",monospace; font-weight:900; font-size:1.7rem; }
+  .sum-what{ margin:14px 0 0; padding:0; list-style:none; display:grid; gap:7px; }
+  .sum-what li{ font-size:13.5px; color:var(--ink-soft); display:flex; gap:8px; }
+  .sum-what li::before{ content:"✓"; color:var(--good); font-weight:700; }
+  .trust{ border-top:1px solid var(--line); margin-top:16px; padding-top:14px; font-size:12.5px; color:var(--muted); display:grid; gap:7px; }
+  .trust div{ display:flex; gap:8px; }
+
+  /* sucesso */
+  .done{ display:none; text-align:center; padding:44px 22px; }
+  .done.show{ display:block; }
+  .done .check{ width:56px; height:56px; border-radius:50%; background:var(--good-soft); color:var(--good-deep); display:grid; place-items:center; margin:0 auto 16px; font-size:26px; font-weight:700; }
+  .done h2{ font-size:1.5rem; }
+  .done p{ color:var(--ink-soft); margin-top:10px; }
+
+  footer{ border-top:1px solid var(--line); padding:22px 0 50px; color:var(--muted); font-size:12.5px; }
+  footer .wrap{ display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+
+  @media (max-width:880px){
+    .grid{ grid-template-columns:1fr; }
+    .summary{ position:static; }
+    .pix-grid{ grid-template-columns:1fr; justify-items:center; }
+    .brcode{ height:96px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="demo-bar" id="demoBar">
+  <div class="wrap">
+    <strong>Modo demonstração</strong> — esta página não cobra nada. É a prova de conceito da Fase 10.
+  </div>
+</div>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span> Price Tracker Pro</div>
+    <div class="secure">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+        <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      Pagamento processado pela AbacatePay
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="steps" aria-label="Etapas do pagamento">
+    <span class="step" id="s1" data-on="true"><span class="n">1</span> Plano</span>
+    <span class="step-sep"></span>
+    <span class="step" id="s2"><span class="n">2</span> Seus dados</span>
+    <span class="step-sep"></span>
+    <span class="step" id="s3"><span class="n">3</span> Pagamento</span>
+  </nav>
+
+  <div class="grid">
+    <!-- ─────────── COLUNA ESQUERDA: o fluxo ─────────── -->
+    <div>
+      <section class="panel" id="formCard">
+        <div class="panel-head">
+          <h2>Escolha o plano</h2>
+          <p class="hint">Você pode trocar depois. Cancelar não tem multa nem ligação.</p>
+        </div>
+        <div class="panel-body">
+          <div role="radiogroup" aria-label="Plano">
+            <div class="plan-opt" id="optAnual" role="radio" aria-checked="true" tabindex="0">
+              <span class="plan-radio" aria-hidden="true"></span>
+              <span class="plan-main">
+                <span class="plan-title">Anual <span class="badge badge-good">economiza 70%</span></span>
+                <span class="plan-sub">R$ 60 uma vez, cobre 12 meses — sai R$ 5,00/mês</span>
+              </span>
+              <span class="plan-amount">R$ 60</span>
+            </div>
+            <div class="plan-opt" id="optMensal" role="radio" aria-checked="false" tabindex="0">
+              <span class="plan-radio" aria-hidden="true"></span>
+              <span class="plan-main">
+                <span class="plan-title">Mensal <span class="badge badge-camel">sem compromisso</span></span>
+                <span class="plan-sub">R$ 16,90 por mês, renova sozinho</span>
+              </span>
+              <span class="plan-amount">R$ 16,90</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Como você prefere pagar</h2>
+        </div>
+        <div class="panel-body">
+          <div class="methods" role="radiogroup" aria-label="Forma de pagamento">
+            <button type="button" class="method" id="mPix" role="radio" aria-checked="true">
+              <span class="m-t">Pix <span class="badge badge-good">na hora</span></span>
+              <span class="m-s">QR Code ou copia e cola. Sem cadastro de cartão.</span>
+            </button>
+            <button type="button" class="method" id="mCard" role="radio" aria-checked="false">
+              <span class="m-t">Cartão</span>
+              <span class="m-s">Renova sozinho. Cancela quando quiser.</span>
+            </button>
+          </div>
+          <p class="field-help" id="methodHelp">No anual, o Pix é o caminho mais barato — e você não precisa lembrar de renovar: a gente te avisa antes de vencer.</p>
+
+          <div style="margin-top:18px">
+            <label class="lbl" for="email">Email para receber o acesso</label>
+            <input type="email" id="email" name="email" inputmode="email" autocomplete="email"
+                   placeholder="voce@email.com" aria-describedby="emailHelp" />
+            <div class="field-err" id="emailErr">Digite um email válido — é para lá que o acesso vai.</div>
+            <p class="field-help" id="emailHelp">Usamos só para liberar o acesso e mandar os alertas. Nada de lista de propaganda.</p>
+          </div>
+
+          <button class="btn btn-primary" id="payBtn" style="margin-top:18px">Gerar pagamento</button>
+        </div>
+      </section>
+
+      <!-- ─────────── ÁREA PIX (aparece depois de gerar) ─────────── -->
+      <section class="panel pix" id="pixPanel" aria-live="polite">
+        <div class="panel-head">
+          <h2>Pague com Pix</h2>
+          <p class="hint">Leia o QR Code ou cole o código no app do seu banco. A confirmação é automática.</p>
+        </div>
+        <div class="panel-body">
+          <div class="pix-grid">
+            <div>
+              <div class="qr-box">
+                <!-- Em produção: <img src="data:image/png;base64,{brCodeBase64}"> vindo da API. -->
+                <img id="qrImg" alt="QR Code do Pix" style="display:none" />
+                <div class="qr-ph" id="qrPh">QR Code aparece aqui<br /><small>(gerado pelo gateway)</small></div>
+              </div>
+              <div class="qr-cap">Válido por <span class="timer" id="timer">15:00</span></div>
+            </div>
+            <div>
+              <label class="lbl" for="brcode">Pix copia e cola</label>
+              <textarea class="brcode" id="brcode" readonly aria-label="Código Pix copia e cola"></textarea>
+              <div class="copy-row">
+                <button class="btn btn-quiet" id="copyBtn">Copiar código</button>
+                <span class="copied" id="copied">copiado ✓</span>
+              </div>
+              <ol class="howto">
+                <li>Abra o app do seu banco</li>
+                <li>Entre em <strong>Pix → Pagar → Pix Copia e Cola</strong></li>
+                <li>Cole o código e confirme o valor</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="status status-wait" id="statusBox">
+            <span class="spin" aria-hidden="true"></span>
+            <span id="statusText">Aguardando o pagamento… você pode deixar esta página aberta.</span>
+          </div>
+
+          <div class="copy-row" style="margin-top:14px">
+            <!-- Este botão só existe em DEMO/devMode. Em produção ele não é renderizado. -->
+            <button class="btn btn-quiet" id="simBtn">Simular pagamento (devMode)</button>
+            <button class="btn btn-quiet" id="againBtn" style="display:none">Gerar novo código</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── SUCESSO ─────────── -->
+      <section class="panel done" id="donePanel" aria-live="polite">
+        <div class="check">✓</div>
+        <h2>Pagamento confirmado</h2>
+        <p id="doneText">Seu acesso Premium foi registrado. Enviamos a confirmação por email.</p>
+        <p style="margin-top:18px"><a href="/">← voltar ao Price Tracker Pro</a></p>
+      </section>
+    </div>
+
+    <!-- ─────────── COLUNA DIREITA: resumo ─────────── -->
+    <aside class="panel summary">
+      <div class="panel-head"><h2>Resumo</h2></div>
+      <div class="panel-body">
+        <div class="sum-line"><span id="sumPlan">Premium anual</span><span id="sumPrice">R$ 60,00</span></div>
+        <div class="sum-line muted"><span id="sumCycle">12 meses de acesso</span><span id="sumPerMonth">R$ 5,00/mês</span></div>
+        <div class="sum-total">
+          <span>Total hoje</span>
+          <span class="v" id="sumTotal">R$ 60,00</span>
+        </div>
+
+        <ul class="sum-what">
+          <li>Alertas de queda nas séries que você seguir</li>
+          <li>12 meses de histórico da ANP</li>
+          <li>Aviso por email assim que o preço cai</li>
+          <li>Cancela quando quiser</li>
+        </ul>
+
+        <div class="trust">
+          <div>🔒 Não guardamos dados de cartão — quem processa é a AbacatePay, instituição de pagamento regulada.</div>
+          <div>↩︎ 7 dias para desistir e receber o valor de volta (CDC art. 49).</div>
+          <div>📄 Dados abertos da ANP como fonte dos preços.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Price Tracker Pro · experimento da Fase 10</span>
+    <span><a href="/premium">← voltar</a></span>
+  </div>
+</footer>
+
+<script>
+  // ══════════════════════════════════════════════════════════════════════════
+  // CONFIG
+  // ══════════════════════════════════════════════════════════════════════════
+  var DEMO = true;                        // ← false quando o backend existir
+  var API  = '';                          // ex.: 'https://seu-backend.onrender.com'
+  var EXPIRES_SECONDS = 15 * 60;
+
+  var PLANS = {
+    anual:  { label:'Premium anual',  cents:6000, cycle:'12 meses de acesso', perMonth:'R$ 5,00/mês' },
+    mensal: { label:'Premium mensal', cents:1690, cycle:'renova todo mês',    perMonth:'R$ 16,90/mês' }
+  };
+
+  var state = { plan:'anual', method:'pix', chargeId:null, poll:null, tick:null, left:EXPIRES_SECONDS };
+
+  function trackEvent(name, props){
+    // TODO: Vercel Analytics / Plausible
+    console.log('[track]', name, props || {});
+  }
+  function brl(cents){
+    return 'R$ ' + (cents/100).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  }
+  function $(id){ return document.getElementById(id); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 1. PLANO — o front só escolhe a CHAVE do plano. O valor real é do backend.
+  // ══════════════════════════════════════════════════════════════════════════
+  var params = new URLSearchParams(location.search);
+  if (params.get('plan') === 'mensal') state.plan = 'mensal';
+
+  function renderSummary(){
+    var p = PLANS[state.plan];
+    $('sumPlan').textContent  = p.label;
+    $('sumPrice').textContent = brl(p.cents);
+    $('sumCycle').textContent = p.cycle;
+    $('sumPerMonth').textContent = p.perMonth;
+    $('sumTotal').textContent = brl(p.cents);
+    $('optAnual').setAttribute('aria-checked',  String(state.plan === 'anual'));
+    $('optMensal').setAttribute('aria-checked', String(state.plan === 'mensal'));
+    $('methodHelp').textContent = state.plan === 'anual'
+      ? 'No anual, o Pix é o caminho mais barato — e você não precisa lembrar de renovar: a gente te avisa antes de vencer.'
+      : 'No mensal, o cartão renova sozinho. Com Pix você paga um mês por vez e recebe um aviso antes de vencer.';
+  }
+  function pickPlan(key){ state.plan = key; renderSummary(); trackEvent('select_plan', { plan:key }); }
+
+  $('optAnual').addEventListener('click',  function(){ pickPlan('anual'); });
+  $('optMensal').addEventListener('click', function(){ pickPlan('mensal'); });
+  [['optAnual','anual'],['optMensal','mensal']].forEach(function(pair){
+    $(pair[0]).addEventListener('keydown', function(e){
+      if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); pickPlan(pair[1]); }
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 2. FORMA DE PAGAMENTO
+  // ══════════════════════════════════════════════════════════════════════════
+  function pickMethod(m){
+    state.method = m;
+    $('mPix').setAttribute('aria-checked',  String(m === 'pix'));
+    $('mCard').setAttribute('aria-checked', String(m === 'card'));
+    $('payBtn').textContent = m === 'pix' ? 'Gerar pagamento' : 'Ir para o pagamento seguro';
+    trackEvent('select_method', { method:m });
+  }
+  $('mPix').addEventListener('click',  function(){ pickMethod('pix'); });
+  $('mCard').addEventListener('click', function(){ pickMethod('card'); });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 3. GERAR A COBRANÇA
+  // ══════════════════════════════════════════════════════════════════════════
+  function markSteps(n){
+    $('s1').setAttribute('data-done', String(n > 1));
+    $('s2').setAttribute('data-on',   String(n === 2));
+    $('s2').setAttribute('data-done', String(n > 2));
+    $('s3').setAttribute('data-on',   String(n >= 3));
+  }
+
+  function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v); }
+
+  $('email').addEventListener('input', function(){
+    if (validEmail(this.value.trim())){
+      this.setAttribute('aria-invalid','false');
+      $('emailErr').classList.remove('show');
+      markSteps(2);
+    }
+  });
+
+  $('payBtn').addEventListener('click', function(){
+    var email = $('email').value.trim();
+    if (!validEmail(email)){
+      $('email').setAttribute('aria-invalid','true');
+      $('emailErr').classList.add('show');
+      $('email').focus();
+      return;
+    }
+    trackEvent('begin_checkout', { plan:state.plan, method:state.method });
+    this.disabled = true;
+    this.textContent = 'Gerando…';
+
+    if (state.method === 'card'){
+      // Cartão = checkout hospedado. O backend devolve a URL e a gente redireciona.
+      // TODO API: POST /api/billing/checkout -> { url }
+      if (DEMO){
+        this.disabled = false;
+        this.textContent = 'Ir para o pagamento seguro';
+        alert('DEMO: aqui o usuário seria levado ao checkout da AbacatePay (cartão).');
+        return;
+      }
+      createCharge(email);
+      return;
+    }
+    createCharge(email);
+  });
+
+  function createCharge(email){
+    if (DEMO){
+      // brCode de mentira, só para exercitar a interface. Não é um Pix válido.
+      var fake = '00020126580014BR.GOV.BCB.PIX0136DEMO-NAO-E-UM-PIX-VALIDO-000000005204000053039865802BR5920PRICE TRACKER PRO6009SAO PAULO62070503***6304DEMO';
+      showPix({ chargeId:'demo_' + Date.now(), brCode:fake, brCodeBase64:null, expiresIn:EXPIRES_SECONDS });
+      return;
+    }
+    // TODO API: POST /api/billing/checkout { plan, method:'pix', email }
+    fetch(API + '/api/billing/checkout', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ plan:state.plan, method:'pix', email:email })
+    })
+    .then(function(r){ if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+    .then(function(d){
+      if (d.url){ location.href = d.url; return; }          // caso cartão
+      showPix({
+        chargeId: d.chargeId,
+        brCode: d.brCode,
+        brCodeBase64: d.brCodeBase64,
+        expiresIn: d.expiresAt ? Math.max(0, Math.round((new Date(d.expiresAt) - new Date())/1000)) : EXPIRES_SECONDS
+      });
+    })
+    .catch(function(err){
+      console.error(err);
+      $('payBtn').disabled = false;
+      $('payBtn').textContent = 'Gerar pagamento';
+      setStatus('bad', 'Não conseguimos gerar a cobrança agora. Tente de novo em instantes.');
+      $('pixPanel').classList.add('show');
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 4. TELA DO PIX: QR + copia e cola + contador + espera da confirmação
+  // ══════════════════════════════════════════════════════════════════════════
+  function showPix(c){
+    state.chargeId = c.chargeId;
+    state.left = c.expiresIn || EXPIRES_SECONDS;
+
+    $('brcode').value = c.brCode;
+    if (c.brCodeBase64){
+      $('qrImg').src = 'data:image/png;base64,' + c.brCodeBase64;
+      $('qrImg').style.display = 'block';
+      $('qrPh').style.display = 'none';
+    }
+    $('formCard').style.opacity = '.6';
+    $('pixPanel').classList.add('show');
+    $('simBtn').style.display = DEMO ? 'inline-flex' : 'none';
+    markSteps(3);
+    setStatus('wait', 'Aguardando o pagamento… você pode deixar esta página aberta.', true);
+    $('pixPanel').scrollIntoView({ behavior:'smooth', block:'center' });
+
+    startTimer();
+    if (!DEMO) startPolling();
+    trackEvent('pix_generated', { plan:state.plan });
+  }
+
+  function setStatus(kind, text, spinning){
+    var box = $('statusBox');
+    box.className = 'status status-' + (kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : 'wait');
+    box.innerHTML = (spinning ? '<span class="spin" aria-hidden="true"></span>' : '')
+      + '<span id="statusText"></span>';
+    $('statusText').textContent = text;
+  }
+
+  function startTimer(){
+    clearInterval(state.tick);
+    render();
+    state.tick = setInterval(function(){
+      state.left--;
+      if (state.left <= 0){
+        clearInterval(state.tick);
+        clearInterval(state.poll);
+        $('timer').textContent = '00:00';
+        setStatus('bad', 'O código expirou. Gere um novo para pagar.');
+        $('againBtn').style.display = 'inline-flex';
+        $('simBtn').style.display = 'none';
+        return;
+      }
+      render();
+    }, 1000);
+    function render(){
+      var m = Math.floor(state.left/60), s = state.left % 60;
+      $('timer').textContent = (m<10?'0':'') + m + ':' + (s<10?'0':'') + s;
+    }
+  }
+
+  // Polling é só para a INTERFACE saber quando atualizar. Quem libera o acesso
+  // é o webhook no backend — nunca esta página.
+  function startPolling(){
+    clearInterval(state.poll);
+    state.poll = setInterval(function(){
+      // TODO API: GET /api/billing/charge/:id -> { status }
+      fetch(API + '/api/billing/charge/' + encodeURIComponent(state.chargeId))
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.status === 'paid')    return onPaid();
+          if (d.status === 'expired'){ clearInterval(state.poll); }
+        })
+        .catch(function(){ /* silencioso: cold start do backend é normal */ });
+    }, 4000);
+  }
+
+  function onPaid(){
+    clearInterval(state.poll);
+    clearInterval(state.tick);
+    $('pixPanel').classList.remove('show');
+    $('formCard').style.display = 'none';
+    $('donePanel').classList.add('show');
+    $('doneText').textContent = 'Seu acesso ' + PLANS[state.plan].label
+      + ' foi registrado. Enviamos a confirmação para ' + $('email').value.trim() + '.';
+    markSteps(4);
+    trackEvent('purchase', { plan:state.plan, value_cents:PLANS[state.plan].cents });
+  }
+
+  // ── copiar ────────────────────────────────────────────────────────────────
+  $('copyBtn').addEventListener('click', function(){
+    var ta = $('brcode');
+    function feedback(){
+      $('copied').classList.add('show');
+      setTimeout(function(){ $('copied').classList.remove('show'); }, 2200);
+      trackEvent('copy_brcode', { plan:state.plan });
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(feedback, fallback);
+    } else { fallback(); }
+    function fallback(){
+      ta.removeAttribute('readonly'); ta.select(); ta.setSelectionRange(0, 99999);
+      try { document.execCommand('copy'); } catch(e){}
+      ta.setAttribute('readonly','readonly');
+      feedback();
+    }
+  });
+
+  // ── botões de teste / recomeçar ────────────────────────────────────────────
+  $('simBtn').addEventListener('click', function(){
+    // Em produção este botão não aparece (DEMO=false). Em devMode, o equivalente
+    // real é POST /transparents/simulate-payment na AbacatePay.
+    setStatus('wait', 'Pagamento simulado recebido, confirmando…', true);
+    setTimeout(onPaid, 1200);
+  });
+  $('againBtn').addEventListener('click', function(){ location.reload(); });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // init
+  // ══════════════════════════════════════════════════════════════════════════
+  if (!DEMO) $('demoBar').style.display = 'none';
+  renderSummary();
+  pickMethod('pix');
+  markSteps(1);
+</script>
+</body>
+</html>
