@@ -348,14 +348,86 @@ desconfia menos) e é honesto.
 
 ---
 
+## 6.6 Para onde o dinheiro vai (e onde a sua chave Pix entra de verdade)
+
+A dúvida "para quem vai o pagamento, se eu não posso pôr minha chave?" tem uma resposta que
+surpreende: **com gateway, você não cadastra chave nenhuma para receber.** A chave só aparece no
+outro extremo do caminho, quando você tira o dinheiro de lá.
+
+```
+①  Cliente paga o QR                    ②  Saldo fica na AbacatePay
+    │                                        │
+    ▼                                        ▼
+  o recebedor da transação é a           você acumula ali dentro,
+  INSTITUIÇÃO DE PAGAMENTO —             sem chave sua envolvida
+  nenhuma chave sua é publicada                │
+                                               ▼
+                                       ③  Você saca (POST /payouts/create)
+                                          para uma chave Pix DE SUA
+                                          TITULARIDADE, cadastrada no
+                                          painel — privada, nunca no site
+```
+
+| Etapa | Quem é o titular | A sua chave Pix aparece? |
+|---|---|---|
+| ① Cobrança (público) | a instituição de pagamento / loja cadastrada | **Não.** Não existe chave sua no BR Code. |
+| ② Saldo | sua conta na AbacatePay | Não. |
+| ③ Saque (privado) | **você** | Sim — só aqui, e só você e o gateway enxergam. |
+
+**Regras práticas do saque** (dados oficiais): destino precisa ser **chave de sua titularidade**,
+mínimo **R$ 3,50**, taxa **R$ 0,80** por saque, 1 saque/minuto, instantâneo 24/7.
+
+**Decisões recomendadas para o passo ③:**
+
+1. **Use uma chave aleatória (EVP) como destino**, não seu CPF, telefone ou e-mail. Uma chave
+   aleatória não revela nada sobre você por si só e pode ser trocada quando quiser. É de graça
+   criar no app do banco.
+2. **Conta separada só do projeto.** Mesmo que o volume seja ridículo, dinheiro de projeto misturado
+   com dinheiro pessoal vira um inferno de conciliação — e é exatamente o que um contador vai pedir
+   depois. Abrir uma segunda conta digital é grátis.
+3. **Saque com cadência, não por venda.** Cada saque custa R$ 0,80: sacar na hora de uma venda de
+   R$ 60 joga fora mais 1,3%. Junte e saque **uma vez por mês**.
+4. **Nunca aceite Pix direto do cliente**, mesmo que ele peça ("te mando na chave, mais fácil").
+   Some a conciliação, some o webhook, e é assim que entra o comprovante falso.
+
+### ⚠️ Achado que muda a ordem do plano: a AbacatePay exige CNPJ em produção
+
+Ao apurar isso, apareceu o seguinte — e ele contraria o que eu tinha escrito antes:
+
+- **Sandbox/devMode:** conta criada em minutos, **sem CNPJ**. Dá para construir e testar tudo.
+- **Produção:** a ativação passa por verificação com **documentos da empresa e dos sócios**
+  (a própria doc oficial de "Indo para produção" lista isso). Relatos consistentes de terceiros
+  indicam que **conta apenas com CPF não é aceita em produção**, e que **CNPJ MEI é aceito**.
+
+Ou seja: **para esta plataforma específica, "receber primeiro e formalizar depois" não existe.**
+A conta só liga quando o CNPJ existe. Isso não invalida a decisão de não abrir empresa agora — só
+significa que ela tem uma consequência clara. As saídas honestas são três:
+
+| Caminho | O que dá | O que custa |
+|---|---|---|
+| **A. Ficar no sandbox** (recomendado) | Arquitetura inteira construída, testada e demonstrável no portfólio | R$ 0 e nenhum risco. Só não entra dinheiro. |
+| **B. Abrir MEI agora** | Cobrança real ligada | Abertura gratuita e rápida pela internet, mas puxa o DAS mensal e as obrigações da seção 7 — antes de existir um único cliente. |
+| **C. Trocar de gateway** | Alguns concorrentes aceitam pessoa física | Confirme caso a caso antes de decidir; a taxa costuma ser diferente. **A arquitetura não muda:** todo o contato com o gateway está isolado em `abacatePayClient.ts`, então trocar de provedor é reescrever **um arquivo**, não o sistema. |
+
+**Recomendação:** A. Enquanto ninguém pagou, o CNPJ é custo puro. E o caminho C existe justamente
+porque o desenho deste plano não amarra o projeto a um fornecedor — o que, em entrevista, é um
+ponto a seu favor.
+
+_Confirme os requisitos de cadastro direto com a AbacatePay antes de contar com qualquer um desses
+caminhos: regra de compliance muda sem aviso._
+
+---
+
 ## 7. Fiscal e jurídico — a parte que realmente travaria você
 
 Isto não é conselho jurídico ou contábil; é o mapa do que perguntar a um contador antes de aceitar
 o primeiro real.
 
-- **Receber dinheiro recorrente de terceiros pede CNPJ.** Mas — decisão sua, registrada em
-  29/jul/2026 e razoável — **não se abre empresa antes de existir receita.** A sequência aceita aqui
-  é: _receber os primeiros reais → ver se recorre → formalizar._ O que **não** dá para postergar,
+- **Receber dinheiro recorrente de terceiros pede CNPJ.** Sua posição — registrada em 29/jul/2026 e
+  razoável — é **não abrir empresa antes de existir receita**. ⚠️ **Mas veja a seção 6.6:** a
+  AbacatePay não liga a conta de produção sem CNPJ, então, com ela, a sequência "receber primeiro,
+  formalizar depois" **não é possível**. Por isso o caminho recomendado é ficar no sandbox enquanto
+  não houver demanda comprovada. O que **não** dá para postergar,
   mesmo como pessoa física: **guardar o registro de tudo** (quem pagou, quanto, quando) e declarar o
   que entrou. O gateway já mantém esse histórico; exporte e guarde. E combine com um contador **o
   gatilho** de virar MEI (ex.: "quando passar de R$ X/mês ou de N assinantes") — assim a decisão já
@@ -462,8 +534,10 @@ estado de UI ("você atingiu o limite do plano grátis") sem tela quebrada.
 **DoD:** teste provando que conta antiga não perde nada e conta nova bate no limite.
 **Portão:** só siga se a Etapa 1 já tiver clientes pagando de verdade.
 
-### Etapa 4 — Dinheiro real (o mínimo indispensável, não a burocracia toda)
-Ordem deliberada: **primeiro receber, depois formalizar.** O que é obrigatório já na primeira venda:
+### Etapa 4 — Dinheiro real (só quando houver demanda comprovada)
+⚠️ **Pré-condição inescapável:** conta de produção na AbacatePay exige **CNPJ** (MEI serve) —
+seção 6.6. Portanto esta etapa começa com uma decisão de vida, não de código: abrir MEI, trocar de
+gateway, ou continuar no sandbox. O resto é obrigatório já na primeira venda:
 chaves de produção no Render (**nunca** no front), webhook de produção cadastrado, `devMode`
 bloqueado em produção, **política de reembolso escrita** (7 dias, CDC art. 49), Termos e Política de
 Privacidade publicados, e registro de quem pagou o quê.
@@ -517,6 +591,9 @@ Vocês já têm Vitest + supertest, então isso é barato:
 12. ❌ Gerar o BR Code no frontend. Isso só é possível com a chave no navegador — ou seja, pública.
     O QR vem pronto do gateway (`brCodeBase64`).
 13. ❌ Confiar em print de comprovante enviado pelo cliente. Quem confirma pagamento é o webhook.
+14. ❌ Aceitar Pix direto na sua chave "para facilitar", fora do gateway. Você perde conciliação,
+    webhook e qualquer defesa contra comprovante falso (seção 6.6).
+15. ❌ Sacar a cada venda. Cada saque custa R$ 0,80 — junte e saque uma vez por mês.
 
 ---
 
@@ -528,9 +605,13 @@ ABACATEPAY_API_KEY=            # secreta. Rotacione se vazar.
 ABACATEPAY_WEBHOOK_SECRET=     # o segredo que vai na query string do webhook
 ABACATEPAY_PRODUCT_MONTHLY=    # id do produto cycle=MONTHLY  (R$ 16,90 = 1690)
 ABACATEPAY_PRODUCT_ANNUAL=     # id do produto cycle=ANNUALLY (R$ 60,00 = 6000)
-ABACATEPAY_DEV_MODE=true       # true até a Etapa 4
+ABACATEPAY_DEV_MODE=true       # true até a Etapa 4 (produção exige CNPJ — seção 6.6)
 BILLING_ENABLED=false          # kill switch: desliga as rotas sem redeploy de código
 ```
+
+**A chave Pix de saque não é variável de ambiente.** Ela se cadastra **no painel** da AbacatePay e
+fica só lá. Nada de chave Pix no `.env`, no código ou no repositório — não há motivo para o backend
+conhecê-la (seção 6.6).
 
 `BILLING_ENABLED=false` por padrão significa que, mesmo se esta branch entrar na `main` por
 acidente, **nada de cobrança liga em produção**. É o cinto de segurança do experimento.
@@ -565,4 +646,7 @@ ponto de contato com o código de produção — trate-as com o cuidado de um PR
 
 **Fontes consultadas (29/jul/2026):** documentação oficial da AbacatePay — índice `llms.txt`,
 página de Webhooks (verificação HMAC, eventos, boas práticas), referência de Assinaturas
-(ciclos, `methods` default `["CARD"]`) e a página de cobrança recorrente (taxas).
+(ciclos, `methods` default `["CARD"]`), referência de Saques (titularidade, mínimo, taxa),
+página "Indo para produção" (verificação com documentos da empresa e dos sócios) e a página de
+cobrança recorrente (taxas). O requisito de CNPJ em produção foi corroborado por fontes de
+terceiros — **confirme com o suporte antes de contar com ele**.
