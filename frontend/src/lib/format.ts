@@ -9,6 +9,26 @@ export function fmt(n: number, decimals = 3): string {
   });
 }
 
+/**
+ * Rótulo de um "tick" do eixo Y do gráfico.
+ *
+ * O Chart.js calcula os ticks por soma sucessiva (6,6 → +0,2 → +0,2 …), e essa
+ * acumulação carrega o erro clássico de ponto flutuante: 7.6 vira
+ * 7.600000000000001. Interpolar o valor cru no rótulo expunha esse ruído na
+ * tela — só em algumas faixas de preço, porque depende do passo escolhido.
+ * Passar sempre pelo `fmt` corta o ruído e ainda alinha o eixo ao padrão pt-BR
+ * (vírgula decimal) usado no resto do app.
+ */
+export function formatAxisPrice(
+  value: string | number,
+  currency: string,
+  decimals = 3
+): string {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return `${currency} ${value}`;
+  return `${currency} ${fmt(n, decimals)}`;
+}
+
 /** "AV BRASIL, 1234 · PINHEIROS" a partir dos campos de endereço (o que existir). */
 export function formatLocation(q: {
   street?: string | null;

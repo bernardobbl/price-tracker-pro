@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fmt, formatLocation, mapsUrl, sameSeries } from "./format";
+import { fmt, formatAxisPrice, formatLocation, mapsUrl, sameSeries } from "./format";
 import type { SeriesView } from "../types";
 
 describe("fmt", () => {
@@ -10,6 +10,28 @@ describe("fmt", () => {
 
   it("respeita o número de casas informado", () => {
     expect(fmt(5.9, 2)).toBe("5,90");
+  });
+});
+
+describe("formatAxisPrice", () => {
+  it("corta o ruído de ponto flutuante dos ticks do Chart.js", () => {
+    // Valores reais observados no eixo Y (Diesel S10 / RJ).
+    expect(formatAxisPrice(7.600000000000001, "R$")).toBe("R$ 7,600");
+    expect(formatAxisPrice(7.200000000000001, "R$")).toBe("R$ 7,200");
+    expect(formatAxisPrice(6.800000000000001, "R$")).toBe("R$ 6,800");
+  });
+
+  it("mantém o padrão pt-BR e o número de casas pedido", () => {
+    expect(formatAxisPrice(6.99, "R$")).toBe("R$ 6,990");
+    expect(formatAxisPrice(6.99, "R$", 2)).toBe("R$ 6,99");
+  });
+
+  it("aceita tick em string (o Chart.js tipa como string | number)", () => {
+    expect(formatAxisPrice("7.6", "R$")).toBe("R$ 7,600");
+  });
+
+  it("não quebra com valor não numérico", () => {
+    expect(formatAxisPrice("--", "R$")).toBe("R$ --");
   });
 });
 
