@@ -1,4 +1,5 @@
 import { Icon } from "./Icon";
+import { FuelGauge } from "./FuelGauge";
 import type { FuelAlert, SeriesView, TrackedSeries } from "../types";
 import { titleCase } from "../lib/seriesLabel";
 import { fmt, sameSeries } from "../lib/format";
@@ -14,6 +15,8 @@ interface SidebarProps {
   onSelState: (v: string) => void;
   onSelMunicipality: (v: string) => void;
   onExplore: (e: React.FormEvent) => void;
+  /** Só para feedback visual no botão — não altera o fluxo da consulta. */
+  loading?: boolean;
 
   canManage: boolean;
   view: SeriesView | null;
@@ -38,6 +41,7 @@ export function Sidebar({
   onSelState,
   onSelMunicipality,
   onExplore,
+  loading = false,
   canManage,
   view,
   tracked,
@@ -86,7 +90,10 @@ export function Sidebar({
               ))}
             </select>
           </div>
+          {/* O `disabled` continua sendo só a validação dos campos: carregar não
+              bloqueia o botão, para não mudar o comportamento que já existia. */}
           <button type="submit" className="btn-primary" disabled={!selProduct || !selState || !selMunicipality}>
+            {loading && <FuelGauge />}
             Ver preços
           </button>
         </form>

@@ -1,4 +1,6 @@
 import { Icon } from "./Icon";
+import { DataBackdrop } from "./DataBackdrop";
+import { FuelGauge } from "./FuelGauge";
 import type { AuthMode } from "../hooks/useAuth";
 
 interface AuthPageProps {
@@ -41,6 +43,7 @@ export function AuthPage({
       </header>
 
       <div className="auth-page">
+        <DataBackdrop />
         <div className="auth-card">
           <div className="auth-card-logo">
             <h2>Price Tracker Pro</h2>
@@ -100,7 +103,16 @@ export function AuthPage({
               style={{ marginTop: error ? "1rem" : "0.25rem" }}
               disabled={submitting}
             >
-              {submitting ? "Aguarde..." : mode === "login" ? "Entrar na conta" : "Criar conta"}
+              {submitting ? (
+                <>
+                  <FuelGauge />
+                  Aguarde...
+                </>
+              ) : mode === "login" ? (
+                "Entrar na conta"
+              ) : (
+                "Criar conta"
+              )}
             </button>
           </form>
 

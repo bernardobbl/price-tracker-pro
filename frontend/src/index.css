@@ -1574,6 +1574,147 @@ input[type="number"] {
   color: var(--good-deep);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Camadas decorativas (login + header)
+   ──────────────────────────────────────────────────────────────────────────
+   Tudo aqui é ornamento: `pointer-events: none`, `aria-hidden` no JSX e
+   sempre atrás do conteúdo. Nenhuma regra desta seção altera layout,
+   espaçamento ou comportamento dos elementos existentes.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Fio de dados no rodapé do header ── */
+.header {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Conteúdo real do header sempre acima do fio. */
+.header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.header-wire {
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  pointer-events: none;
+}
+
+.header-wire svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.header-wire-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--camel);
+  box-shadow: 0 0 10px 4px rgba(176, 138, 75, 0.35);
+  opacity: 0;
+}
+
+/* ── Marcador de tanque nos botões em carregamento ── */
+/* O botão só vira flex quando há um ícone dentro; sem ícone o texto continua
+   centralizado exatamente como antes, sem mudança de altura ou espaçamento. */
+.btn-primary:has(.fuel-gauge) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.fuel-gauge {
+  flex-shrink: 0;
+}
+
+.fuel-gauge-needle {
+  transform-origin: 16px 15px;
+  animation: fuel-sweep 1.9s cubic-bezier(0.45, 0.05, 0.3, 1) infinite;
+}
+
+@keyframes fuel-sweep {
+  0% {
+    transform: rotate(-58deg);
+  }
+  60%,
+  100% {
+    transform: rotate(56deg);
+  }
+}
+
+/* ── Cena da tela de login ── */
+.auth-page {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Margem negativa: o parallax desloca a camada e não pode revelar a borda. */
+.backdrop-layer {
+  position: absolute;
+  inset: -4%;
+  will-change: transform;
+}
+
+.backdrop-layer svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.backdrop-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: backdrop-ring 2.8s ease-out infinite;
+}
+
+@keyframes backdrop-ring {
+  0% {
+    transform: scale(0.35);
+    opacity: 0.7;
+  }
+  70%,
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+/* O card fica acima da cena e opaco — legibilidade não depende do fundo. */
+.auth-card {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop-pulse {
+    animation: none;
+    opacity: 0.25;
+  }
+  .backdrop-layer {
+    will-change: auto;
+  }
+  .fuel-gauge-needle {
+    animation: none;
+  }
+}
+
 /* ── Responsivo ── */
 @media (max-width: 640px) {
   .dashboard { padding: 1rem 1rem 2rem; }

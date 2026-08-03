@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createFuelAlert } from "./api/client";
 import { Icon } from "./components/Icon";
 import { AuthPage } from "./components/AuthPage";
+import { HeaderWire } from "./components/HeaderWire";
 import { Sidebar } from "./components/Sidebar";
 import { DetailPanel } from "./components/DetailPanel";
 import { ToastContainer } from "./components/Toast";
@@ -176,6 +177,7 @@ function App() {
             </div>
           )
         )}
+        <HeaderWire />
       </header>
 
       {/* Cold start: no free tier o backend hiberna e a 1ª requisição leva ~30-60s
@@ -206,6 +208,7 @@ function App() {
             e.preventDefault();
             fuel.explore();
           }}
+          loading={fuel.loading}
           canManage={canManage}
           view={view}
           tracked={favorites.tracked}
