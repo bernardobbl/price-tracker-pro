@@ -14,7 +14,25 @@
 | Branch | O que tem |
 |---|---|
 | `feat/visual-login-header` | Fundo animado no login, fio de dados no header, ponteiro de tanque nos botões. Correção do bug do eixo Y (`R$ 7.600000000000001`). **61 testes passando.** |
-| `feat/checkout-pix` | Anual a R$ 59,90, dinâmica visual no checkout, aceite obrigatório dos documentos, os 3 documentos legais, e toda a documentação de pagamento. |
+| `feat/checkout-pix` | Anual a R$ 59,90, dinâmica visual no checkout, aceite obrigatório dos documentos, os 3 documentos legais, **o gate de assinatura** e toda a documentação de pagamento. |
+
+### ✅ Gate de assinatura — FEITO (04/ago/2026)
+
+Construído antes de qualquer pagamento, porque não depende de gateway nenhum.
+
+| Arquivo | O que é |
+|---|---|
+| `backend/src/lib/subscriptionPeriod.ts` | Aritmética pura de vigência (mês de calendário, renovação que soma, corte estrito, pró-rata) |
+| `backend/src/lib/alertQuota.ts` | Decisão de cota. **`FREE_ALERT_LIMIT = Infinity` — nada mudou ainda** |
+| `backend/src/services/subscriptionService.ts` | Leitura do direito de acesso. Falha fechado em todos os caminhos |
+| `backend/supabase/migration_003_subscriptions.sql` | Tabela + índices + RLS. **Ainda não rodada no Supabase** |
+| `GET /api/fuel/entitlement` | Situação da assinatura (para a interface, não é o gate) |
+| gate no `POST /api/fuel/alerts` | O gate de verdade |
+| `docs/testar-o-gate.md` | Passo a passo para provar que funciona, sem Mercado Pago |
+
+**Testes:** 148 no backend e 61 no frontend passando (04/ago/2026).
+
+**Próxima ação concreta:** rodar a migração 003 no Supabase e seguir `docs/testar-o-gate.md`.
 
 ### Documentos desta frente
 

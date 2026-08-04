@@ -150,6 +150,26 @@ create index subscriptions_lookup on subscriptions (user_id, expires_at desc);
 
 ### Exclusão de dados × registro fiscal — como os dois convivem
 
+> **Pergunta levantada em 04/ago/2026: "temos que excluir porque está nos Termos, ou porque a
+> gente inventou isso?"**
+>
+> **Nem um nem outro: é lei.** O direito à eliminação dos dados pessoais está na **LGPD, art. 18,
+> inciso VI**. Ele vale mesmo que a nossa política não dissesse nada — escrever lá só torna
+> explícito o que já é obrigação. Apagar da política não apagaria o direito.
+>
+> **Mas o direito não é absoluto**, e é isso que salva o registro fiscal: o **art. 16, inciso I**
+> permite conservar dados para **cumprimento de obrigação legal ou regulatória**. Por isso o
+> desenho abaixo é legítimo — não é uma brecha, é o que a própria lei prevê.
+>
+> Sobre manter o `user_id`: não dá. Um identificador que aponta para uma pessoa **é dado pessoal**
+> na LGPD, mesmo sendo um UUID sem nome junto. Nome a gente nem coleta; e-mail vive no
+> `auth.users`, que é apagado no mesmo pedido.
+>
+> Vale lembrar o alcance disso: **a anonimização só acontece se alguém pedir.** Para quem não
+> pede — que será a maioria — a linha continua completa e você continua sabendo quem é.
+>
+> _Não sou advogado; isto é leitura da lei, não parecer jurídico._
+
 O conflito: a Política de Privacidade promete apagar os dados; a mesma política promete guardar o
 registro de pagamento por 5 anos. Parecem incompatíveis, e a saída não é escolher um lado.
 
