@@ -1,0 +1,652 @@
+# Fase 10 — Arquitetura de pagamento (AbacatePay)
+
+> **⚠️ Este arquivo só existe na branch `feat/premium-landing`.**
+> A `main` sabe que este experimento existe (Fase 10 do `plan.md`), mas não carrega nenhuma linha dele.
+> Nada aqui vai para a `main` sem o critério de sucesso da Fase 10.
+>
+> **Status:** 📋 PLANO, nada implementado. Escrito em 29/jul/2026.
+> **Público-alvo deste documento:** você mesmo, daqui a 3 meses, sem lembrar de nada.
+
+---
+
+## 0. Antes de tudo: a regra que economiza meses
+
+**Não construa cobrança agora.** Ela é a parte mais chata, mais arriscada e a única que envolve o
+dinheiro de outra pessoa e a Receita Federal. A ordem correta é:
+
+```
+1. Landing /premium no ar  ──►  2. Alguém deixa email  ──►  3. Alguém PAGA na mão
+                                                                     │
+                                        (só depois desse ponto) ─────┘
+                                                                     ▼
+                              4. Automatizar (webhook, entitlement, gate)
+```
+
+O passo 3 se faz com **um link de pagamento** gerado no painel da AbacatePay e o acesso liberado
+**por você, na mão, no banco**. Sim, na mão. Com 1 a 10 clientes isso leva 2 minutos por cliente e
+te dá a única informação que importa: **alguém paga?** Automatizar antes disso é construir uma
+esteira industrial para carregar uma caixa.
+
+> **Critério para passar do 3 para o 4:** ~10 pagantes ou liberação manual virando incômodo real.
+> Antes disso, automatizar é procrastinação disfarçada de engenharia.
+
+---
+
+## 1. Glossário (leia uma vez, o resto do documento fica fácil)
+
+| Termo | Em português claro |
+|---|---|
+| **Gateway de pagamento** | A empresa que fala com os bancos por você. Aqui: AbacatePay. Você nunca toca em dinheiro nem em número de cartão. |
+| **Checkout** | A página (dela, não sua) onde o cliente paga. Você manda o cliente para lá e ela te avisa depois. |
+| **Webhook** | Um POST que a AbacatePay faz **no seu servidor** quando algo acontece ("pagou", "cancelou"). É ela ligando pra você, em vez de você ficar perguntando. |
+| **Entitlement** (direito de acesso) | O registro **no seu banco** que diz "este usuário é premium até tal data". É isso que o app consulta — nunca o gateway. |
+| **Idempotência** | Processar o mesmo evento duas vezes sem estragar nada. Webhook repete: se você não tratar, o cliente ganha 2 meses de acesso por 1 pagamento. |
+| **HMAC / assinatura** | Uma "impressão digital" do corpo da requisição, calculada com uma chave. Serve para saber se o conteúdo não foi alterado no caminho. |
+| **Sandbox / devMode** | Ambiente de mentira. Você simula pagamentos sem dinheiro real. Onde 90% deste plano deve ser construído. |
+| **Gate / feature flag** | O `if` que decide se o usuário vê a funcionalidade paga. |
+| **Churn** | Gente que cancela. Em assinatura barata, é o que mata. |
+| **MRR** | Receita recorrente mensal. A métrica que o vitalício destruía. |
+| **Chargeback / disputa** | Cliente contesta a cobrança no cartão. Você perde o dinheiro e leva taxa. |
+| **Dunning** | O processo de cobrar de novo quando o pagamento falha (cartão expirado, sem saldo). |
+
+---
+
+## 2. O que a AbacatePay é — e o que ela **não** é
+
+**Fatos apurados na documentação oficial (29/jul/2026):**
+
+- API REST + JSON, base `https://api.abacatepay.com/v2`, autenticação `Authorization: Bearer <api-key>`.
+- **Valores em centavos.** `1690` = R$ 16,90. Errar isso cobra R$ 1.690,00 de alguém. Escreva um
+  helper e um teste — este é o bug mais caro possível neste projeto.
+- Respostas vêm num envelope: `{ "data": {...}, "success": true, "error": null }`.
+- **Assinatura exige um "produto" com `cycle`** (`WEEKLY`, `MONTHLY`, `SEMIANNUALLY`, `ANNUALLY`),
+  criado antes via `POST /products/create`. O checkout de assinatura aceita **exatamente 1 item**.
+- Endpoints que interessam: `POST /products/create`, `POST /subscriptions/create`,
+  `POST /subscriptions/cancel`, `GET /subscriptions/list`, `POST /webhooks/create`,
+  `POST /transparents/create` (Pix avulso com QR embutido no seu site), `GET /transparents/check`.
+- Eventos de webhook: `subscription.completed`, `subscription.renewed`, `subscription.cancelled`,
+  `checkout.completed`, `checkout.refunded`, `checkout.disputed`, `transparent.completed`, etc.
+- Payload padrão: `{ id: "log_...", event: "...", apiVersion: 2, devMode: false, data: {...} }`.
+- Existe **devMode** (ambiente de teste) e `POST /transparents/simulate-payment` para simular pagamento.
+- `taxId` (CPF) vem **mascarado** nos webhooks. Cartão: só bandeira e 4 últimos dígitos.
+
+**O que ela não é / cuidados:**
+
+1. **Assinatura recorrente é, por padrão, CARTÃO** (`methods` default `["CARD"]`). O Pix "recorrente"
+   depende do Pix Automático, que exige suporte do banco do cliente e adesão dele. Ou seja:
+   **não prometa "assinatura no Pix" como se fosse igual a cartão.** Para Pix, o que funciona sem
+   fricção é **cobrança avulsa** — o que casa perfeitamente com o **plano anual de R$ 60**.
+2. **Ela não emite nota fiscal** e não resolve seu ISS. Ver seção 7.
+3. **Ela não é seu banco de dados.** Se você depender de consultar a API para saber quem é premium,
+   um incidente dela derruba o seu app. O direito de acesso mora no seu Supabase.
+4. **A "chave pública HMAC" do exemplo da doc é pública** — está impressa na documentação. Isso
+   significa que o HMAC comprova **integridade** (o corpo não mudou), **não autenticidade**
+   (qualquer um que leu a doc consegue assinar um corpo falso). Consequência prática: **a assinatura
+   HMAC sozinha não é autenticação.** Ver seção 6, item 2 — o desenho aqui usa 3 camadas por isso.
+
+---
+
+## 3. A conta que decide o desenho (seja frio aqui)
+
+**Taxas informadas pela AbacatePay** (cobrança recorrente): **Pix R$ 0,80 por parcela**;
+**cartão 3,5% + R$ 0,60 por parcela**. Saque: **R$ 0,80** por saque, mínimo R$ 3,50.
+_Confirme os números atuais na página de preços antes de implementar — taxa muda._
+
+**Preços vigentes (reajuste de 29/jul/2026):** mensal **R$ 16,90**, anual **R$ 60**.
+O mensal virou **âncora**: 12 × R$ 16,90 = **R$ 202,80**, então o anual é **70% mais barato**.
+Isso é precificação clássica de SaaS — o plano que você quer vender parece obviamente melhor sem
+você precisar convencer ninguém.
+
+| Plano | Bruto | Taxa | Líquido | Taxa como % |
+|---|---|---|---|---|
+| Mensal, cartão | R$ 16,90 | R$ 1,19 | R$ 15,71 | 7,0% |
+| Mensal, Pix | R$ 16,90 | R$ 0,80 | R$ 16,10 | 4,7% |
+| **Anual, Pix** | R$ 60,00 | R$ 0,80 | **R$ 59,20** | **1,3%** ✅ |
+| Anual, cartão | R$ 60,00 | R$ 2,70 | R$ 57,30 | 4,5% |
+
+**O que o reajuste consertou:** com R$ 6,90 a taxa comia 12% da receita e o mensal era um mau
+negócio para os dois lados. A R$ 16,90 a taxa cai para 4,7–7% **e** o anual passa a ser
+irresistível. Quem escolher o mensal está pagando pela flexibilidade, o que é justo.
+
+> **Decisão registrada:** o **anual (R$ 60, Pix) é o plano principal** — nasce selecionado na
+> landing e no checkout. O mensal existe para quem não quer compromisso. Bônus: o anual resolve
+> de graça o problema do Pix recorrente, porque é um pagamento único.
+
+**Custo do outro lado (o que você paga hoje):** infra R$ 0 (free tier, com retenção de 12 meses
+garantindo o platô — Fase 9). **Alerta é só por email**, usando o Nodemailer/SMTP que já existe —
+custo marginal ~zero. **WhatsApp está fora do escopo** (decisão de 29/jul/2026): custa por mensagem
+e depende de aprovação de template pela Meta. Não se promete o que não está pronto.
+
+**Ponto de equilíbrio, se você formalizar (MEI):** o DAS do MEI é da ordem de ~R$ 75–80/mês
+(_confirme o valor de 2026_). Com R$ 16,10 líquidos por assinante mensal no Pix, são **~5
+assinantes mensais** para cobrir o imposto — ou **~16 assinantes anuais por ano**. Muito melhor que
+os 13 do preço antigo, mas o recado continua: isso é validação de produto, não renda.
+
+---
+
+## 4. A arquitetura em uma frase
+
+> **O gateway avisa. O seu banco decide. O app pergunta ao seu banco.**
+
+Três camadas, cada uma com uma responsabilidade só:
+
+```mermaid
+sequenceDiagram
+    participant U as Usuário (browser)
+    participant F as Frontend (Vercel)
+    participant B as Backend (Render/Express)
+    participant A as AbacatePay
+    participant S as Supabase (verdade)
+
+    U->>F: clica "Assinar"
+    F->>B: POST /api/billing/checkout (JWT do Supabase)
+    B->>A: POST /v2/subscriptions/create (API key, metadata.user_id)
+    A-->>B: { url do checkout }
+    B-->>F: { url }
+    F->>U: redireciona para o checkout da AbacatePay
+    U->>A: paga
+    A->>B: POST /webhooks/abacatepay?webhookSecret=... (subscription.completed)
+    B->>B: 1) confere secret  2) confere HMAC  3) já processei esse log_id?
+    B->>A: GET /v2/subscriptions/list (CONFIRMA na fonte)
+    B->>S: upsert subscriptions (status=active, current_period_end)
+    B-->>A: 200 OK (só agora)
+    U->>F: volta pelo returnUrl
+    F->>B: GET /api/billing/me
+    B->>S: select da tabela subscriptions
+    B-->>F: { premium: true, until: ... }
+```
+
+**O erro clássico que este desenho evita:** liberar o acesso quando o navegador volta pela
+`returnUrl`. A `returnUrl` é uma URL que **qualquer pessoa pode digitar**. Acesso se libera **só**
+no fluxo servidor↔servidor (webhook + confirmação na API).
+
+---
+
+## 5. Modelo de dados (Supabase) — proposta de SQL
+
+Segue o estilo do `backend/supabase/schema.sql`: tabelas com RLS, leitura só do próprio dono,
+escrita **exclusiva** do `service_role` (o backend). O usuário nunca pode escrever no seu próprio
+direito de acesso — senão dá pra virar premium com um `curl`.
+
+```sql
+-- ─────────────────────────────────────────────────────────────────────────────
+-- FASE 10 (EXPERIMENTO) — assinaturas. NÃO aplicar em produção antes da Etapa 2.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create table if not exists public.subscriptions (
+  id                   uuid primary key default gen_random_uuid(),
+  user_id              uuid not null unique references auth.users (id) on delete cascade,
+  plan                 text not null check (plan in ('monthly','annual')),
+  status               text not null check (status in ('active','canceled','past_due','expired')),
+  -- até quando o acesso vale. É ISTO que o app consulta.
+  current_period_end   timestamptz not null,
+  -- rastreabilidade com o gateway (nunca é a fonte da verdade, só referência)
+  provider             text not null default 'abacatepay',
+  provider_sub_id      text,
+  provider_customer_id text,
+  dev_mode             boolean not null default false,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists subscriptions_period_idx
+  on public.subscriptions (status, current_period_end desc);
+
+-- Livro-caixa de eventos: garante idempotência e dá auditoria quando algo der errado.
+create table if not exists public.billing_events (
+  id            uuid primary key default gen_random_uuid(),
+  provider      text not null default 'abacatepay',
+  event_id      text not null,          -- o "log_abc123" do payload
+  event_type    text not null,          -- subscription.completed, etc.
+  dev_mode      boolean not null default false,
+  user_id       uuid references auth.users (id) on delete set null,
+  payload       jsonb not null,
+  processed_at  timestamptz,
+  created_at    timestamptz not null default now(),
+  constraint billing_events_unique unique (provider, event_id)  -- ← a idempotência vive aqui
+);
+
+alter table public.subscriptions  enable row level security;
+alter table public.billing_events enable row level security;
+
+-- Usuário lê a própria assinatura. E só isso.
+create policy subscriptions_select_own on public.subscriptions
+  for select using (auth.uid() = user_id);
+-- Nenhuma policy de insert/update/delete para authenticated: só o service_role escreve
+-- (o service_role ignora RLS por definição).
+
+-- billing_events: nenhuma policy. Ninguém além do backend enxerga.
+
+-- Função única de verdade do acesso — usada pelo backend e reutilizável em policies futuras.
+create or replace function public.is_premium(p_user_id uuid)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1 from public.subscriptions s
+     where s.user_id = p_user_id
+       and s.status in ('active','canceled')   -- 'canceled' ainda vale até o fim do período pago
+       and s.current_period_end > now()
+  );
+$$;
+
+revoke execute on function public.is_premium(uuid) from public, anon;
+grant   execute on function public.is_premium(uuid) to authenticated, service_role;
+```
+
+**Duas decisões escondidas aí, de propósito:**
+
+1. `status='canceled'` **continua premium** até `current_period_end`. Quem cancelou pagou o mês.
+   Cortar na hora do cancelamento é o tipo de detalhe que gera reclamação e chargeback.
+2. Não existe coluna `is_premium boolean`. Booleano não expira; data expira. Um booleano vira
+   premium eterno no dia em que um webhook de expiração se perder.
+
+---
+
+## 6. O que muda no backend (contratos, não código)
+
+Arquivos novos — todos isolados, nada de mexer em serviço existente:
+
+```
+backend/src/routes/billingRoute.ts          # rotas autenticadas do cliente
+backend/src/routes/webhookRoute.ts          # o endpoint que a AbacatePay chama
+backend/src/services/abacatePayClient.ts    # a única coisa que fala HTTP com a AbacatePay
+backend/src/services/subscriptionService.ts # escreve/lê o entitlement no Supabase
+backend/src/middleware/requirePremium.ts    # o "gate"
+backend/src/lib/webhookVerify.ts            # secret + HMAC (função pura → testável)
+backend/src/lib/money.ts                    # reais ⇄ centavos, com teste
+backend/test/webhook.test.ts
+backend/test/subscription.test.ts
+```
+
+### Endpoints
+
+| Método | Rota | Auth | O que faz |
+|---|---|---|---|
+| POST | `/api/billing/checkout` | JWT Supabase | Cria a cobrança na AbacatePay com `metadata.user_id`. **Pix:** `POST /transparents/create` → devolve `{ chargeId, brCode, brCodeBase64, expiresAt }` para a página renderizar QR + copia e cola. **Cartão:** `POST /subscriptions/create` → devolve `{ url }` para redirecionar. Não confia em preço vindo do front — recebe `plan: 'anual' \| 'mensal'` e o valor mora no backend. |
+| GET | `/api/billing/charge/:id` | pública (id opaco) | `{ status: 'pending' \| 'paid' \| 'expired' }`, consultando `GET /transparents/check`. Serve **só para a tela atualizar**; não libera nada. |
+| GET | `/api/billing/me` | JWT Supabase | `{ premium: boolean, plan, until, status }` lido do Supabase. |
+| POST | `/api/billing/cancel` | JWT Supabase | Chama `POST /subscriptions/cancel` e marca `status='canceled'` mantendo o período pago. |
+| POST | `/webhooks/abacatepay` | **secret + HMAC** | Recebe os eventos. **Fora de `/api`** (ver abaixo). |
+
+### Cinco detalhes de implementação que quebram na prática (e a maioria dos tutoriais ignora)
+
+1. **O webhook precisa do corpo cru (raw body).** `app.use(express.json())` consome o stream e o
+   HMAC passa a ser calculado sobre um JSON re-serializado — que não é byte-a-byte igual ao que foi
+   assinado. A verificação falha "sem motivo". Solução: montar a rota do webhook com
+   `express.raw({ type: 'application/json' })` **antes** do `express.json()` global no `app.ts`.
+2. **Assinatura HMAC não é autenticação aqui.** A chave do exemplo oficial é pública. Portanto o
+   endpoint usa **três camadas**, na ordem:
+   `(a)` `req.query.webhookSecret === process.env.ABACATEPAY_WEBHOOK_SECRET` (comparação
+   `timingSafeEqual`); `(b)` HMAC-SHA256 do corpo cru; `(c)` **reconsulta na API da AbacatePay**
+   (`GET /subscriptions/list` ou `/checkouts/one`) antes de liberar qualquer coisa. Só a camada (c)
+   é prova real de pagamento. **Fail-closed:** se (c) falhar ou for inconclusiva, registre o evento,
+   **não libere**, e responda 200 (para não entrar em loop de retentativa) com o evento pendente para
+   reprocessamento manual.
+3. **O webhook não pode ficar atrás do rate limiter.** Hoje o `apiLimiter` cobre todo `/api`
+   (300 req/15min por IP). Uma rajada de retentativas da AbacatePay tomaria 429, e um 429 é
+   interpretado como falha → mais retentativa. Por isso a rota fica em `/webhooks/...`, fora de
+   `/api`, com um limiter próprio bem folgado. **CORS não se aplica** (não é browser).
+4. **Idempotência de verdade:** `insert into billing_events` com `unique (provider, event_id)`
+   **antes** de processar. Violação de unicidade = evento repetido → responde 200 e não faz nada.
+   É o banco garantindo, não um `if` na memória do processo (que morre a cada deploy do Render).
+5. **`devMode`:** eventos de teste chegam com `devMode: true`. Em produção, **ignore-os**
+   (grave e responda 200). Sem essa checagem, qualquer um que descubra a URL e o secret vira premium
+   simulando um pagamento no ambiente de teste.
+
+Bônus: **não valide o payload inteiro com Zod** (a própria doc recomenda isso). Valide só os 4–5
+campos que você usa; assim um campo novo na AbacatePay não derruba seu endpoint às 3 da manhã.
+
+### O "cold start" do Render é um problema aqui
+
+O backend dorme no free tier. Um webhook que chega num serviço dormindo pode dar timeout na primeira
+tentativa. A AbacatePay reenvia, então **funciona** — mas só porque existe idempotência. Mais um
+motivo para o item 4 não ser opcional. O keep-alive de 3 dias (Fase 6.95) ajuda, não resolve.
+
+---
+
+## 6.5 Privacidade: de quem é o nome que aparece no Pix?
+
+Você perguntou se é boa ideia colocar seu nome "na cara dura" no QR Code. Resposta honesta:
+
+**No Pix, o pagador *sempre* vê um nome de beneficiário antes de confirmar.** Isso não é opção do
+desenvolvedor — é do desenho do arranjo Pix: o app do banco tem que identificar quem vai receber.
+A pergunta certa não é "escondo o nome?", é **"qual nome aparece ali?"**. E isso depende de quem é o
+recebedor da transação:
+
+| Caminho | Quem aparece para o pagador | Consequência |
+|---|---|---|
+| **Chave Pix pessoal** (QR estático gerado no app do seu banco, colado na página) | **Seu nome civil completo + CPF mascarado + seu banco** | ❌ Nome e instituição expostos numa página pública, para sempre, para qualquer robô. |
+| **Cobrança dinâmica via gateway** (AbacatePay) | Tipicamente a **instituição de pagamento / o nome de loja** cadastrado — o dinheiro entra na conta dela e é repassado a você | ✅ Seu nome pessoal não é o rosto da cobrança. |
+
+**Portanto: nunca publique sua chave Pix pessoal na landing.** Além da privacidade, o QR estático
+é tecnicamente ruim aqui:
+
+- **Você não sabe quem pagou.** Sem `txid`/`metadata`, chega "R$ 60 de João" e você não tem como
+  ligar isso a um usuário. Reconciliação manual, e erro garantido quando dois Joões pagarem.
+- **Não dá para expirar** nem para variar o valor por plano.
+- **Não existe webhook.** Você fica olhando o extrato, e o app não libera acesso sozinho.
+- **Convida fraude social:** print de comprovante falso é o golpe mais comum do Brasil em venda por
+  Pix estático. Com cobrança dinâmica, quem confirma é o gateway, não a foto que o cliente mandou.
+
+⚠️ **Duas cautelas que eu não posso resolver por você, só apontar:**
+
+1. **Confirme empiricamente o nome exibido.** Não confie neste documento nem no marketing do
+   gateway: gere **uma cobrança real de R$ 1,00**, pague do seu próprio celular e **leia o que o seu
+   app de banco mostra** na tela de confirmação e no comprovante. Custa R$ 1 + R$ 0,80 de taxa e é a
+   única prova que vale. Se aparecer seu nome civil e isso te incomodar, você descobriu **antes** de
+   divulgar a página.
+2. **O cadastro do gateway (KYC) vai pedir seus documentos de qualquer forma** — isso é lei
+   (prevenção à lavagem de dinheiro), e nenhum gateway sério foge disso. A privacidade que se ganha
+   aqui é **em relação ao público**, não em relação à instituição financeira ou à Receita.
+
+**Recomendação prática:** cadastre o **nome de loja como "Price Tracker Pro"** no painel da
+AbacatePay, use sempre cobrança dinâmica, e verifique com o teste de R$ 1,00 antes de divulgar.
+No checkout, deixe explícito quem processa o pagamento — isso aumenta a conversão (o pagador
+desconfia menos) e é honesto.
+
+---
+
+## 6.6 Para onde o dinheiro vai (e onde a sua chave Pix entra de verdade)
+
+A dúvida "para quem vai o pagamento, se eu não posso pôr minha chave?" tem uma resposta que
+surpreende: **com gateway, você não cadastra chave nenhuma para receber.** A chave só aparece no
+outro extremo do caminho, quando você tira o dinheiro de lá.
+
+```
+①  Cliente paga o QR                    ②  Saldo fica na AbacatePay
+    │                                        │
+    ▼                                        ▼
+  o recebedor da transação é a           você acumula ali dentro,
+  INSTITUIÇÃO DE PAGAMENTO —             sem chave sua envolvida
+  nenhuma chave sua é publicada                │
+                                               ▼
+                                       ③  Você saca (POST /payouts/create)
+                                          para uma chave Pix DE SUA
+                                          TITULARIDADE, cadastrada no
+                                          painel — privada, nunca no site
+```
+
+| Etapa | Quem é o titular | A sua chave Pix aparece? |
+|---|---|---|
+| ① Cobrança (público) | a instituição de pagamento / loja cadastrada | **Não.** Não existe chave sua no BR Code. |
+| ② Saldo | sua conta na AbacatePay | Não. |
+| ③ Saque (privado) | **você** | Sim — só aqui, e só você e o gateway enxergam. |
+
+**Regras práticas do saque** (dados oficiais): destino precisa ser **chave de sua titularidade**,
+mínimo **R$ 3,50**, taxa **R$ 0,80** por saque, 1 saque/minuto, instantâneo 24/7.
+
+**Decisões recomendadas para o passo ③:**
+
+1. **Use uma chave aleatória (EVP) como destino**, não seu CPF, telefone ou e-mail. Uma chave
+   aleatória não revela nada sobre você por si só e pode ser trocada quando quiser. É de graça
+   criar no app do banco.
+2. **Conta separada só do projeto.** Mesmo que o volume seja ridículo, dinheiro de projeto misturado
+   com dinheiro pessoal vira um inferno de conciliação — e é exatamente o que um contador vai pedir
+   depois. Abrir uma segunda conta digital é grátis.
+3. **Saque com cadência, não por venda.** Cada saque custa R$ 0,80: sacar na hora de uma venda de
+   R$ 60 joga fora mais 1,3%. Junte e saque **uma vez por mês**.
+4. **Nunca aceite Pix direto do cliente**, mesmo que ele peça ("te mando na chave, mais fácil").
+   Some a conciliação, some o webhook, e é assim que entra o comprovante falso.
+
+### ⚠️ Achado que muda a ordem do plano: a AbacatePay exige CNPJ em produção
+
+Ao apurar isso, apareceu o seguinte — e ele contraria o que eu tinha escrito antes:
+
+- **Sandbox/devMode:** conta criada em minutos, **sem CNPJ**. Dá para construir e testar tudo.
+- **Produção:** a ativação passa por verificação com **documentos da empresa e dos sócios**
+  (a própria doc oficial de "Indo para produção" lista isso). Relatos consistentes de terceiros
+  indicam que **conta apenas com CPF não é aceita em produção**, e que **CNPJ MEI é aceito**.
+
+Ou seja: **para esta plataforma específica, "receber primeiro e formalizar depois" não existe.**
+A conta só liga quando o CNPJ existe. Isso não invalida a decisão de não abrir empresa agora — só
+significa que ela tem uma consequência clara. As saídas honestas são três:
+
+| Caminho | O que dá | O que custa |
+|---|---|---|
+| **A. Ficar no sandbox** (recomendado) | Arquitetura inteira construída, testada e demonstrável no portfólio | R$ 0 e nenhum risco. Só não entra dinheiro. |
+| **B. Abrir MEI agora** | Cobrança real ligada | Abertura gratuita e rápida pela internet, mas puxa o DAS mensal e as obrigações da seção 7 — antes de existir um único cliente. |
+| **C. Trocar de gateway** | Alguns concorrentes aceitam pessoa física | Confirme caso a caso antes de decidir; a taxa costuma ser diferente. **A arquitetura não muda:** todo o contato com o gateway está isolado em `abacatePayClient.ts`, então trocar de provedor é reescrever **um arquivo**, não o sistema. |
+
+**Recomendação:** A. Enquanto ninguém pagou, o CNPJ é custo puro. E o caminho C existe justamente
+porque o desenho deste plano não amarra o projeto a um fornecedor — o que, em entrevista, é um
+ponto a seu favor.
+
+_Confirme os requisitos de cadastro direto com a AbacatePay antes de contar com qualquer um desses
+caminhos: regra de compliance muda sem aviso._
+
+---
+
+## 7. Fiscal e jurídico — a parte que realmente travaria você
+
+Isto não é conselho jurídico ou contábil; é o mapa do que perguntar a um contador antes de aceitar
+o primeiro real.
+
+- **Receber dinheiro recorrente de terceiros pede CNPJ.** Sua posição — registrada em 29/jul/2026 e
+  razoável — é **não abrir empresa antes de existir receita**. ⚠️ **Mas veja a seção 6.6:** a
+  AbacatePay não liga a conta de produção sem CNPJ, então, com ela, a sequência "receber primeiro,
+  formalizar depois" **não é possível**. Por isso o caminho recomendado é ficar no sandbox enquanto
+  não houver demanda comprovada. O que **não** dá para postergar,
+  mesmo como pessoa física: **guardar o registro de tudo** (quem pagou, quanto, quando) e declarar o
+  que entrou. O gateway já mantém esse histórico; exporte e guarde. E combine com um contador **o
+  gatilho** de virar MEI (ex.: "quando passar de R$ X/mês ou de N assinantes") — assim a decisão já
+  está tomada quando a hora chegar, em vez de virar susto. Problema do futuro, sim; mas com data
+  marcada, não esquecido.
+- **Nota fiscal de serviço** é obrigação municipal (ISS). O gateway não emite por você.
+- **Direito de arrependimento:** compra online no Brasil tem 7 dias (CDC art. 49). Sua política de
+  reembolso precisa existir por escrito **antes** da primeira venda, e o fluxo de estorno
+  (`checkout.refunded`) precisa desligar o acesso.
+- **Termos de Uso + Política de Privacidade** obrigatórios a partir do momento em que você cobra.
+- **LGPD:** e-mail é dado pessoal. Base legal, opt-in explícito na captura da landing, e um jeito de
+  a pessoa pedir exclusão. A landing já tem a captura — a política precisa nascer junto.
+- **Dados de terceiros:** os preços são dados abertos da ANP, o que é ótimo. Mas revenda de dado
+  público exige checar a licença de uso da fonte antes de cobrar por cima dela. Confirme.
+
+### 🎯 O caminho que eu recomendo para o seu objetivo declarado
+
+Seu objetivo é **portfólio e LinkedIn**, e o projeto já está pronto para isso. Então:
+
+> **Implemente a arquitetura completa em `devMode` (sandbox) e pare ali.**
+
+Você ganha 100% do crédito técnico — webhook assinado, idempotência, entitlement com RLS,
+gate de feature, testes de borda — com **0% do risco fiscal, jurídico e de suporte**. No README
+você escreve, com orgulho e honestidade:
+
+> "Fluxo de assinatura implementado ponta a ponta contra o sandbox da AbacatePay (webhook com
+> verificação HMAC, idempotência por `event_id`, entitlement com expiração e RLS). Cobrança real
+> não está habilitada por decisão de escopo."
+
+Isso é **mais impressionante** que um Pix funcionando, porque mostra que você entende os modos de
+falha. E te deixa livre para ligar o dinheiro real no dia em que houver demanda comprovada.
+
+---
+
+## 8. Buracos na promessa da landing (achados ao revisar o produto)
+
+Achados críticos ao comparar o que a página vende com o que o app faz **hoje**:
+
+| A landing prometia | Realidade no código | Resolvido em 29/jul/2026 |
+|---|---|---|
+| "Alertas que valem dinheiro" | **Alertas já existem e são grátis** (tabela `alerts`, `fuelAlertService`, sem limite por plano). | Copy trocada para "alertas em quantas séries você quiser". ⚠️ **Continua sendo um pré-requisito bloqueante** — ver o quadro abaixo. |
+| "Chega no WhatsApp" | Não existe; custa por mensagem + aprovação da Meta. | **Removido.** Alerta é só por email, com o SMTP que já funciona. |
+| "Histórico completo" | Retenção de **12 meses** (Fase 9). | Trocado por "12 meses de histórico". Preciso é melhor que "completo". |
+| "Cancela em 1 clique" | Precisa do `POST /subscriptions/cancel` + tela. | Trocado por "cancela quando quiser, sem falar com ninguém" — verdade que não depende de código ainda. |
+
+### ⛔ PRÉ-REQUISITO BLOQUEANTE: limitar os alertas do plano grátis
+
+**Se esta branch algum dia for implementada, isto tem que acontecer ANTES de cobrar de alguém.**
+Hoje qualquer usuário logado cria **alertas ilimitados de graça**. Vender "alertas" nessa situação é
+vender algo que a pessoa já tem — e o assinante que descobrir isso pede reembolso com razão.
+
+Regras que este experimento se obriga a seguir:
+
+1. **Plano grátis passa a ter limite** — proposta: **1 alerta ativo** e **1 série favorita**.
+   (Número a calibrar olhando o uso real antes de decidir.)
+2. **Grandfathering obrigatório:** contas criadas **antes** da data de corte mantêm tudo o que já
+   tinham, para sempre. O limite vale só para contas novas. Implementação: comparar
+   `auth.users.created_at` com uma constante `FREE_LIMIT_CUTOFF` — nada de migration destrutiva.
+3. **Nada é apagado.** Quem estiver acima do limite continua com o que tem; só não pode criar mais.
+4. **Aviso antes, não surpresa depois:** email para os usuários atuais explicando o que muda e
+   dizendo, com clareza, que **eles não perdem nada**.
+5. **Teste automatizado provando os itens 2 e 3** — é a única garantia de que um refactor futuro não
+   vai silenciosamente rebaixar quem já estava aqui.
+
+**Retirar funcionalidade que hoje é grátis é o risco número um deste experimento.** Um usuário que
+perde o que já tinha reclama muito mais alto do que um novo que nunca teve.
+
+---
+
+## 9. Plano de execução — 5 etapas, cada uma com um portão
+
+Nenhuma etapa começa sem o portão da anterior. Se um portão não abre, **o experimento morre ali** e
+a branch é apagada. Isso não é fracasso; é o teste funcionando.
+
+### Etapa 0 — Porta falsa (✅ já feita nesta branch)
+Landing `/premium` com preço, captura de e-mail e analytics de funil, mais o checkout
+`/premium/checkout` em **modo DEMO** (`DEMO = true` no topo do script): escolha de plano, forma de
+pagamento, e-mail, QR + Pix copia e cola com botão de copiar, contador de 15 min, estado
+"aguardando pagamento" e tela de sucesso. Nenhuma linha de backend, nenhum centavo real.
+
+Por que já construir o checkout antes de ter backend: **ele é metade da conversão** e o funil só
+mede de verdade quando existe a tela onde a pessoa desiste. E, para portfólio, é a peça que mostra
+que você pensou no fluxo inteiro. A faixa amarela de "modo demonstração" fica visível de propósito —
+ninguém pode achar que está pagando.
+
+**Portão:** ≥ 30 e-mails **ou** 1 pagamento manual em 2–4 semanas.
+
+### Etapa 1 — Cobrança manual (0 linhas de backend)
+Link de pagamento criado no painel da AbacatePay. Você libera o acesso na mão, no Supabase.
+**DoD:** primeiro real recebido; texto de boas-vindas escrito; política de reembolso publicada.
+**Portão:** liberar na mão virou incômodo (≈10 clientes).
+
+### Etapa 2 — Assinatura ponta a ponta, **em devMode** (o coração técnico)
+Migration das tabelas da seção 5 + `abacatePayClient` + `webhookRoute` com as 3 camadas +
+idempotência + `subscriptionService` + `GET /api/billing/me` + testes da seção 10.
+Nada de tela de pagamento real; use `POST /transparents/simulate-payment` e webhooks de devMode.
+**DoD:** `npm test` verde, CI verde, um pagamento simulado virando `subscriptions.status='active'`
+e um evento repetido **não** dobrando o período. README atualizado com a nota de escopo da seção 7.
+**Portão:** você consegue explicar o fluxo inteiro em voz alta, sem olhar o código.
+
+### Etapa 3 — Gate de feature (com carinho)
+`requirePremium` + **limite no plano grátis com grandfathering** (o quadro bloqueante da seção 8) +
+estado de UI ("você atingiu o limite do plano grátis") sem tela quebrada.
+**DoD:** teste provando que conta antiga não perde nada e conta nova bate no limite.
+**Portão:** só siga se a Etapa 1 já tiver clientes pagando de verdade.
+
+### Etapa 4 — Dinheiro real (só quando houver demanda comprovada)
+⚠️ **Pré-condição inescapável:** conta de produção na AbacatePay exige **CNPJ** (MEI serve) —
+seção 6.6. Portanto esta etapa começa com uma decisão de vida, não de código: abrir MEI, trocar de
+gateway, ou continuar no sandbox. O resto é obrigatório já na primeira venda:
+chaves de produção no Render (**nunca** no front), webhook de produção cadastrado, `devMode`
+bloqueado em produção, **política de reembolso escrita** (7 dias, CDC art. 49), Termos e Política de
+Privacidade publicados, e registro de quem pagou o quê.
+**Fica para quando recorrer:** CNPJ/MEI e nota fiscal — com o gatilho combinado com um contador
+(seção 7), não no improviso.
+**DoD:** um pagamento real, de outra pessoa, liberando acesso sozinho, com log auditável.
+
+### Etapa 5 — Operação (o que ninguém planeja e todo mundo sofre)
+Estorno/disputa desligando acesso; cobrança que falhou (dunning); e-mail de "seu cartão expirou";
+relatório mensal de MRR/churn; runbook de "cliente pagou e não liberou" — que **vai** acontecer.
+
+---
+
+## 10. Testes que provam que isso não vai te dar prejuízo
+
+Vocês já têm Vitest + supertest, então isso é barato:
+
+- [ ] `money`: `1690` ⇄ `R$ 16,90` e `6000` ⇄ `R$ 60,00`, ida e volta, incluindo arredondamento.
+- [ ] Webhook **sem** `webhookSecret` → 401 e **nada** escrito no banco.
+- [ ] Webhook com secret certo e **HMAC errado** → 401.
+- [ ] Webhook válido `subscription.completed` → cria `subscriptions` com `current_period_end` futuro.
+- [ ] **Mesmo `event_id` duas vezes** → segunda vez não altera `current_period_end` (o teste mais
+      importante da lista).
+- [ ] `devMode: true` com `NODE_ENV=production` → registra e **não** libera acesso.
+- [ ] `subscription.cancelled` → `status='canceled'` e acesso **mantido** até o fim do período.
+- [ ] `checkout.refunded` → acesso desligado imediatamente.
+- [ ] `is_premium` com `current_period_end` no passado → `false`.
+- [ ] `requirePremium` → 402/403 para não-assinante, passa para assinante.
+- [ ] RLS: usuário A **não** lê a `subscriptions` do usuário B; `authenticated` **não** consegue
+      dar `insert` na própria assinatura.
+
+---
+
+## 11. Anti-padrões — a lista do "não faça"
+
+1. ❌ Liberar acesso na `returnUrl`/`completionUrl`. É um GET que qualquer um digita.
+2. ❌ Guardar a chave da API no frontend, no `vercel.json` ou em qualquer `VITE_*`. Tudo que tem
+   prefixo `VITE_` **vai para o navegador**.
+3. ❌ Perguntar à API da AbacatePay "esse usuário é premium?" em cada request. Lento, frágil e cai
+   quando ela cair.
+4. ❌ Coluna `is_premium boolean`. Use data de expiração.
+5. ❌ Preço no frontend como fonte da verdade. O front manda `plan`, o backend decide o valor.
+6. ❌ Responder 200 antes de processar (perde eventos) — ou nunca responder 200 (retentativa infinita).
+7. ❌ `console.log` do payload inteiro em produção (dado pessoal, LGPD).
+8. ❌ Construir WhatsApp, área de admin ou cupons antes de ter 10 pagantes.
+9. ❌ Fazer merge desta branch na `main` "só para não perder o trabalho". O trabalho está no git;
+   a branch é o lugar dele.
+10. ❌ Tirar do plano grátis algo que os usuários atuais já usam.
+11. ❌ **Publicar sua chave Pix pessoal / QR estático na página.** Expõe seu nome civil, não diz quem
+    pagou, não expira e é o formato preferido do golpe do comprovante falso (seção 6.5).
+12. ❌ Gerar o BR Code no frontend. Isso só é possível com a chave no navegador — ou seja, pública.
+    O QR vem pronto do gateway (`brCodeBase64`).
+13. ❌ Confiar em print de comprovante enviado pelo cliente. Quem confirma pagamento é o webhook.
+14. ❌ Aceitar Pix direto na sua chave "para facilitar", fora do gateway. Você perde conciliação,
+    webhook e qualquer defesa contra comprovante falso (seção 6.6).
+15. ❌ Sacar a cada venda. Cada saque custa R$ 0,80 — junte e saque uma vez por mês.
+
+---
+
+## 12. Variáveis de ambiente (todas no backend, nenhuma no front)
+
+```bash
+# backend/.env  (e no painel do Render — nunca no repositório)
+ABACATEPAY_API_KEY=            # secreta. Rotacione se vazar.
+ABACATEPAY_WEBHOOK_SECRET=     # o segredo que vai na query string do webhook
+ABACATEPAY_PRODUCT_MONTHLY=    # id do produto cycle=MONTHLY  (R$ 16,90 = 1690)
+ABACATEPAY_PRODUCT_ANNUAL=     # id do produto cycle=ANNUALLY (R$ 60,00 = 6000)
+ABACATEPAY_DEV_MODE=true       # true até a Etapa 4 (produção exige CNPJ — seção 6.6)
+BILLING_ENABLED=false          # kill switch: desliga as rotas sem redeploy de código
+```
+
+**A chave Pix de saque não é variável de ambiente.** Ela se cadastra **no painel** da AbacatePay e
+fica só lá. Nada de chave Pix no `.env`, no código ou no repositório — não há motivo para o backend
+conhecê-la (seção 6.6).
+
+`BILLING_ENABLED=false` por padrão significa que, mesmo se esta branch entrar na `main` por
+acidente, **nada de cobrança liga em produção**. É o cinto de segurança do experimento.
+
+---
+
+## 13. Arquivos que este experimento adiciona (isolamento)
+
+```
+docs/fase10-pagamentos.md           ← este arquivo
+frontend/public/premium.html        ← a landing (Etapa 0)
+frontend/public/checkout.html       ← o checkout Pix/cartão (Etapa 0, em modo DEMO)
+frontend/vercel.json                ← +2 rewrites: /premium e /premium/checkout
+                                    ── daqui pra baixo, só a partir da Etapa 2 ──
+backend/supabase/migrations/010_subscriptions.sql
+backend/src/routes/billingRoute.ts
+backend/src/routes/webhookRoute.ts
+backend/src/services/abacatePayClient.ts
+backend/src/services/subscriptionService.ts
+backend/src/middleware/requirePremium.ts
+backend/src/lib/webhookVerify.ts
+backend/src/lib/money.ts
+backend/test/webhook.test.ts
+backend/test/subscription.test.ts
+```
+
+**Nenhum arquivo existente é reescrito**, com duas exceções inevitáveis na Etapa 2
+(`backend/src/app.ts` para montar as rotas + o raw body, e `schema.sql`). Essas duas são o único
+ponto de contato com o código de produção — trate-as com o cuidado de um PR de verdade.
+
+---
+
+**Fontes consultadas (29/jul/2026):** documentação oficial da AbacatePay — índice `llms.txt`,
+página de Webhooks (verificação HMAC, eventos, boas práticas), referência de Assinaturas
+(ciclos, `methods` default `["CARD"]`), referência de Saques (titularidade, mínimo, taxa),
+página "Indo para produção" (verificação com documentos da empresa e dos sócios) e a página de
+cobrança recorrente (taxas). O requisito de CNPJ em produção foi corroborado por fontes de
+terceiros — **confirme com o suporte antes de contar com ele**.

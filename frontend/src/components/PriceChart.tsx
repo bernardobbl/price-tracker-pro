@@ -14,6 +14,7 @@ import {
 import "chartjs-adapter-date-fns";
 import { ptBR } from "date-fns/locale";
 import { Line } from "react-chartjs-2";
+import { fmt, formatAxisPrice } from "../lib/format";
 import type { PriceHistoryItem } from "../types";
 
 ChartJS.register(
@@ -135,7 +136,8 @@ export function PriceChart({ data, decimals = 2 }: PriceChartProps) {
             const price = ctx.parsed.y;
             if (price == null) return "";
             const prefix = ctx.datasetIndex === 1 ? "Média: " : "Preço: ";
-            return `${prefix}${currency} ${price.toFixed(decimals)}`;
+            // `fmt` (e não `toFixed`) para o tooltip não divergir do eixo Y.
+            return `${prefix}${currency} ${fmt(price, decimals)}`;
           }
         }
       }
@@ -166,7 +168,7 @@ export function PriceChart({ data, decimals = 2 }: PriceChartProps) {
         },
         ticks: {
           color: TICK,
-          callback: (value: string | number) => `${currency} ${value}`
+          callback: (value: string | number) => formatAxisPrice(value, currency, decimals)
         }
       }
     }
