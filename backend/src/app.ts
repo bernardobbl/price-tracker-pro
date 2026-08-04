@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import fuelRouter from "./routes/fuelRoute";
 import fuelUserRouter from "./routes/fuelUserRoute";
+import billingRouter from "./routes/billingRoute";
 import { errorHandler } from "./middleware/errorHandler";
 import { sendError } from "./lib/httpError";
 import { isOriginAllowed, parseAllowedOrigins } from "./lib/corsOrigins";
@@ -51,6 +52,10 @@ app.use("/api", apiLimiter);
 // autenticados (fuelUserRouter). Ambos montados sob /api/fuel.
 app.use("/api/fuel", fuelRouter);
 app.use("/api/fuel", fuelUserRouter);
+
+// Cobrança e assinatura. O /webhook aqui dentro é público por natureza (quem
+// chama é o Mercado Pago) — a proteção está em não confiar no corpo recebido.
+app.use("/api/billing", billingRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

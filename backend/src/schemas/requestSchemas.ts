@@ -24,6 +24,23 @@ export const createTrackedSeriesSchema = z.object({
   label: z.string().trim().min(1).optional(),
 });
 
+// ── Cobrança / assinatura ───────────────────────────────────────────────────
+
+/**
+ * Início do checkout.
+ *
+ * ⚠️ **Não existe campo de valor aqui, e isso é deliberado.** O front manda só
+ * a chave do plano; quem decide o preço é o backend (`PLAN_PRICE_CENTS`). Se o
+ * valor viesse do cliente, qualquer um pagaria R$ 0,01 pelo anual.
+ */
+export const createCheckoutSchema = z.object({
+  plan: z.enum(["mensal", "anual"], {
+    message: "plan deve ser 'mensal' ou 'anual'.",
+  }),
+  /** Versão dos documentos legais aceita na tela — grava junto como prova. */
+  legalVersion: z.string().trim().min(1, "legalVersion é obrigatória."),
+});
+
 /** Alerta por série (combustível). */
 export const createFuelAlertSchema = z.object({
   seriesId: z.string().uuid("seriesId deve ser um UUID."),
