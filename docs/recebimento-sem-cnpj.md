@@ -199,25 +199,32 @@ funcionar. E as notificações são configuradas pelo tópico **Order**.
 O `X-Idempotency-Key` obrigatório é um presente: resolve de graça metade do problema de
 idempotência que o plano da Fase 10 descrevia na seção 6.
 
-### Taxa: onde está o número que vale
+### ✅ Taxa confirmada na conta do Bernardo (04/ago/2026)
 
-Números encontrados em fontes de terceiros, e eles **divergem**:
+Conferido direto no app, em **Taxas e parcelas**. A tarifa muda por **produto**, e é isso que
+explica os números conflitantes que apareciam nos blogs:
 
-- **0,99%** para Pix no Checkout Transparente com recebimento imediato
-- **0,49%** para Pix via QR Code / maquininha Point
+| Aba do painel | Pix | Prazo | Serve para nós? |
+|---|---|---|---|
+| Maquininha Point / Tap | — | — | Não (presencial) |
+| **QR Code** | **0,00%** | Na hora | **Não** — é o QR *presencial* (impresso / Point), produto de loja física |
+| Link de pagamento | 0,99% | Na hora | Só se fôssemos mandar link avulso |
+| **Checkout** | **0,99%** | **Na hora** | **SIM** — é aqui que cai o Checkout Transparente via `/v1/orders` |
 
-Os dois podem estar certos: no Mercado Pago a tarifa **muda conforme o prazo de liberação do
-saldo** (na hora / 14 dias / 30 dias) e conforme o perfil da conta. **Nenhum blog é fonte
-autoritativa aqui.** O número que vale para a *sua* conta está em:
+> ⚠️ **Não tente usar o QR de 0,00% numa assinatura online.** É outro produto, com outras regras
+> de uso. A tentação existe e a economia seria real, mas é o tipo de atalho que derruba a conta.
 
-> **Seu perfil → Taxas e parcelas** (ou `mercadopago.com.br/costs-section`)
+**Nossa taxa é 0,99%, com liberação na hora.** Sem prazo de 14/30 dias, sem mensalidade.
 
-Mesmo no pior caso encontrado, a conta segue favorável:
+| | Mercado Pago 0,99% | Asaas R$ 1,99 fixo | Diferença |
+|---|---|---|---|
+| Mensal R$ 16,90 | **R$ 0,17** → líquido R$ 16,73 | R$ 1,99 (**11,8%**) | MP é **12× mais barato** |
+| Anual R$ 59,90 | **R$ 0,59** → líquido R$ 59,31 | R$ 1,99 (3,3%) | MP é **3,4× mais barato** |
 
-| | Mercado Pago a 0,99% | Asaas a R$ 1,99 fixo |
-|---|---|---|
-| Mensal R$ 16,90 | R$ 0,17 (1,0%) | R$ 1,99 (**11,8%**) |
-| Anual R$ 59,90 | R$ 0,59 (1,0%) | R$ 1,99 (3,3%) |
+A decisão pelo Mercado Pago está confirmada com número real, não com estimativa.
+
+De referência, se um dia quisermos cartão no mensal: **4,98% à vista**, ou R$ 0,84 sobre
+R$ 16,90 — cinco vezes o custo do Pix, mas é o preço de ter cobrança recorrente sem CNPJ.
 
 ---
 

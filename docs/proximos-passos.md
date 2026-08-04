@@ -59,7 +59,7 @@ Nada disso eu consigo fazer — precisa ser você, e algumas travam o resto.
 
 | # | O quê | Onde | Trava o quê |
 |---|---|---|---|
-| 1 | **Ver a taxa real** do Pix por API | Mercado Pago → Seu perfil → Taxas e parcelas | Nada. Mas muda a conta de margem. |
+| 1 | ~~Ver a taxa real do Pix por API~~ | ✅ **FEITO 04/ago** | **0,99% na aba "Checkout", liberação na hora.** R$ 0,17 no mensal, R$ 0,59 no anual. (A aba "QR Code" a 0,00% é o QR presencial — outro produto, não serve.) |
 | 2 | **Cadastrar uma chave Pix** na conta | Painel do Mercado Pago | **Trava a API inteira** — sem chave, `/v1/orders` não funciona. |
 | 3 | **Criar a aplicação** e pegar as credenciais de teste | [Suas integrações](https://www.mercadopago.com.br/developers/panel/app) | Trava o desenvolvimento. |
 | 4 | **Revisão jurídica** dos 3 documentos | Advogado | Trava o dinheiro real, não o código. |
