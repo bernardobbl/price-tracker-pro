@@ -134,6 +134,93 @@ construir agora é jogado fora ao trocar de provedor.
 
 ---
 
+## 5.1 ⛔ Achado decisivo: Pix Automático exige CNPJ — e isso não é regra de gateway
+
+Apurado em 04/ago/2026, direto na documentação do Banco Central.
+
+> **No Pix Automático, o recebedor precisa ser pessoa jurídica com CNPJ ativo.**
+> A modalidade nasceu com pessoa física apenas como **pagadora** e empresa como **recebedora**.
+> A limitação é proposital: o BC quis restringir o recurso a cobrança de serviços e assinaturas,
+> e não a transferência entre pessoas.
+
+**Por que isso é diferente de tudo que discutimos antes:** as exigências da AbacatePay eram
+política *da empresa* — por isso trocar de provedor era saída. Esta é **regra do Banco Central**,
+válida para todo o ecossistema Pix. **Nenhum gateway contorna.** Mercado Pago, Asaas, InfinitePay:
+nenhum pode te dar Pix Automático enquanto você for pessoa física.
+
+### O que sobra, na prática
+
+| Plano | Pix comum funciona? | Renova sozinho? |
+|---|---|---|
+| **Anual — R$ 59,90** | Sim, sem restrição | Não precisa. É uma cobrança por ano; você avisa por e-mail antes de vencer. |
+| **Mensal — R$ 16,90** | Sim, mas o cliente paga um QR **novo** todo mês, na mão | **Não.** Sem CNPJ, não existe renovação automática por Pix. |
+
+**Consequência para o produto:** o **anual vira o plano principal de fato**, não só por
+preferência de margem — é o único que funciona bem dentro da restrição. A landing já o trata
+assim. O mensal continua vendável, mas com evasão alta por esquecimento, e isso precisa estar
+no cálculo de receita, não ser descoberto no terceiro mês.
+
+---
+
+## 5.2 A API do Mercado Pago — confirmada na doc oficial
+
+Checkout Transparente via **Orders API**. É isto que o backend vai chamar:
+
+```
+POST https://api.mercadopago.com/v1/orders
+  Authorization: Bearer <ACCESS_TOKEN>
+  X-Idempotency-Key: <UUID v4>          ← obrigatório, evita cobrança duplicada
+  {
+    "type": "online",
+    "total_amount": "59.90",
+    "external_reference": "<id da nossa cobrança>",
+    "processing_mode": "automatic",
+    "transactions": { "payments": [{
+      "amount": "59.90",
+      "payment_method": { "id": "pix", "type": "bank_transfer" },
+      "expiration_time": "PT30M"        ← 30 min a 30 dias; padrão 24h
+    }]},
+    "payer": { "email": "<email do cliente>" }
+  }
+```
+
+A resposta traz exatamente o que o `checkout.html` já espera:
+
+| Campo devolvido | Para que serve na nossa página |
+|---|---|
+| `qr_code` | o "copia e cola" — vai no `<textarea id="brcode">` |
+| `qr_code_base64` | imagem do QR — vai no `<img id="qrImg">` |
+| `ticket_url` | página pronta do Mercado Pago, alternativa ao QR próprio |
+| `status: action_required` / `status_detail: waiting_transfer` | ainda não pagou |
+
+**Pré-requisito no painel:** é preciso ter **chave Pix cadastrada na conta** antes de a API
+funcionar. E as notificações são configuradas pelo tópico **Order**.
+
+O `X-Idempotency-Key` obrigatório é um presente: resolve de graça metade do problema de
+idempotência que o plano da Fase 10 descrevia na seção 6.
+
+### Taxa: onde está o número que vale
+
+Números encontrados em fontes de terceiros, e eles **divergem**:
+
+- **0,99%** para Pix no Checkout Transparente com recebimento imediato
+- **0,49%** para Pix via QR Code / maquininha Point
+
+Os dois podem estar certos: no Mercado Pago a tarifa **muda conforme o prazo de liberação do
+saldo** (na hora / 14 dias / 30 dias) e conforme o perfil da conta. **Nenhum blog é fonte
+autoritativa aqui.** O número que vale para a *sua* conta está em:
+
+> **Seu perfil → Taxas e parcelas** (ou `mercadopago.com.br/costs-section`)
+
+Mesmo no pior caso encontrado, a conta segue favorável:
+
+| | Mercado Pago a 0,99% | Asaas a R$ 1,99 fixo |
+|---|---|---|
+| Mensal R$ 16,90 | R$ 0,17 (1,0%) | R$ 1,99 (**11,8%**) |
+| Anual R$ 59,90 | R$ 0,59 (1,0%) | R$ 1,99 (3,3%) |
+
+---
+
 ## 6. O que foi feito nesta branch
 
 - `frontend/public/checkout.html` — preço do anual corrigido para **R$ 59,90** (era R$ 60,00),
