@@ -16,7 +16,15 @@
  * Ver docs/runbook-operacao.md §5.
  */
 
-/** Quantos alertas o plano gratuito permite. `Infinity` = sem limite. */
+/**
+ * Quantos alertas o plano gratuito permite. `Infinity` = sem limite.
+ *
+ * ⚠️ **Ao trocar por um número finito, confira o caminho sem Supabase.** Quem
+ * conta os alertas existentes é `listFuelAlerts`, que devolve `[]` quando o
+ * Supabase não está configurado — então a contagem viria 0 e a cota liberaria
+ * sempre. Hoje isso é inofensivo (sem Supabase também não dá para criar alerta
+ * nenhum), mas vira falha aberta no dia em que o limite existir de verdade.
+ */
 export const FREE_ALERT_LIMIT = Number.POSITIVE_INFINITY;
 
 /** O plano pago é ilimitado — é o que a landing promete. */

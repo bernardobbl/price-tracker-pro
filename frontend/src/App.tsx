@@ -240,6 +240,25 @@ function App() {
         />
       </main>
 
+      {/* Rodapé legal. Não é enfeite: a Política de Privacidade precisa estar
+          acessível a QUEM USA o app, não só a quem chega no checkout — quem
+          navega no plano gratuito também tem os dados tratados (email, conta,
+          favoritos). Antes os documentos só eram alcançáveis pela página de
+          pagamento, o que deixava a maioria dos usuários sem acesso a eles. */}
+      <footer className="site-footer">
+        <p className="site-footer-source">
+          Preços do levantamento semanal da{" "}
+          <a href="https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis"
+             target="_blank" rel="noopener noreferrer">ANP</a>
+          {" "}— dados abertos. Não são o preço da bomba neste instante.
+        </p>
+        <nav className="site-footer-links" aria-label="Documentos legais">
+          <a href="/termos.html">Termos de Uso</a>
+          <a href="/privacidade.html">Privacidade</a>
+          <a href="/reembolso.html">Reembolso</a>
+        </nav>
+      </footer>
+
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );

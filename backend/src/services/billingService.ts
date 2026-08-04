@@ -133,7 +133,22 @@ export interface ChargeStatus {
   amountCents: number;
 }
 
-/** Status da cobrança, do nosso banco — é o que o polling da página consulta. */
+/**
+ * Status da cobrança — é o que o polling da página consulta.
+ *
+ * **Reconcilia com o provedor quando ainda está pendente.** Não é otimização
+ * prematura; resolve dois problemas concretos:
+ *
+ *  1. **Webhook perdido.** No free tier o backend hiberna; uma notificação que
+ *     chegue nesse instante pode se perder mesmo com as retentativas. Sem
+ *     reconciliação, quem pagou ficaria esperando para sempre.
+ *  2. **Desenvolvimento local.** O Mercado Pago não alcança `localhost`, então
+ *     em desenvolvimento o webhook **nunca** chega. Sem isto, seria impossível
+ *     testar o fluxo completo sem montar um túnel público.
+ *
+ * O custo é uma chamada à API do provedor por polling — aceitável porque a
+ * página consulta a cada 4s e só enquanto a cobrança está aberta.
+ */
 export async function getChargeStatus(
   chargeId: string,
   userId: string
@@ -142,16 +157,33 @@ export async function getChargeStatus(
 
   const { data, error } = await supabase
     .from("billing_charges")
-    .select("id, status, plan, amount_cents")
+    .select("id, status, plan, amount_cents, provider_order_id")
     .eq("id", chargeId)
     .eq("user_id", userId) // o backend ignora RLS: o filtro por dono é explícito
     .maybeSingle();
 
   if (error || !data) return null;
 
+  let status = data.status as NormalizedStatus;
+  const orderId = data.provider_order_id as string | null;
+
+  if (status === "pending" && orderId) {
+    try {
+      const result = await confirmPaymentByOrderId(orderId);
+      status = result.status;
+    } catch (err) {
+      // Reconciliar é oportunista: se o provedor estiver fora, devolvemos o
+      // que temos em vez de quebrar a tela de quem está esperando.
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), chargeId },
+        "[Billing] Reconciliação falhou — devolvendo status armazenado"
+      );
+    }
+  }
+
   return {
     chargeId: data.id as string,
-    status: data.status as NormalizedStatus,
+    status,
     plan: data.plan as PlanKey,
     amountCents: data.amount_cents as number,
   };

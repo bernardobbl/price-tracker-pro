@@ -69,6 +69,18 @@ router.post(
 );
 
 // ── Status da cobrança (polling da página) ──────────────────────────────────
+/**
+ * ⚠️ **Este GET tem efeito colateral**, e a escolha foi consciente: quando a
+ * cobrança está pendente, ele reconsulta o provedor e pode criar a assinatura.
+ *
+ * Um GET que altera estado é incomum e merece justificativa. A alternativa —
+ * depender só do webhook — deixaria duas situações sem saída: pagamento cuja
+ * notificação se perdeu (o backend hiberna no free tier) e desenvolvimento
+ * local, onde o Mercado Pago nunca alcança `localhost`. Em ambas, quem pagou
+ * ficaria esperando para sempre.
+ *
+ * A operação é idempotente e não destrutiva, então repetir o GET é seguro.
+ */
 router.get(
   "/charge/:id",
   requireAuth,

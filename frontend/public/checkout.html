@@ -2,26 +2,37 @@
   ============================================================================
   PRICE TRACKER PRO — CHECKOUT (/premium/checkout)
   ----------------------------------------------------------------------------
-  ⚠️ SÓ EXISTE NA BRANCH `feat/premium-landing`. Ver docs/fase10-pagamentos.md.
+  Branch `feat/checkout-pix`. Planos e vigência: docs/vigencia-do-acesso.md.
+  Provedor e taxas: docs/recebimento-sem-cnpj.md.
 
-  ESTADO: MODO DEMONSTRAÇÃO. Nenhum pagamento real acontece aqui.
-  A constante DEMO abaixo controla tudo. Com DEMO = true a página funciona
-  inteira com dados falsos (útil para portfólio, print e teste de UX).
-  Com DEMO = false ela chama o backend nos 3 pontos marcados com "TODO API".
+  ESTADO: ligado ao backend (DEMO = false). As credenciais em uso são as de
+  TESTE do Mercado Pago (MERCADOPAGO_ENV=test no backend) — nenhum dinheiro
+  real circula até você trocar as credenciais e a bandeira de ambiente.
 
-  CONTRATO ESPERADO DO BACKEND (a implementar na Etapa 2 do plano):
-    POST /api/billing/checkout   { plan: 'anual'|'mensal', method: 'pix'|'card', email }
-      -> pix : { chargeId, brCode, brCodeBase64, expiresAt, amountCents }
-      -> card: { url }                       // redireciona para o checkout hospedado
-    GET  /api/billing/charge/:id -> { status: 'pending'|'paid'|'expired' }
+  EXIGE LOGIN. A assinatura é amarrada a um usuário (alertas e favoritos vivem
+  numa conta), então esta página lê o token do Supabase no localStorage — que
+  está disponível porque ela é servida da MESMA ORIGEM do app React. Sem sessão,
+  o formulário é substituído por um convite para entrar.
+
+  CONTRATO DO BACKEND (implementado em backend/src/routes/billingRoute.ts):
+    POST /api/billing/checkout    { plan: 'anual'|'mensal', legalVersion }
+      -> { chargeId, amountCents, brCode, brCodeBase64, ticketUrl, expiresAt }
+    GET  /api/billing/charge/:id  -> { chargeId, status, plan, amountCents }
+      status: pending | paid | expired | cancelled | refunded
 
   REGRAS DE OURO (não negocie com elas):
     • O PREÇO EXIBIDO AQUI É DECORATIVO. Quem decide o valor é o backend, a
-      partir do `plan`. Nunca envie valor pelo front.
+      partir do `plan`. O corpo do POST nem tem campo de valor.
     • O ACESSO NÃO É LIBERADO POR ESTA PÁGINA. Ela só mostra "pago" quando o
-      backend confirma — e o backend só confirma via webhook + reconsulta na API.
+      backend confirma — e o backend só confirma reconsultando a API do
+      provedor, nunca acreditando no corpo de um webhook.
     • O QR Code vem PRONTO do gateway (`brCodeBase64`). Não gere Pix no front:
       isso exigiria a chave Pix pessoal no navegador. Nunca faça isso.
+
+  PENDÊNCIAS CONHECIDAS (ver docs/proximos-passos.md):
+    • Cartão está desabilitado — o backend só implementa Pix.
+    • A URL de produção da API está fixa no código (arquivo estático não
+      recebe substituição de variável do Vite). Confira antes de publicar.
   ============================================================================
 -->
 <!DOCTYPE html>
@@ -72,6 +83,18 @@
   .top-wire svg{ display:block; width:100%; height:100%; }
   .top-wire-dot{ position:absolute; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; border-radius:50%;
                  background:var(--camel); box-shadow:0 0 10px 4px rgba(176,138,75,.35); opacity:0; }
+
+  /* conta logada / exigência de login */
+  .account-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+                border:1px solid var(--line); border-radius:var(--radius);
+                background:var(--surface-soft); padding:10px 13px; }
+  .account-email{ font-weight:600; font-size:14px; color:var(--ink); overflow-wrap:anywhere; }
+  .account-switch{ margin-left:auto; font-size:12.5px; font-weight:600; }
+  .signin-required{ border:1px solid #ced5ea; background:var(--brand-soft);
+                    border-radius:var(--radius); padding:18px; text-align:center; }
+  .signin-required strong{ display:block; font-family:var(--font-display); font-size:17px; margin-bottom:6px; }
+  .signin-required p{ font-size:13.5px; color:var(--ink-soft); margin:0 0 14px; }
+  .signin-required .btn{ display:inline-flex; width:auto; padding:10px 22px; text-decoration:none; }
 
   /* aceite dos documentos legais */
   .consent-row{ display:flex; gap:10px; align-items:flex-start; cursor:pointer; font-size:13.5px; color:var(--ink-soft); line-height:1.5; }
@@ -211,10 +234,11 @@
 </head>
 <body>
 
-<div class="demo-bar" id="demoBar">
-  <div class="wrap">
-    <strong>Modo demonstração</strong> — esta página não cobra nada. É a prova de conceito da Fase 10.
-  </div>
+<!-- Faixa de aviso. O texto é definido pelo JS conforme o modo real, para a
+     página nunca afirmar algo diferente do que está fazendo. Começa oculta e
+     só aparece quando há o que avisar. -->
+<div class="demo-bar" id="demoBar" hidden>
+  <div class="wrap"><span id="demoBarText"></span></div>
 </div>
 
 <header class="top">
@@ -224,7 +248,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
         <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>
       </svg>
-      Pagamento processado pela AbacatePay
+      Pagamento processado pelo Mercado Pago
     </div>
   </div>
 
@@ -287,19 +311,35 @@
               <span class="m-t">Pix <span class="badge badge-good">na hora</span></span>
               <span class="m-s">QR Code ou copia e cola. Sem cadastro de cartão.</span>
             </button>
-            <button type="button" class="method" id="mCard" role="radio" aria-checked="false">
-              <span class="m-t">Cartão</span>
-              <span class="m-s">Também avulso. Sem cobrança recorrente.</span>
+            <!-- Cartão desabilitado: o backend só implementa Pix hoje. Deixar
+                 clicável entregaria um QR Pix a quem escolheu cartão — pior que
+                 não oferecer. Reativar junto com a integração de tokenização. -->
+            <button type="button" class="method" id="mCard" role="radio"
+                    aria-checked="false" aria-disabled="true" disabled>
+              <span class="m-t">Cartão <span class="badge">em breve</span></span>
+              <span class="m-s">Ainda não disponível. Por enquanto, só Pix.</span>
             </button>
           </div>
           <p class="field-help" id="methodHelp">O anual cobre 12 meses exatos com um pagamento só. Avisamos por email antes de vencer.</p>
 
-          <div style="margin-top:18px">
-            <label class="lbl" for="email">Email para receber o acesso</label>
-            <input type="email" id="email" name="email" inputmode="email" autocomplete="email"
-                   placeholder="voce@email.com" aria-describedby="emailHelp" />
-            <div class="field-err" id="emailErr">Digite um email válido — é para lá que o acesso vai.</div>
-            <p class="field-help" id="emailHelp">Usamos só para liberar o acesso e mandar os alertas. Nada de lista de propaganda.</p>
+          <!-- Identidade vem da SESSÃO, não de um campo digitado: a assinatura
+               é amarrada à conta, e um email digitado errado aqui liberaria
+               acesso para a pessoa errada. -->
+          <div style="margin-top:18px" id="accountBox">
+            <label class="lbl">Conta que vai receber o acesso</label>
+            <div class="account-row" id="accountRow">
+              <span class="account-email" id="accountEmail">—</span>
+              <a class="account-switch" href="/" id="accountSwitch">trocar de conta</a>
+            </div>
+            <p class="field-help" id="accountHelp">O Premium é liberado nesta conta assim que o pagamento cair.</p>
+          </div>
+
+          <!-- Estado alternativo: ninguém logado. Substitui o formulário. -->
+          <div class="signin-required" id="signinBox" hidden>
+            <strong>Entre na sua conta para assinar</strong>
+            <p>O Premium libera alertas e favoritos, que ficam salvos na sua conta — por isso o pagamento precisa estar ligado a ela.</p>
+            <a class="btn btn-primary" href="/">Entrar ou criar conta</a>
+            <p class="field-help" style="margin-top:10px">Depois de entrar, volte para esta página.</p>
           </div>
 
           <!-- ── Aceite obrigatório ──────────────────────────────────────────
@@ -394,11 +434,11 @@
           <li>Alertas de queda nas séries que você seguir</li>
           <li>12 meses de histórico da ANP</li>
           <li>Aviso por email assim que o preço cai</li>
-          <li>Cancela quando quiser</li>
+          <li>Sem cobrança automática — nada é debitado sem você agir</li>
         </ul>
 
         <div class="trust">
-          <div>🔒 Não guardamos dados de cartão — quem processa é a AbacatePay, instituição de pagamento regulada.</div>
+          <div>🔒 Não guardamos dados de pagamento — quem processa é o Mercado Pago, instituição de pagamento regulada.</div>
           <div>↩︎ 7 dias para desistir e receber o valor de volta (CDC art. 49).</div>
           <div>📄 Dados abertos da ANP como fonte dos preços.</div>
         </div>
@@ -418,9 +458,21 @@
   // ══════════════════════════════════════════════════════════════════════════
   // CONFIG
   // ══════════════════════════════════════════════════════════════════════════
-  var DEMO = true;                        // ← false quando o backend existir
-  var API  = '';                          // ex.: 'https://seu-backend.onrender.com'
-  var EXPIRES_SECONDS = 15 * 60;
+  // Modo demonstração. Com `false`, fala com o backend de verdade.
+  var DEMO = false;
+
+  // Base da API. Esta página é um HTML estático em /public — o Vite NÃO
+  // substitui variáveis de ambiente aqui, então a detecção é em runtime.
+  // ⚠️ Ao publicar, troque a URL de produção pela do seu backend no Render.
+  var API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://localhost:4000'
+    : 'https://price-tracker-pro-api.onrender.com';
+
+  // Espelha QR_EXPIRES_MINUTES do backend (billingService.ts). É só o valor de
+  // partida: quando a resposta traz `expiresAt`, ele manda. Mantido em sincronia
+  // porque um contador menor que o QR faria a tela dizer "expirou" com o código
+  // ainda válido — e o cliente desistiria de um pagamento que funcionaria.
+  var EXPIRES_SECONDS = 30 * 60;
 
   // Versão dos documentos legais aceitos aqui. SUBA ISTO sempre que editar
   // termos.html, privacidade.html ou reembolso.html — o backend grava o valor
@@ -442,6 +494,58 @@
     return 'R$ ' + (cents/100).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
   }
   function $(id){ return document.getElementById(id); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SESSÃO — esta página exige login
+  // ══════════════════════════════════════════════════════════════════════════
+  // A assinatura é amarrada a um usuário: alertas e favoritos vivem numa conta.
+  // Pagar sem conta compraria acesso a nada, e a pessoa teria de logar depois
+  // de qualquer jeito — pior momento para descobrir isso.
+  //
+  // Como esta página é servida da MESMA ORIGEM do app React, o token do
+  // Supabase já está no localStorage. Não precisamos do SDK aqui.
+  function lerSessao(){
+    try {
+      var chave = Object.keys(localStorage).find(function(k){
+        return k.indexOf('sb-') === 0 && k.indexOf('-auth-token') === k.length - 11;
+      });
+      if (!chave) return null;
+
+      var bruto = JSON.parse(localStorage.getItem(chave));
+      var token = bruto && bruto.access_token;
+      if (!token) return null;
+
+      // `expires_at` vem em segundos (epoch). Token vencido é tratado como
+      // ausência de sessão: melhor mandar logar do que falhar com 401 no meio.
+      if (bruto.expires_at && bruto.expires_at * 1000 <= Date.now()) return null;
+
+      return { token: token, email: (bruto.user && bruto.user.email) || null };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  var sessao = DEMO ? { token: 'demo', email: 'demo@exemplo.com' } : lerSessao();
+
+  // A faixa do topo tem de dizer a verdade sobre o modo em que a página está.
+  // Antes ela afirmava "modo demonstração" de forma fixa — com DEMO=false isso
+  // vira uma mentira na tela, e mentira sobre cobrança é a pior espécie.
+  (function avisarModo(){
+    var texto = DEMO
+      ? '<strong>Modo demonstração</strong> — esta página não cobra nada. Os dados são falsos.'
+      : (API.indexOf('localhost') !== -1
+          ? '<strong>Ambiente de desenvolvimento</strong> — usando as credenciais de teste do Mercado Pago. Nenhuma cobrança é real.'
+          : '');
+    if (!texto) return;                       // produção de verdade: sem faixa
+    $('demoBarText').innerHTML = texto;
+    $('demoBar').hidden = false;
+  })();
+
+  function authHeaders(extra){
+    var h = extra || {};
+    if (sessao && sessao.token) h['Authorization'] = 'Bearer ' + sessao.token;
+    return h;
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // ORNAMENTO — nada aqui participa do fluxo de pagamento.
@@ -532,15 +636,22 @@
     $('s3').setAttribute('data-on',   String(n >= 3));
   }
 
-  function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v); }
-
-  $('email').addEventListener('input', function(){
-    if (validEmail(this.value.trim())){
-      this.setAttribute('aria-invalid','false');
-      $('emailErr').classList.remove('show');
+  // ── Sessão: sem login, o formulário some e vira convite para entrar ──
+  function aplicarSessao(){
+    if (sessao){
+      $('accountEmail').textContent = sessao.email || 'sua conta';
+      $('signinBox').hidden = true;
+      $('accountBox').hidden = false;
       markSteps(2);
+      return;
     }
-  });
+    // Sem sessão: esconde tudo o que levaria a um pagamento impossível.
+    $('accountBox').hidden = true;
+    $('signinBox').hidden = false;
+    $('payBtn').style.display = 'none';
+    document.querySelector('.consent').style.display = 'none';
+  }
+  aplicarSessao();
 
   // ── Aceite: o botão só libera com a caixa marcada ──
   var agreeBox = $('agree');
@@ -564,56 +675,42 @@
       agreeBox.focus();
       return;
     }
-    var email = $('email').value.trim();
-    if (!validEmail(email)){
-      $('email').setAttribute('aria-invalid','true');
-      $('emailErr').classList.add('show');
-      $('email').focus();
+    if (!sessao){
+      // Não deveria chegar aqui (o botão fica escondido), mas o clique é
+      // revalidado por princípio: interface escondida não é controle de acesso.
+      location.href = '/';
       return;
     }
     trackEvent('begin_checkout', { plan:state.plan, method:state.method });
     this.disabled = true;
     setBtnLabel(this, 'Gerando…', true);
-
-    if (state.method === 'card'){
-      // Cartão = checkout hospedado. O backend devolve a URL e a gente redireciona.
-      // TODO API: POST /api/billing/checkout -> { url }
-      if (DEMO){
-        this.disabled = false;
-        setBtnLabel(this, 'Ir para o pagamento seguro', false);
-        alert('DEMO: aqui o usuário seria levado ao checkout da AbacatePay (cartão).');
-        return;
-      }
-      createCharge(email);
-      return;
-    }
-    createCharge(email);
+    createCharge();
   });
 
-  function createCharge(email){
+  function createCharge(){
     if (DEMO){
       // brCode de mentira, só para exercitar a interface. Não é um Pix válido.
       var fake = '00020126580014BR.GOV.BCB.PIX0136DEMO-NAO-E-UM-PIX-VALIDO-000000005204000053039865802BR5920PRICE TRACKER PRO6009SAO PAULO62070503***6304DEMO';
       showPix({ chargeId:'demo_' + Date.now(), brCode:fake, brCodeBase64:null, expiresIn:EXPIRES_SECONDS });
       return;
     }
-    // TODO API: POST /api/billing/checkout { plan, method:'pix', email }
+    // O corpo leva SÓ a chave do plano e a versão dos documentos.
+    // Não existe campo de valor aqui, e isso é deliberado: quem decide o preço
+    // é o backend. Email e horário do aceite também saem de lá (do token e do
+    // relógio do servidor) — dado vindo do cliente não vira prova de nada.
     fetch(API + '/api/billing/checkout', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      // `legalVersion` + o horário de servidor formam a prova do aceite.
-      // NUNCA envie o valor daqui: quem decide o preço pelo `plan` é o backend.
-      body: JSON.stringify({
-        plan: state.plan,
-        method: 'pix',
-        email: email,
-        legalVersion: LEGAL_VERSION,
-        acceptedAt: new Date().toISOString()   // referência; o backend grava a HORA DELE
-      })
+      headers: authHeaders({ 'Content-Type':'application/json' }),
+      body: JSON.stringify({ plan: state.plan, legalVersion: LEGAL_VERSION })
     })
-    .then(function(r){ if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+    .then(function(r){
+      if (r.status === 401){
+        var e = new Error('sessao_expirada'); e.code = 401; throw e;
+      }
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.json();
+    })
     .then(function(d){
-      if (d.url){ location.href = d.url; return; }          // caso cartão
       showPix({
         chargeId: d.chargeId,
         brCode: d.brCode,
@@ -625,8 +722,10 @@
       console.error(err);
       $('payBtn').disabled = false;
       setBtnLabel($('payBtn'), 'Gerar pagamento', false);
-      setStatus('bad', 'Não conseguimos gerar a cobrança agora. Tente de novo em instantes.');
       $('pixPanel').classList.add('show');
+      setStatus('bad', err && err.code === 401
+        ? 'Sua sessão expirou. Entre de novo e volte para esta página.'
+        : 'Não conseguimos gerar a cobrança agora. Tente de novo em instantes.');
     });
   }
 
@@ -690,8 +789,12 @@
   function startPolling(){
     clearInterval(state.poll);
     state.poll = setInterval(function(){
-      // TODO API: GET /api/billing/charge/:id -> { status }
-      fetch(API + '/api/billing/charge/' + encodeURIComponent(state.chargeId))
+      // Além de consultar, este endpoint RECONCILIA com o provedor quando a
+      // cobrança ainda está pendente — é o que permite testar sem webhook
+      // público e o que salva um pagamento cuja notificação se perdeu.
+      fetch(API + '/api/billing/charge/' + encodeURIComponent(state.chargeId), {
+        headers: authHeaders()
+      })
         .then(function(r){ return r.json(); })
         .then(function(d){
           if (d.status === 'paid')    return onPaid();
@@ -708,7 +811,7 @@
     $('formCard').style.display = 'none';
     $('donePanel').classList.add('show');
     $('doneText').textContent = 'Seu acesso ' + PLANS[state.plan].label
-      + ' foi registrado. Enviamos a confirmação para ' + $('email').value.trim() + '.';
+      + ' foi liberado na conta ' + ((sessao && sessao.email) || 'que você usou para entrar') + '.';
     markSteps(4);
     trackEvent('purchase', { plan:state.plan, value_cents:PLANS[state.plan].cents });
   }
@@ -735,7 +838,7 @@
   // ── botões de teste / recomeçar ────────────────────────────────────────────
   $('simBtn').addEventListener('click', function(){
     // Em produção este botão não aparece (DEMO=false). Em devMode, o equivalente
-    // real é POST /transparents/simulate-payment na AbacatePay.
+    // real é pagar o QR de teste no ambiente sandbox do Mercado Pago.
     setStatus('wait', 'Pagamento simulado recebido, confirmando…', true);
     setTimeout(onPaid, 1200);
   });

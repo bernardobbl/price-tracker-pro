@@ -1715,8 +1715,48 @@ input[type="number"] {
   }
 }
 
+/* ── Rodapé legal ── */
+.site-footer {
+  margin-top: auto;
+  padding: 1.5rem 2rem 2rem;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.site-footer-source {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  max-width: 46ch;
+  line-height: 1.5;
+}
+
+.site-footer-links {
+  display: flex;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+}
+
+.site-footer-links a {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.site-footer-links a:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
 /* ── Responsivo ── */
 @media (max-width: 640px) {
+  .site-footer { padding: 1.25rem 1.25rem 1.75rem; }
   .dashboard { padding: 1rem 1rem 2rem; }
   /* (o reset de `position` que existia aqui saiu: o sticky agora só é aplicado
      a partir de 960px, então não há mais o que desfazer neste breakpoint) */
