@@ -3,7 +3,64 @@
 > **Para o Bernardo do futuro.** Escrito em 04/ago/2026 no fim de uma sessão, para você conseguir
 > voltar sem reler tudo. Comece por aqui.
 >
-> **Branch:** `feat/checkout-pix` — **local, sem push.** Nada disso está no GitHub.
+> **Branch:** `feat/checkout-pix`.
+
+---
+
+## 🔴 RETOMAR AQUI — o que fazer na próxima sessão
+
+Tudo compila, 232 testes passam e o código está commitado. **Falta uma coisa só antes do PR:**
+
+### 1. Teste ponta a ponta com pagamento sandbox (~30 min)
+
+Nunca ninguém clicou em "Gerar pagamento" e viu um QR de verdade aparecer. É o único caminho
+do sistema que ainda não foi exercitado.
+
+```bash
+cd ~/Desktop/"Price Tracker Pro" && git checkout feat/checkout-pix
+# terminal 1
+cd backend && npm run dev
+# terminal 2
+cd frontend && npm run dev
+```
+
+Depois, no navegador:
+
+1. `http://localhost:5173` → **fazer login** (o checkout exige sessão)
+2. `http://localhost:5173/checkout.html`
+   - deve aparecer seu e-mail em "Conta que vai receber o acesso"
+   - deve aparecer a faixa amarela "Ambiente de desenvolvimento"
+3. Escolher o plano → marcar o aceite → **Gerar pagamento**
+4. **Esperado:** QR real do sandbox do Mercado Pago + código copia e cola
+5. Pagar com a **conta de teste** (painel do Mercado Pago → Suas integrações → Contas de teste)
+6. **O polling deve virar "pago" sozinho, sem webhook nenhum** — é a reconciliação do
+   `GET /charge/:id` fazendo o papel dele. Este é o ponto que prova o coração do sistema.
+7. Conferir no Supabase:
+
+```sql
+select c.status as cobranca, c.amount_cents, s.plan, s.starts_at, s.expires_at
+from billing_charges c
+left join subscriptions s on s.charge_id = c.id
+order by c.created_at desc limit 3;
+```
+
+Esperado: cobrança `paid` e uma assinatura com vigência de 1 mês ou 12 meses **exatos**.
+
+**Se algo falhar**, o mais provável em ordem: (a) chave Pix não cadastrada na conta do Mercado
+Pago — trava a API inteira; (b) `MERCADOPAGO_*` faltando no `backend/.env`; (c) CORS, se o
+`FRONTEND_URL` do backend não incluir `http://localhost:5173`.
+
+### 2. Decidir: um PR ou três?
+
+A branch mistura três frentes independentes — **visual** (login/header/gauge + fix do eixo Y),
+**legal** (documentos + aceite) e **billing** (gate + Mercado Pago). Um PR só é aceitável;
+três contam a história melhor. Se dividir, é antes do merge.
+
+### 3. Só então abrir o PR
+
+Comandos na §7 deste arquivo.
+
+---
 
 ---
 
@@ -222,3 +279,30 @@ A Etapa A saiu no mesmo dia, não em 2–3. O que resta:
       `git log -p | grep -c "APP_USR-[A-Za-z0-9]"` (deve dar 0).
 
 **Corpo sugerido do PR:** o resumo da §1 deste arquivo já é 90% da descrição.
+
+### Comandos
+
+```bash
+cd ~/Desktop/"Price Tracker Pro"
+git checkout feat/checkout-pix
+git push -u origin feat/checkout-pix
+```
+
+Só isso já salva a branch no GitHub. **O PR é um passo à parte** — abrir só depois do
+teste da §1, porque a descrição vai afirmar que o fluxo funciona.
+
+Com o GitHub CLI (`brew install gh` se não tiver):
+
+```bash
+gh pr create \
+  --base main \
+  --head feat/checkout-pix \
+  --title "feat: checkout Pix com Mercado Pago, gate de assinatura e documentos legais" \
+  --body-file docs/PR_BODY.md \
+  --draft
+```
+
+O `--draft` é de propósito: marca como "ainda não terminei", que é a verdade até o teste passar.
+Tira o rascunho depois com `gh pr ready`.
+
+Sem o CLI, o push imprime um link `https://github.com/.../pull/new/feat/checkout-pix` — é só abrir.
