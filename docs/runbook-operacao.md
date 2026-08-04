@@ -8,8 +8,9 @@
 > para nada ser esquecido. Promessa cumprida por humano continua sendo promessa cumprida. O que
 > mata é promessa que ninguém sabe como cumprir às 23h de um sábado.
 >
-> Hoje o risco real é **zero**: `DEMO = true`, nenhum cliente. O risco começa no dia em que você
-> virar a chave — e é por isso que a §1 existe.
+> Hoje o risco real ainda é **zero**: o checkout está ligado ao backend (`DEMO = false`), mas com
+> as **credenciais de teste** do Mercado Pago (`MERCADOPAGO_ENV=test`) — nenhum dinheiro circula.
+> O risco começa quando as credenciais de produção entrarem — e é por isso que a §1 existe.
 
 ---
 

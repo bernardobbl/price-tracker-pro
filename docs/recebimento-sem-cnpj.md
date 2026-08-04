@@ -124,7 +124,7 @@ Considerando que **ainda não existe um único cliente pagante**:
 
 | Etapa | O que fazer | Quando sair dela |
 |---|---|---|
-| **Agora** | Manter `DEMO = true` no `checkout.html`. A página inteira funciona, dá print, entra no portfólio, e ninguém é cobrado. | Quando alguém disser "quero pagar" |
+| **Agora** | ~~Manter `DEMO = true`~~ **Superado (04/ago):** o checkout já fala com o backend usando as credenciais de teste do Mercado Pago. Ninguém é cobrado até entrarem as credenciais de produção. | Quando alguém disser "quero pagar" |
 | **Primeiras vendas** | Opção A na mão — chave aleatória, você confere e libera. Serve para descobrir se o preço gruda. | Quando passar de ~5 assinantes |
 | **Produto de verdade** | Opção B: escolher um dos três PSPs, reescrever `abacatePayClient.ts`, ligar o webhook. | — |
 

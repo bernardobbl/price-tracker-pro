@@ -25,14 +25,25 @@ Construído antes de qualquer pagamento, porque não depende de gateway nenhum.
 | `backend/src/lib/subscriptionPeriod.ts` | Aritmética pura de vigência (mês de calendário, renovação que soma, corte estrito, pró-rata) |
 | `backend/src/lib/alertQuota.ts` | Decisão de cota. **`FREE_ALERT_LIMIT = Infinity` — nada mudou ainda** |
 | `backend/src/services/subscriptionService.ts` | Leitura do direito de acesso. Falha fechado em todos os caminhos |
-| `backend/supabase/migration_003_subscriptions.sql` | Tabela + índices + RLS. **Ainda não rodada no Supabase** |
+| `backend/supabase/migration_003_subscriptions.sql` | Tabela + índices + RLS. **✅ Rodada e verificada no Supabase (04/ago)** |
 | `GET /api/fuel/entitlement` | Situação da assinatura (para a interface, não é o gate) |
 | gate no `POST /api/fuel/alerts` | O gate de verdade |
-| `docs/testar-o-gate.md` | Passo a passo para provar que funciona, sem Mercado Pago |
+| `docs/testar-o-gate.md` | Passo a passo para provar que funciona — **executado com sucesso pelo Bernardo (7/7 passos)** |
 
-**Testes:** 148 no backend e 61 no frontend passando (04/ago/2026).
+### ✅ Etapa A — FEITA (04/ago/2026, mesma sessão)
 
-**Próxima ação concreta:** rodar a migração 003 no Supabase e seguir `docs/testar-o-gate.md`.
+O backend de pagamento existe e o checkout está ligado a ele:
+
+| Peça | Arquivo |
+|---|---|
+| Config com trava test/production | `backend/src/config/mercadoPago.ts` |
+| Cliente do provedor (único ponto de contato) | `backend/src/services/mercadoPagoClient.ts` |
+| Tabela de cobranças (**migração 004 ✅ rodada**) | `backend/supabase/migration_004_billing_charges.sql` |
+| Orquestração: criar cobrança → confirmar → assinatura | `backend/src/services/billingService.ts` |
+| `POST /checkout` · `GET /charge/:id` (com reconciliação) · `POST /webhook` | `backend/src/routes/billingRoute.ts` |
+| Checkout ligado, com login obrigatório (opção A) | `frontend/public/checkout.html` |
+
+**Testes:** 171 no backend e 61 no frontend passando (última rodada do Bernardo, 04/ago).
 
 ### Documentos desta frente
 
@@ -49,7 +60,7 @@ Construído antes de qualquer pagamento, porque não depende de gateway nenhum.
 - **Provedor: Mercado Pago.** Taxa percentual (~0,99%) vence a taxa fixa do Asaas (R$ 1,99) com folga em ticket baixo.
 - **Planos:** mensal R$ 16,90 (1 mês exato) e anual R$ 59,90 (12 meses exatos).
 - **Sem renovação automática.** Não é escolha: o Banco Central exige CNPJ ativo para ser recebedor de Pix Automático.
-- **`DEMO = true`.** Nenhuma cobrança real acontece hoje.
+- **`DEMO = false` com credenciais de TESTE** (`MERCADOPAGO_ENV=test`). O fluxo é real de ponta a ponta, mas nenhum dinheiro circula até as credenciais de produção entrarem.
 
 ---
 
@@ -74,43 +85,31 @@ Nada disso eu consigo fazer — precisa ser você, e algumas travam o resto.
 
 ## 3. O que falta no código
 
-Nesta ordem. Cada etapa fecha sozinha.
+> A Etapa A original foi concluída — ver §1. O que segue é o que resta.
 
-### Etapa A — Backend contra o sandbox (o coração)
+### Rumo ao PR — o teste que falta
 
-**1. Migração no Supabase.** Rodar o SQL de `docs/vigencia-do-acesso.md` §3 (tabela
-`subscriptions` + índice único por `charge_id` + RLS).
+Tudo compilou e os testes unitários passam, mas **o fluxo completo com um pagamento de teste
+do Mercado Pago ainda não foi exercitado**. Antes do PR, rode uma vez:
 
-**2. `backend/src/lib/mercadoPagoClient.ts`** — todo o contato com o provedor isolado num arquivo
-só, como o plano da Fase 10 mandava. Trocar de provedor depois deve custar um arquivo.
+1. `npm run dev` nos dois pacotes, logar no app, abrir `localhost:5173/checkout.html`
+2. Marcar o aceite → **Gerar pagamento** → deve aparecer um QR real do ambiente de teste
+3. Pagar usando a conta de teste do Mercado Pago (painel → Contas de teste), ou aguardar
+   expirar e conferir que a tela reflete
+4. O polling deve virar "pago" **sem webhook nenhum** — é a reconciliação do
+   `GET /charge/:id` fazendo o papel dele
+5. Conferir no Supabase: `billing_charges` com status `paid` e uma linha nova em
+   `subscriptions` com a vigência certa
 
-```
-POST https://api.mercadopago.com/v1/orders
-  Authorization: Bearer <ACCESS_TOKEN>
-  X-Idempotency-Key: <uuid v4>
-  { type:"online", total_amount:"59.90", external_reference:"<nosso id>",
-    processing_mode:"automatic",
-    transactions:{ payments:[{ amount:"59.90",
-      payment_method:{ id:"pix", type:"bank_transfer" },
-      expiration_time:"PT15M" }]},
-    payer:{ email:"<email>" } }
-```
+Se o passo 4 funcionar, o coração inteiro está provado. O webhook vira otimização de
+latência (confirmação em segundos em vez de no próximo polling).
 
-Devolve `qr_code`, `qr_code_base64` e `ticket_url` — os três campos que o `checkout.html` já espera.
+### Produção (não bloqueia o PR)
 
-**3. Três endpoints:**
-
-| Endpoint | Faz |
-|---|---|
-| `POST /api/billing/checkout` | Recebe `{plan, email, legalVersion}`. **Decide o preço pelo `plan`** — nunca aceita valor do front. Cria a order e devolve o QR. |
-| `POST /api/billing/webhook` | Confere a assinatura, ignora `charge_id` repetido, calcula a vigência (doc §2), grava a assinatura. |
-| `GET /api/billing/charge/:id` | O polling que a página já faz. |
-
-**4. Gate de acesso.** Checar assinatura ativa **no backend** antes de criar alerta/favorito. RLS é
-segunda linha, não a primeira — o backend usa `service_role` e ignora RLS.
-
-**5. Os 10 testes** da tabela em `docs/vigencia-do-acesso.md` §5. São eles que provam o
-"exatamente 1 mês".
+- [ ] URL pública do backend → cadastrar o webhook no painel → pegar o segredo →
+      implementar a validação `x-signature` (ver ponta solta abaixo)
+- [ ] Trocar credenciais para as de produção + `MERCADOPAGO_ENV=production`
+- [ ] Portão de go-live completo do `runbook-operacao.md` §1
 
 ### ⚠️ Ponta solta conhecida — validação de assinatura do webhook
 
@@ -189,16 +188,37 @@ As URLs sem `.html` (`/termos`, `/premium/checkout`) só funcionam na Vercel, qu
 
 ---
 
-## 6. Estimativa honesta
+## 6. Estimativa honesta — atualizada em 04/ago (fim do dia)
 
-Você disse que queria produção esta semana. Meu palpite, com o que está pronto:
+A Etapa A saiu no mesmo dia, não em 2–3. O que resta:
 
-| | Esforço |
-|---|---|
-| Etapa A (backend no sandbox) | 2–3 dias de trabalho focado |
-| Etapa B (estorno, avisos, LGPD) | +2 dias |
-| Etapa C (revisão jurídica) | depende de terceiro |
+| | Esforço | Depende de |
+|---|---|---|
+| Teste ponta a ponta com pagamento sandbox (§3) | ~30 min | só você, na sua máquina |
+| Estorno + reembolso proporcional (Etapa B) | 1–2 dias | nada |
+| Exclusão de conta + exportação LGPD (Etapa B) | 1 dia | nada |
+| Webhook com assinatura validada | ~2 h | URL pública (deploy) |
+| Revisão jurídica | — | advogado |
 
-**Dá para ter tudo funcionando no sandbox nesta semana.** O que não recomendo é virar `DEMO = false`
-antes da Etapa B: no dia em que o primeiro cliente pedir reembolso, o botão precisa existir — e a
-política já promete que ele existe.
+---
+
+## 7. Preparar o PR
+
+**Checklist antes de abrir:**
+
+- [ ] `npm test` nos dois pacotes (última contagem: 171 + 61)
+- [ ] O teste ponta a ponta da §3 (pagamento sandbox → assinatura criada)
+- [ ] Decidir: **um PR ou três?** A branch mistura três frentes independentes —
+      visual (login/header/gauge + fix do eixo Y), legal (documentos + aceite) e
+      billing (gate + Mercado Pago). Um PR só é honesto para repositório pessoal;
+      três contam a história melhor no portfólio. Se for dividir, é
+      `git rebase -i` ou cherry-pick em branches novas **antes** do push.
+- [ ] Lembrar: **o repositório é público.** Push = tudo visível, incluindo os
+      preços e os documentos legais em rascunho. Nada disso é segredo de verdade
+      (o checkout está no ar na Vercel de qualquer forma), mas é bom decidir
+      conscientemente.
+- [ ] O que **não** entra no PR: `.env` (já ignorado), credenciais, e nada de
+      `MERCADOPAGO_*` em texto claro em lugar nenhum — conferir com
+      `git log -p | grep -c "APP_USR-[A-Za-z0-9]"` (deve dar 0).
+
+**Corpo sugerido do PR:** o resumo da §1 deste arquivo já é 90% da descrição.
