@@ -73,6 +73,13 @@
   .top-wire-dot{ position:absolute; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; border-radius:50%;
                  background:var(--camel); box-shadow:0 0 10px 4px rgba(176,138,75,.35); opacity:0; }
 
+  /* aceite dos documentos legais */
+  .consent-row{ display:flex; gap:10px; align-items:flex-start; cursor:pointer; font-size:13.5px; color:var(--ink-soft); line-height:1.5; }
+  .consent-row input{ margin:3px 0 0; width:17px; height:17px; accent-color:var(--brand); flex:none; cursor:pointer; }
+  .consent-row a{ color:var(--brand); font-weight:600; }
+  .consent[aria-invalid="true"] .consent-row{ color:var(--bad); }
+  .consent[aria-invalid="true"] .consent-row input{ outline:2px solid var(--bad); outline-offset:2px; }
+
   /* Ponteiro de tanque nos botões em carregamento (src/components/FuelGauge.tsx). */
   .btn:has(.fuel-gauge){ display:inline-flex; align-items:center; justify-content:center; gap:8px; }
   .fuel-gauge{ flex:none; }
@@ -262,7 +269,7 @@
               <span class="plan-radio" aria-hidden="true"></span>
               <span class="plan-main">
                 <span class="plan-title">Mensal <span class="badge badge-camel">sem compromisso</span></span>
-                <span class="plan-sub">R$ 16,90 por mês, renova sozinho</span>
+                <span class="plan-sub">R$ 16,90 por 1 mês exato — avisamos antes de vencer</span>
               </span>
               <span class="plan-amount">R$ 16,90</span>
             </div>
@@ -282,10 +289,10 @@
             </button>
             <button type="button" class="method" id="mCard" role="radio" aria-checked="false">
               <span class="m-t">Cartão</span>
-              <span class="m-s">Renova sozinho. Cancela quando quiser.</span>
+              <span class="m-s">Também avulso. Sem cobrança recorrente.</span>
             </button>
           </div>
-          <p class="field-help" id="methodHelp">No anual, o Pix é o caminho mais barato — e você não precisa lembrar de renovar: a gente te avisa antes de vencer.</p>
+          <p class="field-help" id="methodHelp">O anual cobre 12 meses exatos com um pagamento só. Avisamos por email antes de vencer.</p>
 
           <div style="margin-top:18px">
             <label class="lbl" for="email">Email para receber o acesso</label>
@@ -293,6 +300,26 @@
                    placeholder="voce@email.com" aria-describedby="emailHelp" />
             <div class="field-err" id="emailErr">Digite um email válido — é para lá que o acesso vai.</div>
             <p class="field-help" id="emailHelp">Usamos só para liberar o acesso e mandar os alertas. Nada de lista de propaganda.</p>
+          </div>
+
+          <!-- ── Aceite obrigatório ──────────────────────────────────────────
+               O botão de pagar fica desabilitado até marcar. A versão aceita
+               (LEGAL_VERSION) vai junto no POST e o backend grava com a data:
+               sem isso você não consegue provar DEPOIS o que a pessoa aceitou,
+               porque o texto do documento pode ter mudado. -->
+          <div class="consent" style="margin-top:18px">
+            <label class="consent-row" for="agree">
+              <input type="checkbox" id="agree" />
+              <span>
+                Li e aceito os <a href="/termos.html" target="_blank" rel="noopener">Termos de Uso</a>,
+                a <a href="/privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a>
+                e a <a href="/reembolso.html" target="_blank" rel="noopener">Política de Reembolso</a>.
+              </span>
+            </label>
+            <div class="field-err" id="agreeErr">Você precisa aceitar os documentos para continuar.</div>
+            <p class="field-help">
+              Compra avulsa, sem renovação automática — você tem 7 dias para desistir e receber tudo de volta.
+            </p>
           </div>
 
           <button class="btn btn-primary" id="payBtn" style="margin-top:18px">Gerar pagamento</button>
@@ -395,6 +422,11 @@
   var API  = '';                          // ex.: 'https://seu-backend.onrender.com'
   var EXPIRES_SECONDS = 15 * 60;
 
+  // Versão dos documentos legais aceitos aqui. SUBA ISTO sempre que editar
+  // termos.html, privacidade.html ou reembolso.html — o backend grava o valor
+  // junto com a data do aceite, e é essa dupla que prova o que a pessoa leu.
+  var LEGAL_VERSION = '1.0';
+
   var PLANS = {
     anual:  { label:'Premium anual',  cents:5990, cycle:'12 meses de acesso', perMonth:'R$ 4,99/mês' },
     mensal: { label:'Premium mensal', cents:1690, cycle:'renova todo mês',    perMonth:'R$ 16,90/mês' }
@@ -464,8 +496,8 @@
     $('optAnual').setAttribute('aria-checked',  String(state.plan === 'anual'));
     $('optMensal').setAttribute('aria-checked', String(state.plan === 'mensal'));
     $('methodHelp').textContent = state.plan === 'anual'
-      ? 'No anual, o Pix é o caminho mais barato — e você não precisa lembrar de renovar: a gente te avisa antes de vencer.'
-      : 'No mensal, o cartão renova sozinho. Com Pix você paga um mês por vez e recebe um aviso antes de vencer.';
+      ? 'O anual cobre 12 meses exatos com um pagamento só. Avisamos por email antes de vencer.'
+      : 'O mensal cobre 1 mês exato. Não há cobrança automática — avisamos antes de vencer e você decide se renova.';
   }
   function pickPlan(key){ state.plan = key; renderSummary(); trackEvent('select_plan', { plan:key }); }
 
@@ -510,7 +542,28 @@
     }
   });
 
+  // ── Aceite: o botão só libera com a caixa marcada ──
+  var agreeBox = $('agree');
+  var consentWrap = document.querySelector('.consent');
+
+  function syncAgree(){
+    $('payBtn').disabled = !agreeBox.checked;
+    if (agreeBox.checked){
+      consentWrap.setAttribute('aria-invalid','false');
+      $('agreeErr').classList.remove('show');
+    }
+  }
+  agreeBox.addEventListener('change', syncAgree);
+  syncAgree();   // começa desabilitado
+
   $('payBtn').addEventListener('click', function(){
+    // Revalida no clique: o `disabled` sozinho é dica de interface, não garantia.
+    if (!agreeBox.checked){
+      consentWrap.setAttribute('aria-invalid','true');
+      $('agreeErr').classList.add('show');
+      agreeBox.focus();
+      return;
+    }
     var email = $('email').value.trim();
     if (!validEmail(email)){
       $('email').setAttribute('aria-invalid','true');
@@ -548,7 +601,15 @@
     fetch(API + '/api/billing/checkout', {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ plan:state.plan, method:'pix', email:email })
+      // `legalVersion` + o horário de servidor formam a prova do aceite.
+      // NUNCA envie o valor daqui: quem decide o preço pelo `plan` é o backend.
+      body: JSON.stringify({
+        plan: state.plan,
+        method: 'pix',
+        email: email,
+        legalVersion: LEGAL_VERSION,
+        acceptedAt: new Date().toISOString()   // referência; o backend grava a HORA DELE
+      })
     })
     .then(function(r){ if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
     .then(function(d){

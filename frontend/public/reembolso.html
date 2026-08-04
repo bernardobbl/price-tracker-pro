@@ -1,0 +1,148 @@
+<!--
+  ============================================================================
+  PRICE TRACKER PRO — POLÍTICA DE REEMBOLSO E CANCELAMENTO
+  ----------------------------------------------------------------------------
+  ⚠️ RASCUNHO. NÃO é parecer jurídico — peça revisão antes da primeira
+  cobrança real.
+
+  BASE: art. 49 do CDC dá 7 dias de arrependimento em compra fora do
+  estabelecimento (o que inclui internet), com devolução integral. Isso NÃO é
+  negociável nem renunciável — não adianta escrever cláusula contrária.
+
+  ⚠️ O QUE FALTA NO CÓDIGO PARA HONRAR ISTO (ver docs/proximos-passos.md):
+    • endpoint de estorno chamando o refund do Mercado Pago
+    • webhook de estorno (`refunded`) precisa DESLIGAR o acesso na hora
+    • cálculo pro rata para o reembolso proporcional do anual
+  Prometer aqui e não implementar lá é o pior dos mundos.
+
+  VERSÃO: ao mudar o texto, suba a VERSAO aqui e no checkout.html.
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f4f3ee" />
+<title>Política de Reembolso · Price Tracker Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/legal.css" />
+</head>
+<body>
+
+<header class="legal-top">
+  <div class="legal-wrap">
+    <a class="legal-brand" href="/"><span class="dot"></span> Price Tracker Pro</a>
+    <nav class="legal-nav">
+      <a href="/termos.html">Termos</a>
+      <a href="/privacidade.html">Privacidade</a>
+      <a href="/reembolso.html" aria-current="page">Reembolso</a>
+    </nav>
+  </div>
+</header>
+
+<main class="legal-wrap legal-doc">
+  <p class="legal-eyebrow">Documento legal</p>
+  <h1>Política de Reembolso e Cancelamento</h1>
+  <p class="legal-meta">Versão <strong>1.0</strong> · vigente desde 4 de agosto de 2026</p>
+
+  <div class="legal-callout legal-callout--good">
+    <strong>Resumo:</strong> desistiu em até 7 dias? Devolvemos tudo, sem perguntar por quê.
+    Depois disso, no plano anual devolvemos a parte proporcional que você ainda não usou.
+    E como não existe renovação automática, você nunca é cobrado de surpresa.
+  </div>
+
+  <h2>1. Arrependimento em 7 dias — o seu direito garantido por lei</h2>
+  <p>
+    O <strong>artigo 49 do Código de Defesa do Consumidor</strong> garante que, em compras feitas
+    pela internet, você pode desistir em até <strong>7 dias corridos</strong> contados da
+    confirmação do pagamento — <strong>sem precisar justificar</strong>.
+  </p>
+  <p>
+    Nesse prazo devolvemos <strong>100% do valor pago</strong>, mesmo que você já tenha usado o
+    serviço. Basta escrever para
+    <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a> com o
+    e-mail da conta.
+  </p>
+
+  <h2>2. Depois dos 7 dias</h2>
+  <table>
+    <thead>
+      <tr><th>Plano</th><th>O que acontece</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Mensal</strong><br />R$ 16,90</td>
+        <td>
+          Não há reembolso proporcional — o período é curto e já foi entregue. Você continua com
+          acesso até o fim do mês pago, e simplesmente não paga de novo. Nada é cobrado
+          automaticamente.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Anual</strong><br />R$ 59,90</td>
+        <td>
+          Devolvemos a <strong>parte proporcional aos meses inteiros ainda não usados</strong>.
+          Exemplo: cancelou no 4º mês, devolvemos 8/12 de R$ 59,90 = <strong>R$ 39,93</strong>.
+          O acesso é encerrado na data do estorno.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Quando devolvemos integralmente, a qualquer momento</h2>
+  <ul>
+    <li><strong>Cobrança duplicada</strong> ou valor diferente do anunciado;</li>
+    <li><strong>Falha nossa que impeça o uso</strong> do serviço por mais de 7 dias seguidos;</li>
+    <li><strong>Você pagou mas o acesso não foi liberado</strong> e não conseguimos resolver;</li>
+    <li>Você <strong>não concorda com uma mudança</strong> nos Termos e por isso encerra a conta —
+      nesse caso devolvemos a parte proporcional não usufruída.</li>
+  </ul>
+
+  <h2>4. Como pedir</h2>
+  <p>
+    Escreva para <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a>
+    a partir do e-mail cadastrado, dizendo que quer cancelar. Não exigimos formulário, ligação,
+    nem que você fale com um atendente para "reconsiderar".
+  </p>
+  <table>
+    <thead><tr><th>Etapa</th><th>Prazo</th></tr></thead>
+    <tbody>
+      <tr><td>Confirmamos o recebimento do pedido</td><td>até 2 dias úteis</td></tr>
+      <tr><td>Solicitamos o estorno ao Mercado Pago</td><td>até 5 dias úteis</td></tr>
+      <tr><td>O valor chega até você</td><td>depende do banco — Pix costuma ser em horas</td></tr>
+    </tbody>
+  </table>
+  <p>
+    O estorno volta <strong>pelo mesmo meio do pagamento</strong>. Se foi Pix, cai na conta de
+    origem.
+  </p>
+
+  <h2>5. O que acontece com o acesso</h2>
+  <p>
+    Ao efetivarmos o estorno, o acesso pago é <strong>encerrado imediatamente</strong> e a conta
+    volta ao uso gratuito. Você não perde a conta, nem os favoritos — perde só os recursos pagos.
+  </p>
+
+  <h2>6. Não existe cobrança automática</h2>
+  <div class="legal-callout">
+    Nossos planos são <strong>avulsos</strong>: nada é cobrado de novo sem você agir. Quando o
+    período acaba, o acesso simplesmente termina. Avisamos por e-mail antes do vencimento, e você
+    decide se quer renovar. <strong>Ninguém é cobrado de surpresa aqui.</strong>
+  </div>
+
+  <h2>7. Se você não concordar com a nossa resposta</h2>
+  <p>
+    Você pode recorrer ao <a href="https://www.consumidor.gov.br" target="_blank" rel="noopener">consumidor.gov.br</a>,
+    ao Procon do seu estado ou ao Juizado Especial Cível. Não vamos criar obstáculo a isso.
+  </p>
+
+  <p class="legal-foot">
+    Documento em rascunho, ainda não revisado por advogado. Última atualização: 4 de agosto de 2026.
+  </p>
+</main>
+
+</body>
+</html>

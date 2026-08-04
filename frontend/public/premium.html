@@ -293,7 +293,7 @@
 
       <div class="cta-row">
         <a class="btn btn-primary" id="ctaHero" href="/premium/checkout?plan=anual">Assinar o Premium</a>
-        <span class="btn-sub">R$ 59,90/ano (sai R$ 4,99/mês) · ou R$ 16,90 no mensal · cancela quando quiser</span>
+        <span class="btn-sub">R$ 59,90/ano (sai R$ 4,99/mês) · ou R$ 16,90 no mensal · sem cobrança automática</span>
 
         <form class="email-form" id="emailForm" novalidate>
           <!-- TODO 1: troque a action por seu endpoint do Formspree -->
@@ -379,7 +379,7 @@
             <div class="big-price" id="planPrice">R$ 59,90 <small>/ano</small></div>
             <div class="plan-note" id="planNote">Sai R$ 4,99 por mês — 70% mais barato que pagar mês a mês.</div>
             <a class="btn" id="ctaOffer" href="/premium/checkout?plan=anual">Assinar agora</a>
-            <div class="slots" id="slots">Pix (na hora) ou cartão (renova sozinho)</div>
+            <div class="slots" id="slots">Pix (cai na hora) ou cartão · compra avulsa</div>
           </div>
         </div>
       </div>
@@ -405,7 +405,7 @@
       </details>
       <details>
         <summary>Como eu pago?</summary>
-        <div class="a">No Pix, lendo o QR Code ou colando o código copia e cola no app do seu banco — cai na hora. No cartão, a cobrança renova sozinha e você cancela quando quiser. O anual são R$ 59,90 uma vez, cobrindo 12 meses.</div>
+        <div class="a">No Pix, lendo o QR Code ou colando o código copia e cola no app do seu banco — cai na hora. A compra é avulsa: não existe cobrança automática. O anual são R$ 59,90 uma vez, cobrindo 12 meses exatos; o mensal cobre 1 mês exato. Avisamos por email antes de vencer e você decide se renova.</div>
       </details>
       <details>
         <summary>Meus dados de pagamento ficam com vocês?</summary>
@@ -440,7 +440,7 @@
     mensal: {
       kicker: 'Plano mensal',
       price:  'R$ 16,90 <small>/mês</small>',
-      note:   'Cobrado mês a mês. Cancela quando quiser.'
+      note:   '1 mês exato de acesso. Sem cobrança automática.'
     },
     anual: {
       kicker: 'Plano anual · melhor preço',
