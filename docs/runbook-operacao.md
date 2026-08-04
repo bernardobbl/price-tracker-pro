@@ -188,12 +188,61 @@ O caso mais provável de suporte: o webhook falhou (cold start do Render, timeou
 > 2. **Estorno + corte de acesso** — falhar aqui é problema legal
 > 3. **Exclusão de dados** — prazo de 30 dias dá folga para fazer à mão por mais tempo
 
+### Por que essa ordem também é a melhor para nós
+
+Risco para o cliente e custo de construção **apontam para o mesmo lugar** aqui, o que é sorte e
+deve ser aproveitado:
+
+| | Risco se falhar | O que já existe pronto | Esforço |
+|---|---|---|---|
+| **1. Aviso de vencimento** | Alto e **silencioso** — o cliente some sem reclamar, e você nem sabe que perdeu | **Quase tudo**: o job semanal do GitHub Actions já roda, e o Nodemailer já manda e-mail de alerta de preço | **Baixo** — é uma consulta e um template a mais no que já existe |
+| **2. Estorno automático** | Alto, mas **barulhento** — o cliente reclama, você fica sabendo | Nada. Precisa de endpoint novo + integração de refund + webhook | Médio |
+| **3. Exclusão de dados** | Baixo no curto prazo — a LGPD dá 30 dias | Nada | Médio |
+
+O aviso de vencimento é **o de maior risco e o de menor custo ao mesmo tempo**. Não existe decisão
+difícil aqui: é o primeiro, com folga.
+
+> **Mas antes de qualquer um dos três:** com zero clientes, automatizar é fabricar estoque que pode
+> nunca ser vendido. O certo agora é o **gate de assinatura** (§5) — sem ele o produto não é
+> vendável — e o resto à mão, seguindo este runbook.
+
 ---
 
-## 5. O que NÃO dá para resolver à mão
+## 5. O gate de assinatura — a única coisa sem versão manual
 
-Uma coisa só, e ela é inegociável antes do go-live:
+> Ou o código checa `now() < expires_at` antes de deixar criar alerta, ou todo mundo tem acesso
+> pago de graça. Não existe "fazer à mão" isso: são milhares de requisições.
 
-> **A verificação de assinatura ativa no backend.** Não existe versão manual disso — ou o código
-> checa `now() < expires_at` antes de deixar criar alerta, ou todo mundo tem acesso pago de graça.
-> É a única linha da Etapa A que não pode esperar.
+**A boa notícia: ele não depende do Mercado Pago.** O gate lê a tabela `subscriptions` e compara
+duas datas. Dá para construir e testar **hoje**, sem gateway nenhum, inserindo uma linha na mão:
+
+```sql
+-- Simula um assinante ativo, sem pagamento nenhum envolvido
+insert into subscriptions
+  (user_id, plan, status, starts_at, expires_at, provider, charge_id,
+   amount_cents, paid_at, legal_version, accepted_at)
+values
+  ((select id from auth.users where email='seu@email.com'),
+   'mensal','active', now(), now() + interval '1 month',
+   'manual','teste-001', 1690, now(), '1.0', now());
+
+-- Depois, para testar o bloqueio, expire na marra:
+update subscriptions set expires_at = now() - interval '1 second'
+ where charge_id = 'teste-001';
+```
+
+Por isso ele deveria ser **a primeira coisa construída**, antes de qualquer linha de pagamento.
+
+### ⚠️ E tem um problema anterior a ele
+
+Hoje **o plano grátis também tem alertas ilimitados**, enquanto a landing vende "alertas
+ilimitados" como se fosse benefício do Premium. Ou seja: mesmo com o gate perfeito, **não há motivo
+para ninguém pagar.**
+
+O gate são, na prática, duas coisas:
+
+1. **Limitar o plano grátis** (ex.: 1 ou 2 alertas) — é o que cria a razão de existir do Premium
+2. **Checar assinatura ativa** para liberar o ilimitado
+
+Fazer só a 2 é construir uma catraca numa porta que continua aberta do lado.
+(Já apontado na §8 do `fase10-pagamentos.md`.)

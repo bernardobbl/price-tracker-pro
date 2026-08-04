@@ -114,7 +114,9 @@ original.
 ```sql
 create table subscriptions (
   id           uuid primary key default gen_random_uuid(),
-  user_id      uuid not null references auth.users(id) on delete cascade,
+  -- `set null` e nullable de propósito: permite anonimizar no pedido de exclusão
+  -- (LGPD) sem destruir o registro de receita. Ver a seção logo abaixo.
+  user_id      uuid references auth.users(id) on delete set null,
 
   plan         text not null check (plan in ('mensal','anual')),
   status       text not null check (status in ('active','expired','refunded')),
@@ -145,6 +147,36 @@ create unique index subscriptions_charge_unique on subscriptions (provider, char
 -- Consulta quente: "esse usuário tem acesso agora?"
 create index subscriptions_lookup on subscriptions (user_id, expires_at desc);
 ```
+
+### Exclusão de dados × registro fiscal — como os dois convivem
+
+O conflito: a Política de Privacidade promete apagar os dados; a mesma política promete guardar o
+registro de pagamento por 5 anos. Parecem incompatíveis, e a saída não é escolher um lado.
+
+**A chave é o `charge_id`.** Ele é um ponteiro para o registro que o **Mercado Pago já guarda por
+obrigação legal** — com pagador, valor, data e comprovante. Ou seja: você não precisa manter dado
+pessoal no *seu* banco para ter rastro fiscal. Basta manter o ponteiro.
+
+| Campo | Some no pedido de exclusão? | Por quê |
+|---|---|---|
+| `user_id` | **Sim** → `null` | É o que liga a linha a uma pessoa |
+| `charge_id` | Não | Ponteiro para o registro completo no Mercado Pago |
+| `amount_cents`, `paid_at`, `plan` | Não | Valor e data da receita — não identificam ninguém sozinhos |
+| `legal_version`, `accepted_at` | Não | Prova de aceite, sem dado pessoal |
+
+Depois de anonimizada, a linha responde "entrou R$ 59,90 em 04/08/2026" sem responder "de quem".
+Isso é anonimização de verdade no sentido da LGPD, e não pseudonimização disfarçada.
+
+> ⚠️ **Não guarde o e-mail desnormalizado na tabela** achando que ajuda na conciliação. Se guardar,
+> a linha continua sendo dado pessoal e a exclusão vira mentira.
+
+**Consequência no schema — decidir agora, custa uma palavra:**
+
+```sql
+user_id uuid references auth.users(id) on delete set null   -- e NÃO `on delete cascade`
+```
+E `user_id` precisa aceitar `null` (sem `not null`). Trocar isso depois, com dado em produção,
+é migração; agora é uma linha.
 
 ### O cálculo, em SQL
 
