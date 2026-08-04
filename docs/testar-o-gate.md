@@ -60,17 +60,36 @@ values (
 );
 ```
 
-**Confira:**
+> ⚠️ **Armadilha encontrada na prática (04/ago/2026).** Como `user_id` é nullable (de propósito,
+> para a anonimização da LGPD), se o e-mail do subselect **não existir** o insert **não dá erro** —
+> grava `user_id = null` e segue. Aí `tem_acesso` vem `true`, mas a assinatura não pertence a
+> ninguém, e o passo 4 responde `active: false` sem explicar por quê.
+>
+> Aconteceu porque o projeto tem 3 contas no `auth.users` e a logada no app não era a do SQL.
+> **Prefira colar o UUID direto**, que não tem como errar:
+>
+> ```sql
+> select id, email from auth.users;   -- pegue o id da conta que você usa no app
+> ```
+
+**Confira — inclusive de quem é a assinatura:**
 
 ```sql
-select plan, status,
-       starts_at  at time zone 'America/Sao_Paulo' as inicio,
-       expires_at at time zone 'America/Sao_Paulo' as vence,
-       now() < expires_at as tem_acesso
-from subscriptions where charge_id = 'teste-001';
+select u.email, s.plan, s.status,
+       s.starts_at  at time zone 'America/Sao_Paulo' as inicio,
+       s.expires_at at time zone 'America/Sao_Paulo' as vence,
+       now() < s.expires_at as tem_acesso
+from subscriptions s
+left join auth.users u on u.id = s.user_id     -- LEFT JOIN: mostra a linha mesmo órfã
+where s.charge_id = 'teste-001';
 ```
 
-Espere `tem_acesso = true`.
+Espere `tem_acesso = true` **e o e-mail preenchido**. Se `email` vier vazio, a assinatura está
+órfã — aponte para a conta certa:
+
+```sql
+update subscriptions set user_id = 'COLE-O-UUID-AQUI' where charge_id = 'teste-001';
+```
 
 ---
 
@@ -82,29 +101,30 @@ Suba o backend:
 cd ~/Desktop/"Price Tracker Pro"/backend && npm run dev
 ```
 
-Você precisa de um token de sessão. O jeito mais fácil: abra o app no navegador
-(`npm run dev` no frontend), faça login, abra o **DevTools → Console** e rode:
+Suba o frontend também (`npm run dev` em `frontend/`), faça login no app e abra o
+**DevTools → Console**. O teste inteiro roda ali, sem terminal e sem copiar token:
 
 ```js
-const { data } = await window.supabase.auth.getSession();
-copy(data.session.access_token);   // copia para a área de transferência
-```
-
-> Se `window.supabase` não existir, pegue o token em **DevTools → Application → Local Storage** →
-> a chave que começa com `sb-` → campo `access_token`.
-
-Agora, no terminal:
-
-```bash
-curl -s http://localhost:4000/api/fuel/entitlement \
-  -H "Authorization: Bearer COLE_O_TOKEN_AQUI" | jq
+(async () => {
+  const k = Object.keys(localStorage).find(x => x.startsWith('sb-') && x.endsWith('-auth-token'));
+  const t = JSON.parse(localStorage.getItem(k)).access_token;
+  const r = await fetch('http://localhost:4000/api/fuel/entitlement', { headers: { Authorization: 'Bearer ' + t } });
+  console.log('entitlement →', await r.json());
+})();
 ```
 
 **Esperado:**
 
-```json
-{ "active": true, "plan": "mensal", "expiresAt": "2026-09-04T...", "daysLeft": 30 }
 ```
+entitlement → {active: true, plan: "mensal", expiresAt: "2026-09-04T...", daysLeft: 30}
+```
+
+> ⚠️ **O `(async () => { ... })()` em volta não é enfeite.** O console do Safari não aceita `await`
+> solto no nível de cima (`SyntaxError: Unexpected identifier 'fetch'`), e o wrapper também evita
+> o erro de redeclarar `const` ao rodar o bloco duas vezes.
+>
+> `daysLeft: 30` está correto para uma compra em 04/08: 04/08 → 04/09 são 31 dias, menos os
+> minutos já decorridos, dá 30 inteiros.
 
 ---
 
@@ -116,13 +136,16 @@ update subscriptions
  where charge_id = 'teste-001';
 ```
 
-Repita o `curl` do passo 4. **Esperado:**
+Rode **o mesmo bloco JS** do passo 4 de novo. **Esperado:**
 
-```json
-{ "active": false, "plan": null, "expiresAt": null, "daysLeft": null }
+```
+entitlement → {active: false, plan: null, expiresAt: null, daysLeft: null}
 ```
 
 Se virou `false`, **o gate funciona**. É a única coisa que precisava ser provada.
+
+> ✅ **Verificado em 04/ago/2026** — passos 1 a 5 executados com sucesso no projeto
+> `price-tracker-pro`.
 
 ---
 
