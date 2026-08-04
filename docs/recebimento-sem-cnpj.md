@@ -100,9 +100,11 @@ Pix comum **não renova sozinho**. Isso tem consequência direta no seu modelo d
   mês**, na mão. A evasão nesse fluxo é alta — não porque a pessoa quer cancelar, mas
   porque ela esquece.
 
-Duas saídas: **Pix Automático** (o Asaas documenta; o cliente autoriza uma vez e as
-cobranças seguintes rodam sozinhas) ou **cartão de crédito** para o mensal, deixando o Pix
-como opção do anual. O `checkout.html` já tem os dois métodos na interface.
+Duas saídas seriam **Pix Automático** ou **cartão de crédito** no mensal. A primeira caiu
+por regra do Banco Central (ver §5.1). A segunda foi **descartada por decisão de produto em
+04/ago/2026**: o cartão custa 4,98% contra 0,99% do Pix, exige tokenização e cadastro, e
+adiciona atrito justamente onde o usuário decide. O checkout ficou **só com Pix**, e o mensal
+convive com a renovação manual — com o aviso automático de vencimento como amortecedor.
 
 ---
 

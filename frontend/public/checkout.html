@@ -29,8 +29,13 @@
     • O QR Code vem PRONTO do gateway (`brCodeBase64`). Não gere Pix no front:
       isso exigiria a chave Pix pessoal no navegador. Nunca faça isso.
 
-  PENDÊNCIAS CONHECIDAS (ver docs/proximos-passos.md):
-    • Cartão está desabilitado — o backend só implementa Pix.
+  PIX É A ÚNICA FORMA DE PAGAMENTO (decisão de produto, 04/ago/2026).
+  Não é limitação temporária: Pix é o que todo mundo já tem no banco, cai na
+  hora, dispensa cadastro de cartão e custa 0,99% contra 4,98% do crédito.
+  Por isso não existe seletor de método — com uma opção só, escolher seria
+  teatro. Se um dia entrar cartão, o seletor volta junto com a tokenização.
+
+  PENDÊNCIA CONHECIDA (ver docs/proximos-passos.md):
     • A URL de produção da API está fixa no código (arquivo estático não
       recebe substituição de variável do Vite). Confira antes de publicar.
   ============================================================================
@@ -152,11 +157,9 @@
   .plan-amount{ font-family:"Doto",monospace; font-weight:900; font-size:1.35rem; white-space:nowrap; }
 
   /* forma de pagamento */
-  .methods{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .method{ border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px; cursor:pointer; background:var(--surface); text-align:left; font-family:inherit; }
-  .method:hover{ border-color:var(--brand); }
-  .method[aria-checked="true"]{ border-color:var(--brand); background:var(--brand-soft); box-shadow:0 0 0 1px var(--brand); }
-  .method .m-t{ font-weight:700; font-size:.97rem; display:flex; align-items:center; gap:7px; }
+  .method--only{ display:block; cursor:default; border-color:var(--brand); background:var(--brand-soft); }
+  .method{ border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px; background:var(--surface); text-align:left; font-family:inherit; }
+      .method .m-t{ font-weight:700; font-size:.97rem; display:flex; align-items:center; gap:7px; }
   .method .m-s{ color:var(--muted); font-size:12.5px; margin-top:3px; }
 
   /* email */
@@ -303,22 +306,16 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h2>Como você prefere pagar</h2>
+          <h2>Pagamento por Pix</h2>
         </div>
         <div class="panel-body">
-          <div class="methods" role="radiogroup" aria-label="Forma de pagamento">
-            <button type="button" class="method" id="mPix" role="radio" aria-checked="true">
-              <span class="m-t">Pix <span class="badge badge-good">na hora</span></span>
-              <span class="m-s">QR Code ou copia e cola. Sem cadastro de cartão.</span>
-            </button>
-            <!-- Cartão desabilitado: o backend só implementa Pix hoje. Deixar
-                 clicável entregaria um QR Pix a quem escolheu cartão — pior que
-                 não oferecer. Reativar junto com a integração de tokenização. -->
-            <button type="button" class="method" id="mCard" role="radio"
-                    aria-checked="false" aria-disabled="true" disabled>
-              <span class="m-t">Cartão <span class="badge">em breve</span></span>
-              <span class="m-s">Ainda não disponível. Por enquanto, só Pix.</span>
-            </button>
+          <!-- Pix é a única forma, por decisão de produto (04/ago/2026): é o que
+               todo mundo já tem no banco, cai na hora, não pede cadastro de
+               cartão e custa 0,99% contra 4,98% do crédito. Não existe escolha
+               a fazer aqui, então não há radiogroup — só a informação. -->
+          <div class="method method--only" aria-hidden="false">
+            <span class="m-t">Pix <span class="badge badge-good">cai na hora</span></span>
+            <span class="m-s">QR Code ou copia e cola, no app do seu banco. Sem cadastrar cartão.</span>
           </div>
           <p class="field-help" id="methodHelp">O anual cobre 12 meses exatos com um pagamento só. Avisamos por email antes de vencer.</p>
 
@@ -484,7 +481,7 @@
     mensal: { label:'Premium mensal', cents:1690, cycle:'renova todo mês',    perMonth:'R$ 16,90/mês' }
   };
 
-  var state = { plan:'anual', method:'pix', chargeId:null, poll:null, tick:null, left:EXPIRES_SECONDS };
+  var state = { plan:'anual', chargeId:null, poll:null, tick:null, left:EXPIRES_SECONDS };
 
   function trackEvent(name, props){
     // TODO: Vercel Analytics / Plausible
@@ -614,17 +611,11 @@
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 2. FORMA DE PAGAMENTO
+  // 2. FORMA DE PAGAMENTO — só Pix (decisão de produto, 04/ago/2026)
   // ══════════════════════════════════════════════════════════════════════════
-  function pickMethod(m){
-    state.method = m;
-    $('mPix').setAttribute('aria-checked',  String(m === 'pix'));
-    $('mCard').setAttribute('aria-checked', String(m === 'card'));
-    setBtnLabel($('payBtn'), m === 'pix' ? 'Gerar pagamento' : 'Ir para o pagamento seguro', false);
-    trackEvent('select_method', { method:m });
-  }
-  $('mPix').addEventListener('click',  function(){ pickMethod('pix'); });
-  $('mCard').addEventListener('click', function(){ pickMethod('card'); });
+  // Não há seletor: com uma opção só, escolher seria teatro. O código de troca
+  // de método saiu junto — mantê-lo "por precaução" cria caminhos que ninguém
+  // percorre e que envelhecem sem ninguém notar.
 
   // ══════════════════════════════════════════════════════════════════════════
   // 3. GERAR A COBRANÇA
@@ -681,7 +672,7 @@
       location.href = '/';
       return;
     }
-    trackEvent('begin_checkout', { plan:state.plan, method:state.method });
+    trackEvent('begin_checkout', { plan:state.plan });
     this.disabled = true;
     setBtnLabel(this, 'Gerando…', true);
     createCharge();
@@ -847,9 +838,11 @@
   // ══════════════════════════════════════════════════════════════════════════
   // init
   // ══════════════════════════════════════════════════════════════════════════
-  if (!DEMO) $('demoBar').style.display = 'none';
+  // (a faixa do topo é resolvida por `avisarModo()` lá em cima — esta linha
+  //  costumava escondê-la com display:none e anulava o aviso de ambiente de
+  //  desenvolvimento, que aparece justamente quando DEMO é false)
   renderSummary();
-  pickMethod('pix');
+  setBtnLabel($('payBtn'), 'Gerar pagamento', false);
   markSteps(1);
 </script>
 </body>
