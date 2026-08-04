@@ -23,6 +23,7 @@
 | `docs/fase10-pagamentos.md` | Arquitetura original (652 linhas). Ainda vale quase toda — só troque AbacatePay por Mercado Pago. |
 | `docs/recebimento-sem-cnpj.md` | Comparativo de provedores, taxas, e **o achado do Pix Automático**. |
 | `docs/vigencia-do-acesso.md` | **Leia antes de escrever o backend.** As 6 decisões que evitam dar tempo a mais ou a menos. |
+| `docs/runbook-operacao.md` | **Portão de go-live** + como cumprir à mão o que ainda não está automatizado. |
 | `docs/proximos-passos.md` | Este arquivo. |
 
 ### Decisões travadas
@@ -103,6 +104,11 @@ Prometido por escrito, ainda não existe:
 - [ ] **Exportar dados do usuário** — direito da LGPD art. 18
 
 > Prometer nos documentos e não implementar é pior que não prometer. Esta lista é dívida assumida.
+>
+> **Mitigação enquanto não automatiza:** `docs/runbook-operacao.md` tem o procedimento manual de
+> cada uma, com o SQL pronto. Promessa cumprida à mão continua cumprida — o que mata é ninguém
+> saber como cumprir. Aquele documento também traz o **portão de go-live**: a lista que precisa
+> estar inteira antes de `DEMO = false`.
 
 ### Etapa C — Só depois de A e B
 

@@ -61,6 +61,25 @@ ganha mais tempo que quem paga em março, e o "exatamente 1 mês" morre.
 > ⚠️ **Não use "30 dias" nem "365 dias".** Meses têm 28–31 dias e anos têm 365 ou 366. Somar dias
 > fixos quebra o requisito nos dois sentidos.
 
+#### Por que 30 dias fixos foi descartado (discutido em 04/ago/2026)
+
+A proposta era usar 30 dias por ser "mais prático e igual para todo mundo". Três motivos derrubaram:
+
+1. **Contradiz o que é vendido.** A interface diz "mensal" e os Termos dizem "exatamente 1 mês".
+   Em 7 dos 12 meses, 30 dias é *menos* que um mês — quem paga em 1º de janeiro perde o dia 31.
+   Isso é o "menos tempo do que foi pago" que o requisito proíbe.
+2. **A data foge pelo calendário.** Pagou 15/jan → vence 14/fev → 16/mar → 15/abr. O cliente nunca
+   sabe de cabeça quando vence. Com mês de calendário é sempre "o mesmo dia do mês seguinte", que
+   é como toda assinatura que ele já conhece funciona.
+3. **Quebra a coerência com o anual.** 12 × 30 = **360 dias**, contra 365 do anual. Doze pagamentos
+   mensais deveriam equivaler a um anual, e não equivaleriam — o cliente perderia **5 dias por ano**.
+
+E o argumento de praticidade não se sustenta: **mês de calendário não dá trabalho nenhum a mais.**
+O Postgres já faz o clamp sozinho — `+ interval '1 month'` devolve 28/fev para 31/jan. É um
+operador, não um bloco de exceções.
+
+> **Decisão:** mês de calendário com clamp, nos dois planos.
+
 ### 2.4 Renovar antes de vencer SOMA ao saldo, não substitui
 
 Se alguém com 20 dias restantes paga de novo e o sistema fizer `expires_at = agora + 1 mês`, essa
