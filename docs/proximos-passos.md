@@ -64,6 +64,7 @@ Nada disso eu consigo fazer — precisa ser você, e algumas travam o resto.
 | 3 | **Criar a aplicação** e pegar as credenciais de teste | [Suas integrações](https://www.mercadopago.com.br/developers/panel/app) | Trava o desenvolvimento. |
 | 4 | **Revisão jurídica** dos 3 documentos | Advogado | Trava o dinheiro real, não o código. |
 | 5 | **Decidir o gatilho de virar MEI** | Você + contador | Nada agora. Decida o número ("quando passar de X/mês") para não virar susto depois. |
+| 6 | **Secrets de SMTP + variable `FRONTEND_URL`** no GitHub Actions | Settings → Secrets and variables → Actions | **O aviso de vencimento.** O código está pronto e rodando no job semanal, mas sem SMTP o e-mail não sai (o log diz isso) e sem `FRONTEND_URL` ele sai sem o link de renovação. Conferir na aba Actions: `[ingest] Avisos de vencimento: N elegíveis · N enviados` |
 
 > Os documentos legais são **rascunhos meus, não parecer jurídico.** Estão escritos a partir do que
 > o produto realmente faz — o que é mais do que a maioria dos modelos genéricos entrega — mas
