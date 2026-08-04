@@ -20,7 +20,25 @@ export interface MercadoPagoConfig {
   accessToken: string;
   publicKey: string | null;
   env: MercadoPagoEnv;
-  /** Segredo do webhook (painel → Webhooks). Sem ele, só validamos reconsultando a API. */
+  /**
+   * Segredo do webhook (painel → Webhooks).
+   *
+   * ⚠️ **AINDA NÃO É USADO.** A validação de assinatura (`x-signature`) não está
+   * implementada — está anotada como pendência em `docs/proximos-passos.md`.
+   *
+   * Por que o sistema é seguro mesmo assim: a confirmação de um pagamento vem
+   * de um GET **autenticado** na API do Mercado Pago, nunca do corpo da
+   * notificação. Uma requisição forjada no webhook não libera acesso; ela só
+   * faz o backend consultar uma order que não existe ou não está paga.
+   *
+   * O que a assinatura acrescentaria: barrar a forjaria **antes** da consulta,
+   * evitando que alguém queime nosso limite de requisições na API do provedor.
+   * É defesa em profundidade, não a diferença entre seguro e inseguro.
+   *
+   * Só dá para obter esse segredo depois de cadastrar a URL do webhook no
+   * painel — o que exige URL pública. Por isso a ordem natural é: URL pública
+   * → segredo → validação.
+   */
   webhookSecret: string | null;
 }
 
@@ -84,7 +102,14 @@ export function getMercadoPagoConfig(): MercadoPagoConfig | null {
   cached = { accessToken, publicKey, env: rawEnv, webhookSecret };
 
   logger.info(
-    { env: cached.env, temPublicKey: Boolean(publicKey), temWebhookSecret: Boolean(webhookSecret) },
+    {
+      env: cached.env,
+      temPublicKey: Boolean(publicKey),
+      // Deliberadamente NÃO logamos "temWebhookSecret: true": o segredo é lido
+      // mas ainda não valida nada, e anunciar isso sugeriria uma proteção que
+      // não existe. O aviso abaixo é a informação honesta.
+      validacaoDeAssinaturaDoWebhook: "NÃO IMPLEMENTADA",
+    },
     "[MercadoPago] Configurado"
   );
 

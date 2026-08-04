@@ -112,6 +112,21 @@ segunda linha, não a primeira — o backend usa `service_role` e ignora RLS.
 **5. Os 10 testes** da tabela em `docs/vigencia-do-acesso.md` §5. São eles que provam o
 "exatamente 1 mês".
 
+### ⚠️ Ponta solta conhecida — validação de assinatura do webhook
+
+`MERCADOPAGO_WEBHOOK_SECRET` é lida pelo config mas **não valida nada**. A assinatura
+(`x-signature`) não está implementada.
+
+**Isso torna o sistema inseguro?** Não. A confirmação de pagamento vem de um `GET` **autenticado**
+na API do Mercado Pago, nunca do corpo da notificação — então uma requisição forjada no webhook
+não libera acesso nenhum. Ela só faz o backend consultar uma order inexistente.
+
+**O que falta, então?** Barrar a forjaria *antes* da consulta. Sem isso, alguém que descubra a URL
+pode disparar requisições e queimar nosso limite na API do provedor. É defesa em profundidade.
+
+**Ordem natural:** o segredo só existe depois de cadastrar a URL do webhook no painel, e isso exige
+URL pública. Então: URL pública → pegar o segredo → implementar a validação. Não dá para antecipar.
+
 ### Etapa B — Honrar o que os documentos prometem
 
 Prometido por escrito, ainda não existe:
