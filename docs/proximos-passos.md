@@ -115,9 +115,9 @@ segunda linha, não a primeira — o backend usa `service_role` e ignora RLS.
 
 Prometido por escrito, ainda não existe:
 
+- [x] ~~**Aviso antes de vencer**~~ — **FEITO em 04/ago/2026.** Janela de 8 dias (o job é semanal), roda no `scripts/ingest.ts` via GitHub Actions. Falta só configurar os secrets de SMTP e a variable `FRONTEND_URL` no Actions.
 - [ ] **Estorno** — endpoint de refund + webhook `refunded` que zera `expires_at` na hora
-- [ ] **Reembolso proporcional** do anual (a política promete a conta de 8/12)
-- [ ] **Aviso antes de vencer** — 7 dias e 1 dia, no job semanal que já roda a ingestão
+- [ ] **Reembolso proporcional** do anual — a matemática já existe e está testada (`computeProRataRefundCents`); falta o endpoint e a chamada ao provedor
 - [ ] **Exclusão de conta a pedido** — a Política de Privacidade promete em 30 dias
 - [ ] **Exportar dados do usuário** — direito da LGPD art. 18
 

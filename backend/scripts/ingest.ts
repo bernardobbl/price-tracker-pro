@@ -3,6 +3,7 @@ import { supabase } from "../src/config/supabaseClient";
 import { ingestAnp } from "../src/ingest/anpIngestor";
 import { evaluateAllFuelAlerts } from "../src/services/fuelAlertService";
 import { applyRetention } from "../src/services/retentionService";
+import { sendExpiryNotices } from "../src/services/expiryNoticeService";
 
 /**
  * Ingestão manual do arquivo real da ANP (Série Histórica de Preços de Combustíveis).
@@ -68,6 +69,19 @@ async function main() {
   // Fase 9 — retenção automática (free tier). RETENTION_MONTHS=0 desliga.
   const deleted = await applyRetention();
   if (deleted > 0) console.log(`[ingest] Retenção: ${deleted} linhas antigas removidas`);
+
+  // Aviso de vencimento de assinatura.
+  // ⚠️ Precisa estar AQUI, e não só no cron do backend: em produção o cron
+  // interno fica desligado (`ANP_CRON=off` no Render, porque o free tier
+  // hiberna) e quem roda de verdade toda semana é o GitHub Actions chamando
+  // este script. Ligar só no cron faria o aviso nunca sair em produção.
+  // Fora do `if (success)` de propósito: não depende de a ANP publicar dado novo.
+  const notices = await sendExpiryNotices();
+  if (notices.eligible > 0) {
+    console.log(
+      `[ingest] Avisos de vencimento: ${notices.eligible} elegíveis · ${notices.sent} enviados`
+    );
+  }
 
   await printDbSummary();
 

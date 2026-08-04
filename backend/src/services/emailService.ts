@@ -68,3 +68,29 @@ export async function sendPriceAlertEmail(params: PriceAlertEmailParams) {
   });
 }
 
+export interface ExpiryNoticeEmailParams {
+  to: string;
+  subject: string;
+  text: string;
+}
+
+/**
+ * Aviso de vencimento da assinatura.
+ *
+ * O conteúdo já vem pronto de `montarConteudoVencimento` (função pura, testável
+ * sem enviar nada) — aqui só se despacha. Sem SMTP configurado, não envia e não
+ * quebra: o job segue e o motivo fica no log.
+ */
+export async function sendExpiryNoticeEmail(params: ExpiryNoticeEmailParams) {
+  const tx = getTransporter();
+  if (!tx) return false;
+
+  await tx.sendMail({
+    from: EMAIL_FROM,
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+  });
+  return true;
+}
+

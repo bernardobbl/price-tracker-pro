@@ -111,7 +111,28 @@ where u.email = 'cliente@exemplo.com' and s.status = 'active';
 Confira contra o exemplo publicado na política: cancelou no 4º mês → 8 meses restantes →
 `59,90 × 8 / 12 = R$ 39,93`. Depois, estorno parcial no painel e o mesmo `update` do passo 3.1.4.
 
-### 3.3 Aviso antes de vencer ⚠️ *o mais fácil de esquecer*
+### 3.3 Aviso antes de vencer — ✅ AUTOMATIZADO em 04/ago/2026
+
+> **Não precisa mais fazer à mão.** O aviso roda junto do job semanal da ANP
+> (`scripts/ingest.ts`, disparado pelo GitHub Actions toda segunda 09:00 UTC).
+>
+> - Janela de **8 dias**, e não 7: o job é semanal, então 7 deixaria escapar quem vence 7,5 dias
+>   depois de uma execução.
+> - `warned_at` impede aviso repetido.
+> - Quem renovou **não** recebe aviso pela assinatura antiga — o serviço só olha a de maior
+>   vigência de cada usuário.
+> - Roda **fora** do `if (ingestão teve sucesso)`: uma semana sem publicação da ANP não pode
+>   deixar o assinante sem aviso.
+>
+> **O que ainda depende de você:** os secrets de SMTP e a variable `FRONTEND_URL` precisam estar
+> configurados no GitHub Actions. Sem SMTP o aviso não sai (e o log diz isso); sem `FRONTEND_URL`
+> o e-mail sai, mas sem o link de renovação.
+>
+> Para conferir se está funcionando, veja a saída do workflow na aba **Actions** — a linha
+> `[ingest] Avisos de vencimento: N elegíveis · N enviados`.
+
+<details>
+<summary>Procedimento manual (guardado caso o automático falhe)</summary>
 
 **Toda segunda-feira**, rode a segunda consulta da §2 e envie para cada e-mail listado:
 
@@ -123,9 +144,15 @@ Confira contra o exemplo publicado na política: cancelou no 4º mês → 8 mese
 
 Registre o envio para não mandar duas vezes:
 ```sql
-alter table subscriptions add column if not exists warned_at timestamptz;
 update subscriptions set warned_at = now() where charge_id = '<charge_id>';
 ```
+
+Para forçar um reenvio (ex.: o e-mail voltou), limpe a marca:
+```sql
+update subscriptions set warned_at = null where charge_id = '<charge_id>';
+```
+
+</details>
 
 ### 3.4 Pedido de exclusão de dados (LGPD art. 18)
 
