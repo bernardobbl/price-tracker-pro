@@ -63,8 +63,25 @@
   .demo-bar .wrap{ padding:10px 22px; display:flex; gap:10px; align-items:center; justify-content:center; text-align:center; }
 
   /* topo */
-  header.top{ background:var(--surface); border-bottom:1px solid var(--line); }
-  header.top .wrap{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 22px; }
+  header.top{ background:var(--surface); border-bottom:1px solid var(--line); position:relative; overflow:hidden; }
+  header.top .wrap{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 22px; position:relative; z-index:1; }
+
+  /* Fio de dados — mesmo motivo do header do app (src/components/HeaderWire.tsx).
+     Decorativo: aria-hidden, pointer-events:none e sempre atrás do conteúdo. */
+  .top-wire{ position:absolute; z-index:0; left:0; right:0; bottom:0; height:28px; pointer-events:none; }
+  .top-wire svg{ display:block; width:100%; height:100%; }
+  .top-wire-dot{ position:absolute; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; border-radius:50%;
+                 background:var(--camel); box-shadow:0 0 10px 4px rgba(176,138,75,.35); opacity:0; }
+
+  /* Ponteiro de tanque nos botões em carregamento (src/components/FuelGauge.tsx). */
+  .btn:has(.fuel-gauge){ display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+  .fuel-gauge{ flex:none; }
+  .fuel-gauge-needle{ transform-origin:16px 15px; animation:fuel-sweep 1.9s cubic-bezier(.45,.05,.3,1) infinite; }
+  @keyframes fuel-sweep{ 0%{ transform:rotate(-58deg); } 60%,100%{ transform:rotate(56deg); } }
+
+  @media (prefers-reduced-motion: reduce){
+    .fuel-gauge-needle{ animation:none; }
+  }
   .brand{ display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-weight:700; }
   .brand .dot{ width:13px; height:13px; border-radius:4px; background:var(--brand); box-shadow:0 0 0 3px var(--brand-soft); }
   .secure{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); font-weight:600; }
@@ -203,6 +220,15 @@
       Pagamento processado pela AbacatePay
     </div>
   </div>
+
+  <div class="top-wire" aria-hidden="true">
+    <svg viewBox="0 0 1200 28" preserveAspectRatio="none">
+      <path id="topWire" d="M0 22 L150 17 L300 20 L450 12 L600 15 L750 9 L900 13 L1050 6 L1200 9"
+            fill="none" stroke="var(--brand)" stroke-opacity=".22" stroke-width="1.4"
+            vector-effect="non-scaling-stroke" />
+    </svg>
+    <span class="top-wire-dot" id="topWireDot"></span>
+  </div>
 </header>
 
 <main class="wrap">
@@ -228,9 +254,9 @@
               <span class="plan-radio" aria-hidden="true"></span>
               <span class="plan-main">
                 <span class="plan-title">Anual <span class="badge badge-good">economiza 70%</span></span>
-                <span class="plan-sub">R$ 60 uma vez, cobre 12 meses — sai R$ 5,00/mês</span>
+                <span class="plan-sub">R$ 59,90 uma vez, cobre 12 meses — sai R$ 4,99/mês</span>
               </span>
-              <span class="plan-amount">R$ 60</span>
+              <span class="plan-amount">R$ 59,90</span>
             </div>
             <div class="plan-opt" id="optMensal" role="radio" aria-checked="false" tabindex="0">
               <span class="plan-radio" aria-hidden="true"></span>
@@ -330,11 +356,11 @@
     <aside class="panel summary">
       <div class="panel-head"><h2>Resumo</h2></div>
       <div class="panel-body">
-        <div class="sum-line"><span id="sumPlan">Premium anual</span><span id="sumPrice">R$ 60,00</span></div>
-        <div class="sum-line muted"><span id="sumCycle">12 meses de acesso</span><span id="sumPerMonth">R$ 5,00/mês</span></div>
+        <div class="sum-line"><span id="sumPlan">Premium anual</span><span id="sumPrice">R$ 59,90</span></div>
+        <div class="sum-line muted"><span id="sumCycle">12 meses de acesso</span><span id="sumPerMonth">R$ 4,99/mês</span></div>
         <div class="sum-total">
           <span>Total hoje</span>
-          <span class="v" id="sumTotal">R$ 60,00</span>
+          <span class="v" id="sumTotal">R$ 59,90</span>
         </div>
 
         <ul class="sum-what">
@@ -370,7 +396,7 @@
   var EXPIRES_SECONDS = 15 * 60;
 
   var PLANS = {
-    anual:  { label:'Premium anual',  cents:6000, cycle:'12 meses de acesso', perMonth:'R$ 5,00/mês' },
+    anual:  { label:'Premium anual',  cents:5990, cycle:'12 meses de acesso', perMonth:'R$ 4,99/mês' },
     mensal: { label:'Premium mensal', cents:1690, cycle:'renova todo mês',    perMonth:'R$ 16,90/mês' }
   };
 
@@ -384,6 +410,43 @@
     return 'R$ ' + (cents/100).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
   }
   function $(id){ return document.getElementById(id); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ORNAMENTO — nada aqui participa do fluxo de pagamento.
+  // ══════════════════════════════════════════════════════════════════════════
+  var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /** Marcador de tanque (E→F) para os botões enquanto a ação carrega. */
+  var GAUGE_SVG =
+    '<svg class="fuel-gauge" width="30" height="18" viewBox="0 0 32 19" aria-hidden="true" focusable="false">' +
+      '<path d="M3 15 A13 13 0 0 1 29 15" fill="none" stroke="currentColor" stroke-opacity=".3" stroke-width="2" stroke-linecap="round"/>' +
+      '<text x="2" y="19" font-size="6" fill="currentColor" fill-opacity=".65">E</text>' +
+      '<text x="25" y="19" font-size="6" fill="currentColor" fill-opacity=".65">F</text>' +
+      '<g class="fuel-gauge-needle"><line x1="16" y1="15" x2="16" y2="5" stroke="var(--camel)" stroke-width="2" stroke-linecap="round"/></g>' +
+      '<circle cx="16" cy="15" r="2" fill="var(--camel)"/>' +
+    '</svg>';
+
+  /** Troca o conteúdo do botão por "ponteiro + texto" (ou só texto). */
+  function setBtnLabel(btn, text, busy){
+    btn.innerHTML = (busy ? GAUGE_SVG : '') + '<span>' + text + '</span>';
+  }
+
+  /* Fio de dados no header — o ponto dourado percorrendo, igual ao app. */
+  (function(){
+    var wire = $('topWire'), dot = $('topWireDot');
+    if (!wire || !dot || REDUCED) return;
+    var total = wire.getTotalLength(), elapsed = 0, last = performance.now();
+    (function frame(now){
+      var dt = Math.min(now - last, 64);   // retoma sem pulo depois de aba oculta
+      last = now; elapsed += dt;
+      var p = (elapsed % 9000) / 9000;
+      var pt = wire.getPointAtLength(p * total);
+      dot.style.left = (pt.x / 1200 * 100) + '%';
+      dot.style.top  = (pt.y / 28 * 100) + '%';
+      dot.style.opacity = Math.min(1, Math.sin(p * Math.PI) * 3);
+      requestAnimationFrame(frame);
+    })(performance.now());
+  })();
 
   // ══════════════════════════════════════════════════════════════════════════
   // 1. PLANO — o front só escolhe a CHAVE do plano. O valor real é do backend.
@@ -421,7 +484,7 @@
     state.method = m;
     $('mPix').setAttribute('aria-checked',  String(m === 'pix'));
     $('mCard').setAttribute('aria-checked', String(m === 'card'));
-    $('payBtn').textContent = m === 'pix' ? 'Gerar pagamento' : 'Ir para o pagamento seguro';
+    setBtnLabel($('payBtn'), m === 'pix' ? 'Gerar pagamento' : 'Ir para o pagamento seguro', false);
     trackEvent('select_method', { method:m });
   }
   $('mPix').addEventListener('click',  function(){ pickMethod('pix'); });
@@ -457,14 +520,14 @@
     }
     trackEvent('begin_checkout', { plan:state.plan, method:state.method });
     this.disabled = true;
-    this.textContent = 'Gerando…';
+    setBtnLabel(this, 'Gerando…', true);
 
     if (state.method === 'card'){
       // Cartão = checkout hospedado. O backend devolve a URL e a gente redireciona.
       // TODO API: POST /api/billing/checkout -> { url }
       if (DEMO){
         this.disabled = false;
-        this.textContent = 'Ir para o pagamento seguro';
+        setBtnLabel(this, 'Ir para o pagamento seguro', false);
         alert('DEMO: aqui o usuário seria levado ao checkout da AbacatePay (cartão).');
         return;
       }
@@ -500,7 +563,7 @@
     .catch(function(err){
       console.error(err);
       $('payBtn').disabled = false;
-      $('payBtn').textContent = 'Gerar pagamento';
+      setBtnLabel($('payBtn'), 'Gerar pagamento', false);
       setStatus('bad', 'Não conseguimos gerar a cobrança agora. Tente de novo em instantes.');
       $('pixPanel').classList.add('show');
     });
