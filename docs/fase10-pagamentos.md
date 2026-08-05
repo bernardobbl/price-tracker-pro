@@ -1,11 +1,26 @@
-# Fase 10 — Arquitetura de pagamento (AbacatePay)
+# Fase 10 — Arquitetura de pagamento
 
-> **⚠️ Este arquivo só existe na branch `feat/premium-landing`.**
-> A `main` sabe que este experimento existe (Fase 10 do `plan.md`), mas não carrega nenhuma linha dele.
-> Nada aqui vai para a `main` sem o critério de sucesso da Fase 10.
+> ## ⚠️ Leia este aviso antes do resto do documento
 >
-> **Status:** 📋 PLANO, nada implementado. Escrito em 29/jul/2026.
-> **Público-alvo deste documento:** você mesmo, daqui a 3 meses, sem lembrar de nada.
+> Escrito em **29/jul/2026**, quando nada existia. O cabeçalho original dizia "este arquivo só
+> existe na branch `feat/premium-landing`" e "Status: 📋 PLANO, nada implementado" — **as duas
+> coisas deixaram de ser verdade**. O documento vive na `feat/checkout-pix` e o pagamento foi
+> construído e exercitado de ponta a ponta em 05/ago/2026.
+>
+> **O que mudou em relação ao que está escrito abaixo:**
+>
+> | O texto diz | O que valeu na prática |
+> |---|---|
+> | Provedor **AbacatePay** | **Mercado Pago**, API de Orders — comparativo em `recebimento-sem-cnpj.md` |
+> | Assinatura recorrente | **Compra avulsa**: Pix Automático exige CNPJ (regra do BC) |
+> | `GET /api/billing/me` | `GET /api/fuel/entitlement` |
+>
+> **O que continua valendo, e é o motivo de o arquivo não ser apagado:** o raciocínio. Entitlement
+> no nosso banco e não no gateway, data de expiração em vez de booleano, idempotência do webhook,
+> verdade vinda de consulta autenticada, um único arquivo falando com o provedor. Tudo isso foi
+> implementado exatamente como planejado aqui.
+>
+> **Para o estado atual, leia `proximos-passos.md`** — este arquivo é o histórico do porquê.
 
 ---
 

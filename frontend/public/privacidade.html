@@ -1,0 +1,194 @@
+<!--
+  ============================================================================
+  PRICE TRACKER PRO — POLÍTICA DE PRIVACIDADE (LGPD)
+  ----------------------------------------------------------------------------
+  ⚠️ RASCUNHO. Escrito a partir do que o sistema realmente coleta e para onde
+  os dados realmente vão (Supabase, Render, Vercel, Mercado Pago, SMTP).
+  NÃO é parecer jurídico — peça revisão antes da primeira cobrança real.
+
+  ⚠️ MANTENHA SINCRONIZADO COM O CÓDIGO. Se você adicionar um campo, uma
+  ferramenta de analytics ou um novo fornecedor, esta página precisa mudar
+  junto. Política desatualizada é pior que política nenhuma.
+
+  VERSÃO: ao mudar o texto, suba a VERSAO aqui e no checkout.html.
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f4f3ee" />
+<title>Política de Privacidade · Price Tracker Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/legal.css" />
+</head>
+<body>
+
+<header class="legal-top">
+  <div class="legal-wrap">
+    <a class="legal-brand" href="/"><span class="dot"></span> Price Tracker Pro</a>
+    <nav class="legal-nav">
+      <a href="/termos.html">Termos</a>
+      <a href="/privacidade.html" aria-current="page">Privacidade</a>
+      <a href="/reembolso.html">Reembolso</a>
+    </nav>
+  </div>
+</header>
+
+<main class="legal-wrap legal-doc">
+  <p class="legal-eyebrow">Documento legal</p>
+  <h1>Política de Privacidade</h1>
+  <p class="legal-meta">Versão <strong>1.0</strong> · vigente desde 4 de agosto de 2026</p>
+
+  <div class="legal-callout legal-callout--good">
+    <strong>Resumo honesto:</strong> pedimos o seu e-mail e só. Não vendemos, não alugamos e não
+    passamos seus dados para anunciante nenhum. Não temos rastreador de publicidade. Você pode
+    pedir para apagar tudo a qualquer momento e a gente apaga.
+  </div>
+
+  <h2>1. Quem controla seus dados</h2>
+  <p>
+    <strong>Bernardo Barcellos Leite</strong>, pessoa física, é o controlador dos dados tratados
+    aqui. Contato para qualquer assunto de privacidade:
+    <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a>.
+  </p>
+
+  <h2>2. O que coletamos, por que, e com que base legal</h2>
+  <table>
+    <thead>
+      <tr><th>Dado</th><th>Para quê</th><th>Base legal (LGPD)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>E-mail</strong></td>
+        <td>Identificar sua conta, enviar alertas de preço e a confirmação de pagamento</td>
+        <td>Execução de contrato (art. 7º, V)</td>
+      </tr>
+      <tr>
+        <td><strong>Senha</strong></td>
+        <td>Autenticar você. Guardada de forma criptografada pelo Supabase Auth — não temos acesso a ela</td>
+        <td>Execução de contrato</td>
+      </tr>
+      <tr>
+        <td><strong>Favoritos e alertas</strong><br /><span style="font-size:.85em">(combustível, cidade, valor-alvo)</span></td>
+        <td>Saber o que monitorar e quando te avisar</td>
+        <td>Execução de contrato</td>
+      </tr>
+      <tr>
+        <td><strong>Dados da assinatura</strong><br /><span style="font-size:.85em">(plano, data de início e fim, id da cobrança)</span></td>
+        <td>Controlar o seu período de acesso e comprovar o pagamento</td>
+        <td>Execução de contrato e obrigação legal</td>
+      </tr>
+      <tr>
+        <td><strong>Registro de aceite</strong><br /><span style="font-size:.85em">(versão dos documentos e data)</span></td>
+        <td>Comprovar o que você aceitou e quando</td>
+        <td>Obrigação legal</td>
+      </tr>
+      <tr>
+        <td><strong>Registros técnicos</strong><br /><span style="font-size:.85em">(IP e horário das requisições)</span></td>
+        <td>Segurança e limite de abuso da API</td>
+        <td>Legítimo interesse (art. 7º, IX)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>O que NÃO coletamos</h3>
+  <ul>
+    <li><strong>Dados de cartão.</strong> Nunca passam por nós — vão direto para o Mercado Pago.</li>
+    <li><strong>Sua localização.</strong> Você digita a cidade; não lemos GPS.</li>
+    <li><strong>CPF, telefone ou endereço.</strong> Não pedimos.</li>
+    <li><strong>Cookies de publicidade e rastreadores de terceiros.</strong> Não usamos.</li>
+  </ul>
+
+  <h2>3. Com quem compartilhamos</h2>
+  <p>Só com quem é necessário para o serviço funcionar (operadores, na linguagem da LGPD):</p>
+  <table>
+    <thead>
+      <tr><th>Fornecedor</th><th>Para quê</th><th>O que recebe</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Supabase</strong></td><td>Banco de dados e autenticação</td><td>E-mail, senha criptografada, favoritos, alertas</td></tr>
+      <tr><td><strong>Vercel</strong></td><td>Hospedagem do site</td><td>Registros de acesso</td></tr>
+      <tr><td><strong>Render</strong></td><td>Hospedagem da API</td><td>Registros de acesso</td></tr>
+      <tr><td><strong>Mercado Pago</strong></td><td>Processar o pagamento</td><td>E-mail e valor da transação</td></tr>
+      <tr><td>Provedor de e-mail (SMTP)</td><td>Enviar os alertas</td><td>E-mail e conteúdo do alerta</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>Não vendemos, não alugamos e não cedemos seus dados para publicidade.</strong> Só
+    entregamos dados a autoridade pública mediante ordem legal válida.
+  </p>
+  <p>
+    Alguns desses fornecedores mantêm servidores fora do Brasil. A LGPD permite essa transferência
+    internacional quando necessária para executar o contrato com você (art. 33).
+  </p>
+
+  <h2>4. Por quanto tempo guardamos</h2>
+  <ul>
+    <li><strong>Conta ativa:</strong> enquanto você quiser usar o serviço.</li>
+    <li><strong>Depois do pedido de exclusão:</strong> apagamos em até 30 dias.</li>
+    <li><strong>Registros de pagamento:</strong> mantidos pelo prazo legal (até 5 anos), mesmo após a exclusão da conta, porque a lei exige comprovação fiscal e contábil.</li>
+    <li><strong>Registros técnicos:</strong> 6 meses.</li>
+  </ul>
+
+  <h2>5. Seus direitos</h2>
+  <p>Pela LGPD (art. 18), você pode a qualquer momento pedir para:</p>
+  <ul>
+    <li>Saber se tratamos dados seus e quais são;</li>
+    <li>Corrigir dados incompletos ou errados;</li>
+    <li>Receber uma cópia dos seus dados em formato legível;</li>
+    <li><strong>Apagar seus dados</strong> e encerrar a conta;</li>
+    <li>Revogar consentimento e retirar seu e-mail dos alertas;</li>
+    <li>Saber com quem compartilhamos.</li>
+  </ul>
+  <p>
+    É só escrever para <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a>.
+    Respondemos em até <strong>15 dias</strong>. Não cobramos por isso.
+  </p>
+
+  <h2>6. Segurança</h2>
+  <p>
+    Senhas são guardadas criptografadas pelo Supabase Auth. O acesso aos dados de cada usuário é
+    isolado por <em>Row Level Security</em> no banco, e a API roda com cabeçalhos de segurança e
+    limite de requisições. Todo o tráfego é por HTTPS.
+  </p>
+  <p>
+    Nenhum sistema é 100% seguro. Se acontecer um incidente que possa te causar risco relevante,
+    avisamos você e a ANPD, como manda o art. 48 da LGPD.
+  </p>
+
+  <h2>7. Cookies</h2>
+  <p>
+    Usamos apenas o armazenamento local necessário para manter você conectado (sessão do Supabase
+    Auth). <strong>Não há cookie de publicidade, pixel de rede social nem rastreamento entre
+    sites.</strong> Se um dia adicionarmos qualquer medição de audiência, esta página muda antes.
+  </p>
+
+  <h2>8. Crianças e adolescentes</h2>
+  <p>
+    O serviço não é direcionado a menores de 18 anos e não coletamos dados de menores
+    intencionalmente. Se identificarmos, apagamos.
+  </p>
+
+  <h2>9. Dados de preço da ANP</h2>
+  <p>
+    Os preços, nomes de postos e endereços vêm do conjunto de dados públicos da ANP. São dados de
+    estabelecimentos comerciais, não seus. Não fazemos nenhum cruzamento entre esses dados e você.
+  </p>
+
+  <h2>10. Mudanças nesta política</h2>
+  <p>
+    Se mudarmos algo relevante — novo dado coletado, novo fornecedor, nova finalidade — avisamos por
+    e-mail com pelo menos <strong>15 dias</strong> de antecedência antes de a mudança valer.
+  </p>
+
+  <p class="legal-foot">
+    Documento em rascunho, ainda não revisado por advogado. Última atualização: 4 de agosto de 2026.
+  </p>
+</main>
+
+</body>
+</html>

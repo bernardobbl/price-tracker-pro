@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { ingestAnp } from "../ingest/anpIngestor";
 import { evaluateAllFuelAlerts } from "../services/fuelAlertService";
 import { applyRetention } from "../services/retentionService";
+import { sendExpiryNotices } from "../services/expiryNoticeService";
 import { logger } from "../lib/logger";
 
 /**
@@ -56,6 +57,18 @@ async function runIngest(trigger: string): Promise<void> {
   // Fase 9 — retenção automática (free tier): mantém o banco num platô de tamanho.
   // Roda toda semana (mesmo em skip — barata e idempotente); nunca lança.
   await applyRetention();
+
+  // Aviso de vencimento de assinatura. Fica FORA do `if (success)` de propósito:
+  // ele não depende de a ANP ter publicado dado novo. Se ficasse lá dentro, uma
+  // semana sem publicação deixaria o assinante sem aviso — e é justamente essa
+  // falha silenciosa que ele existe para evitar. Nunca lança.
+  const notices = await sendExpiryNotices();
+  if (notices.eligible > 0) {
+    logger.info(
+      { eligible: notices.eligible, sent: notices.sent },
+      "[CRON][ANP] Avisos de vencimento processados"
+    );
+  }
 }
 
 export function scheduleWeeklyAnpJob(): void {

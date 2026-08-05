@@ -9,7 +9,7 @@
   Servida em /premium (ver rewrite em frontend/vercel.json).
 
   MODELO DE PREÇO (decidido em 29/jul/2026, mensal reajustado em 29/jul/2026):
-    • R$ 60/ano no anual   ->  R$ 5,00/mês   <- PLANO PRINCIPAL
+    • R$ 59,90/ano no anual -> R$ 4,99/mês   <- PLANO PRINCIPAL
     • R$ 16,90/mês no mensal (âncora: 12x16,90 = R$202,80, o anual fica 70% menor)
     • Vitalício DESCARTADO: receita que morre com despesa que não morre.
 
@@ -32,7 +32,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#f4f3ee" />
 <title>Price Tracker Pro Premium — abasteça na hora certa</title>
-<meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 60/ano ou R$ 16,90/mês." />
+<meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 59,90/ano ou R$ 16,90/mês." />
 <meta name="robots" content="noindex" />
 
 <!-- TODO 3: cole aqui o script do Vercel Analytics ou Plausible -->
@@ -293,7 +293,7 @@
 
       <div class="cta-row">
         <a class="btn btn-primary" id="ctaHero" href="/premium/checkout?plan=anual">Assinar o Premium</a>
-        <span class="btn-sub">R$ 60/ano (sai R$ 5/mês) · ou R$ 16,90 no mensal · cancela quando quiser</span>
+        <span class="btn-sub">R$ 59,90/ano (sai R$ 4,99/mês) · ou R$ 16,90 no mensal · sem cobrança automática</span>
 
         <form class="email-form" id="emailForm" novalidate>
           <!-- TODO 1: troque a action por seu endpoint do Formspree -->
@@ -376,10 +376,10 @@
           <div class="price-box">
             <span class="plan-kicker" id="planKicker">Plano anual · melhor preço</span>
             <!-- TODO: preços editáveis pra você testar (ver também o objeto PLANS no script). -->
-            <div class="big-price" id="planPrice">R$ 60 <small>/ano</small></div>
-            <div class="plan-note" id="planNote">Sai R$ 5,00 por mês — 70% mais barato que pagar mês a mês.</div>
+            <div class="big-price" id="planPrice">R$ 59,90 <small>/ano</small></div>
+            <div class="plan-note" id="planNote">Sai R$ 4,99 por mês — 70% mais barato que pagar mês a mês.</div>
             <a class="btn" id="ctaOffer" href="/premium/checkout?plan=anual">Assinar agora</a>
-            <div class="slots" id="slots">Pix (na hora) ou cartão (renova sozinho)</div>
+            <div class="slots" id="slots">Pix — cai na hora · compra avulsa</div>
           </div>
         </div>
       </div>
@@ -405,11 +405,11 @@
       </details>
       <details>
         <summary>Como eu pago?</summary>
-        <div class="a">No Pix, lendo o QR Code ou colando o código copia e cola no app do seu banco — cai na hora. No cartão, a cobrança renova sozinha e você cancela quando quiser. O anual são R$ 60 uma vez, cobrindo 12 meses.</div>
+        <div class="a">Por Pix, lendo o QR Code ou colando o código copia e cola no app do seu banco — cai na hora. É a única forma de pagamento: sem cadastro de cartão. A compra é avulsa: não existe cobrança automática. O anual são R$ 59,90 uma vez, cobrindo 12 meses exatos; o mensal cobre 1 mês exato. Avisamos por email antes de vencer e você decide se renova.</div>
       </details>
       <details>
         <summary>Meus dados de pagamento ficam com vocês?</summary>
-        <div class="a">Não. O pagamento é processado pela AbacatePay, uma instituição de pagamento regulada. Nós nunca vemos número de cartão nem seus dados bancários — só recebemos a confirmação de que o pagamento foi aprovado.</div>
+        <div class="a">Não. O pagamento é processado pelo Mercado Pago, uma instituição de pagamento regulada. Nós nunca vemos seus dados bancários — só recebemos a confirmação de que o pagamento foi aprovado.</div>
       </details>
       <details>
         <summary>O app grátis vai continuar?</summary>
@@ -440,12 +440,12 @@
     mensal: {
       kicker: 'Plano mensal',
       price:  'R$ 16,90 <small>/mês</small>',
-      note:   'Cobrado mês a mês. Cancela quando quiser.'
+      note:   '1 mês exato de acesso. Sem cobrança automática.'
     },
     anual: {
       kicker: 'Plano anual · melhor preço',
-      price:  'R$ 60 <small>/ano</small>',
-      note:   'Sai R$ 5,00 por mês — 70% mais barato que pagar mês a mês.'
+      price:  'R$ 59,90 <small>/ano</small>',
+      note:   'Sai R$ 4,99 por mês — 70% mais barato que pagar mês a mês.'
     }
   };
   var current = 'anual';   // default = anual (ver comentário no HTML e docs/fase10-pagamentos.md)

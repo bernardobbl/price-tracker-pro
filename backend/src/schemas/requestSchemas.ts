@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isKnownLegalVersion, LEGAL_VERSIONS } from "../lib/legalVersions";
 
 // ── Domínio combustível (ANP) ───────────────────────────────────────────────
 
@@ -22,6 +23,36 @@ export const createTrackedSeriesSchema = z.object({
   municipality: z.string().trim().min(1),
   brand: z.string().trim().min(1).optional(),
   label: z.string().trim().min(1).optional(),
+});
+
+// ── Cobrança / assinatura ───────────────────────────────────────────────────
+
+/**
+ * Início do checkout.
+ *
+ * ⚠️ **Não existe campo de valor aqui, e isso é deliberado.** O front manda só
+ * a chave do plano; quem decide o preço é o backend (`PLAN_PRICE_CENTS`). Se o
+ * valor viesse do cliente, qualquer um pagaria R$ 0,01 pelo anual.
+ */
+export const createCheckoutSchema = z.object({
+  plan: z.enum(["mensal", "anual"], {
+    message: "plan deve ser 'mensal' ou 'anual'.",
+  }),
+  /**
+   * Versão dos documentos legais aceita na tela — grava junto como prova.
+   *
+   * ⚠️ **Lista branca, não string livre.** O valor é a metade verificável da
+   * prova de aceite (a outra é o horário, que vem do servidor). Aceitar
+   * qualquer string deixaria um cliente forjado gravar uma versão que nunca
+   * existiu — e um registro de aceite que não se pode conferir não é prova.
+   * Ao publicar uma versão nova, acrescente em `lib/legalVersions.ts`.
+   */
+  legalVersion: z
+    .string()
+    .trim()
+    .refine(isKnownLegalVersion, {
+      message: `legalVersion deve ser uma versão conhecida: ${LEGAL_VERSIONS.join(", ")}.`,
+    }),
 });
 
 /** Alerta por série (combustível). */

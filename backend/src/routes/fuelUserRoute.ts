@@ -31,8 +31,35 @@ import {
   evaluateFuelAlertImmediately,
   listFuelAlerts,
 } from "../services/fuelAlertService";
+import { getEntitlement, hasActiveSubscription } from "../services/subscriptionService";
+import { decideAlertQuota } from "../lib/alertQuota";
 
 const router = Router();
+
+// ── Assinatura ──────────────────────────────────────────────────────────────
+/**
+ * Situação do acesso pago do usuário logado.
+ *
+ * Serve para a interface decidir o que mostrar. **Não é o gate** — esconder
+ * botão é experiência do usuário, não segurança. Quem barra de verdade é a
+ * checagem no POST /alerts abaixo.
+ */
+router.get(
+  "/entitlement",
+  requireAuth,
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) return sendError(res, 401, "UNAUTHENTICATED", "Usuário não autenticado.");
+
+    const status = await getEntitlement(userId);
+    return res.json({
+      active: status.active,
+      plan: status.plan,
+      expiresAt: status.expiresAt ? status.expiresAt.toISOString() : null,
+      daysLeft: status.daysLeft,
+    });
+  })
+);
 
 // ── Favoritos (tracked_series) ──────────────────────────────────────────────
 router.get(
@@ -91,6 +118,27 @@ router.post(
     // 404 (e não 403) para não revelar se o id existe.
     const owned = await getOwnedTrackedSeries(seriesId, userId);
     if (!owned) return sendError(res, 404, "SERIES_NOT_FOUND", "Série favoritada não encontrada.");
+
+    // ── Gate de assinatura ────────────────────────────────────────────────
+    // O backend usa a service_role, que ignora RLS: a checagem TEM de estar
+    // aqui. Hoje `FREE_ALERT_LIMIT` é Infinity, então isto nunca barra ninguém
+    // — a limitação do plano grátis é decisão à parte (ver alertQuota.ts).
+    const existing = await listFuelAlerts(userId);
+    const alreadyHasThisSeries = existing.some(
+      (a) => (a as { series_id?: string }).series_id === seriesId
+    );
+
+    if (!alreadyHasThisSeries) {
+      // Só conta cota quando é alerta NOVO: o upsert por (user_id, series_id,
+      // channel) faz atualização não criar linha, e atualizar não pode custar cota.
+      const quota = decideAlertQuota({
+        hasActiveSubscription: await hasActiveSubscription(userId),
+        currentCount: existing.length,
+      });
+      if (!quota.allowed) {
+        return sendError(res, 402, "ALERT_QUOTA_EXCEEDED", quota.reason);
+      }
+    }
 
     const alert = await createOrUpdateFuelAlert({
       userId,

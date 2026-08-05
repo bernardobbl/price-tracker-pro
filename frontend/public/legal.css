@@ -1,0 +1,112 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Estilo compartilhado das páginas legais (termos / privacidade / reembolso).
+   Paleta idêntica a frontend/src/index.css — não inventar cor nova aqui.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --paper: #f4f3ee;
+  --surface: #ffffff;
+  --surface-soft: #faf9f4;
+  --ink: #20222e;
+  --ink-soft: #45485a;
+  --muted: #5c5f70;
+  --line: #e4e2da;
+  --line-strong: #d4d2c8;
+  --brand: #3b4a8c;
+  --brand-deep: #2c3a73;
+  --brand-soft: #eef0f8;
+  --camel: #b08a4b;
+  --good-soft: #e7f0e9;
+  --good-deep: #2f6446;
+  --warn-soft: #f7efdd;
+  --warn-deep: #8a611c;
+  --radius: 10px;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.legal-wrap { max-width: 760px; margin: 0 auto; padding: 0 22px; }
+
+/* ── Topo ── */
+.legal-top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.legal-top .legal-wrap {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 16px 22px; flex-wrap: wrap;
+}
+.legal-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-display); font-weight: 700; font-size: 1rem;
+  color: var(--ink); text-decoration: none;
+}
+.legal-brand .dot {
+  width: 13px; height: 13px; border-radius: 4px;
+  background: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.legal-nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.legal-nav a {
+  font-size: 0.82rem; font-weight: 600; color: var(--muted);
+  text-decoration: none; padding: 5px 10px; border-radius: 6px;
+}
+.legal-nav a:hover { background: var(--surface-soft); color: var(--brand); }
+.legal-nav a[aria-current="page"] { background: var(--brand-soft); color: var(--brand-deep); }
+
+/* ── Documento ── */
+.legal-doc { padding: 42px 22px 80px; }
+
+.legal-eyebrow {
+  margin: 0 0 6px; font-size: 0.68rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.legal-doc h1 {
+  margin: 0 0 8px; font-family: var(--font-display);
+  font-size: 2.1rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15;
+}
+.legal-meta { margin: 0 0 28px; font-size: 0.85rem; color: var(--muted); }
+
+.legal-doc h2 {
+  margin: 34px 0 10px; font-family: var(--font-display);
+  font-size: 1.15rem; font-weight: 600; letter-spacing: -0.01em;
+  padding-top: 18px; border-top: 1px solid var(--line);
+}
+.legal-doc h3 { margin: 22px 0 8px; font-size: 0.98rem; font-weight: 700; color: var(--ink-soft); }
+.legal-doc p { margin: 0 0 12px; color: var(--ink-soft); }
+.legal-doc ul { margin: 0 0 14px; padding-left: 1.25rem; color: var(--ink-soft); }
+.legal-doc li { margin-bottom: 6px; }
+.legal-doc a { color: var(--brand); }
+.legal-doc strong { color: var(--ink); }
+
+/* Caixa de destaque */
+.legal-callout {
+  background: var(--brand-soft); border: 1px solid #ced5ea;
+  border-radius: var(--radius); padding: 15px 17px; margin: 0 0 22px;
+  font-size: 0.93rem; color: var(--ink-soft);
+}
+.legal-callout p:last-child { margin-bottom: 0; }
+.legal-callout--warn { background: var(--warn-soft); border-color: #e8d9b6; color: var(--warn-deep); }
+.legal-callout--warn strong { color: var(--warn-deep); }
+.legal-callout--good { background: var(--good-soft); border-color: #bcd6c4; color: var(--good-deep); }
+.legal-callout--good strong { color: var(--good-deep); }
+
+/* Tabela */
+.legal-doc table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 0.88rem; }
+.legal-doc th, .legal-doc td {
+  text-align: left; padding: 9px 11px; border: 1px solid var(--line); vertical-align: top;
+}
+.legal-doc th { background: var(--surface-soft); font-weight: 600; color: var(--ink); }
+.legal-doc td { color: var(--ink-soft); }
+
+.legal-foot {
+  margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
+  font-size: 0.8rem; color: var(--muted); font-style: italic;
+}
