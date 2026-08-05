@@ -480,9 +480,16 @@
   // checkout responde 400 para todo mundo até o backend subir.
   var LEGAL_VERSION = '1.0';
 
+  // ⚠️ `cycle` aparece no Resumo, ao lado do preço. Ele NÃO pode sugerir cobrança
+  // recorrente: a compra é avulsa por decisão de arquitetura (Pix Automático exige
+  // CNPJ — regra do Banco Central, ver docs/recebimento-sem-cnpj.md), e o resto
+  // desta página, a premium.html e a Política de Reembolso afirmam isso. Dizer
+  // "renova todo mês" no resumo do pagamento seria a única linha do produto a
+  // prometer débito automático — e prometer cobrança que não existe é o tipo de
+  // divergência que vira reclamação e estorno.
   var PLANS = {
     anual:  { label:'Premium anual',  cents:5990, cycle:'12 meses de acesso', perMonth:'R$ 4,99/mês' },
-    mensal: { label:'Premium mensal', cents:1690, cycle:'renova todo mês',    perMonth:'R$ 16,90/mês' }
+    mensal: { label:'Premium mensal', cents:1690, cycle:'1 mês de acesso',    perMonth:'R$ 16,90/mês' }
   };
 
   var state = {

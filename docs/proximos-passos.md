@@ -1,10 +1,47 @@
 # Próximos passos — retomar daqui
 
 > **Para o Bernardo do futuro.** Escrito em 04/ago/2026 no fim de uma sessão, para você conseguir
-> voltar sem reler tudo. **Atualizado em 05/ago/2026 (tarde)** — teste ponta a ponta concluído,
-> dados de teste limpos, PR #22 pronto para review. Comece por aqui.
+> voltar sem reler tudo. **Atualizado em 05/ago/2026 (noite)** — segunda varredura de pontas
+> soltas, três corrigidas e uma aberta (§0). Comece por aqui.
 >
 > **Branch:** `feat/checkout-pix` → [PR #22](https://github.com/bernardobbl/price-tracker-pro/pull/22).
+
+---
+
+## 0. 🔎 Segunda varredura — 05/ago/2026 (noite)
+
+Revisão independente da branch depois da auditoria, procurando o que tinha escapado. Verificado
+do zero: `tsc` limpo nos dois pacotes, `eslint` limpo nos dois, **209 testes no backend e 61 no
+frontend passando**, working tree limpo, nenhum `.env` versionado.
+
+### ✅ Corrigido nesta varredura
+
+| # | O quê | Onde | Por que importava |
+|---|---|---|---|
+| 1 | O Resumo do checkout dizia **"renova todo mês"** no plano mensal | `checkout.html` (`PLANS.mensal.cycle`) | Era a **única linha do produto a prometer débito automático**, ao lado do preço, numa tela de pagamento. Todo o resto — a própria página três linhas abaixo, a `premium.html` e a Política de Reembolso — diz "compra avulsa, sem cobrança automática". Sobrou do texto anterior ao merge da `main`, que arrumou a `premium.html` e não o objeto `PLANS`. Agora: **"1 mês de acesso"**. |
+| 2 | `render.yaml` **não declarava nenhuma variável `MERCADOPAGO_*`** | `render.yaml` | O blueprint é o registro de quais variáveis o serviço precisa. Sem as quatro ali, um serviço recriado a partir dele sobe com a cobrança desligada (503 no checkout) e nada no arquivo explica o porquê. Adicionadas como `sync: false` — os valores continuam no painel, só a dependência ficou visível. |
+| 3 | Três docs desatualizados | `billingService.ts`, `runbook-operacao.md` §1, `fase10-pagamentos.md` | O comentário do `getChargeStatus` ainda dizia "a página consulta a cada 4s" (é escada desde a auditoria); o portão de go-live disparava em `DEMO = false`, que **já é false** — o gatilho certo é `MERCADOPAGO_ENV=production`, e um portão que parece violado deixa de ser lido; o `fase10-pagamentos.md` abria dizendo "só existe na branch `feat/premium-landing`" e "nada implementado", com AbacatePay no título. |
+
+### ⚠️ Aberto — o app React não sabe que a assinatura existe
+
+**O achado que sobrou, e o único com efeito para quem paga.**
+
+`GET /api/fuel/entitlement` foi construído "para a interface" — e **nenhuma interface o consulta**.
+`grep -rn "entitlement\|premium" frontend/src` não devolve **uma linha**. Na prática:
+
+- quem **paga** volta para o app e não vê diferença nenhuma: nenhum selo, nenhuma data de
+  vencimento, nenhuma confirmação de que o dinheiro virou alguma coisa. A única prova é o email;
+- quem **não paga** não tem como chegar ao checkout de dentro do app: o rodapé linka Termos,
+  Privacidade e Reembolso, e nada aponta para `/premium`.
+
+Não é bug — é um pedaço que nunca foi escrito, e não bloqueia o merge, porque hoje o plano grátis
+é idêntico ao pago (`FREE_ALERT_LIMIT = Infinity`) e a landing é a porta de entrada real.
+**Vira problema no dia em que o limite do grátis ligar:** o gate responderá 402 numa tela que não
+sabe explicar o que aconteceu nem para onde mandar a pessoa.
+
+O menor passo útil, quando for a hora: ler o `entitlement` no boot do app, mostrar "Premium até
+DD/MM" para quem tem, e um link para `/premium` para quem não tem. Trate isso como pré-requisito
+do item "limitar alertas do plano grátis" da Etapa C — os dois só fazem sentido juntos.
 
 ---
 
@@ -20,8 +57,11 @@ polling, assinatura no banco, gate `active: true`. Registro completo em
 A branch está pronta. Depois do merge na `main`:
 
 - A Vercel faz deploy automático do frontend (checkout, documentos legais, visual).
-- O backend no Render precisa das variáveis `MERCADOPAGO_*` já configuradas — conferir no painel
-  que o deploy passou e que o log mostra `[MercadoPago] Configurado env: "test"`.
+- O backend no Render precisa das variáveis `MERCADOPAGO_*` configuradas **no painel** — o
+  `render.yaml` agora as declara como `sync: false`, o que registra a dependência mas **não
+  preenche valor nenhum**. Conferir que o deploy passou e que o log do boot traz
+  `[MercadoPago] Configurado` com `env: "test"`. Se o log não aparecer, ou aparecer o aviso de
+  `MERCADOPAGO_ENV`, a cobrança subiu desligada e o checkout responde 503.
 
 ### 2. Pendências pós-merge (ordem recomendada)
 

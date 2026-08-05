@@ -68,3 +68,25 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+
+      # ── Mercado Pago (checkout Pix) ───────────────────────────────────────
+      # Sem estas quatro o backend sobe normal, mas com a cobrança DESLIGADA:
+      # `getMercadoPagoConfig()` devolve null e o POST /api/billing/checkout
+      # responde 503. Declaradas aqui para o blueprint não esconder a
+      # dependência — os valores continuam sendo preenchidos no painel.
+      - key: MERCADOPAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADOPAGO_PUBLIC_KEY
+        sync: false
+      # ⚠️ "test" ou "production", e a escolha é manual de propósito. Os dois
+      # tokens começam com APP_USR e são idênticos a olho; esta bandeira é a
+      # única coisa que distingue "cobra dinheiro real" de "não cobra". Com
+      # NODE_ENV=production (definido acima) o valor "test" faz o config
+      # recusar a cobrança no boot — que é o comportamento desejado enquanto
+      # as credenciais de produção não entram. Ver docs/runbook-operacao.md §1.
+      - key: MERCADOPAGO_ENV
+        sync: false
+      # Só existe depois de cadastrar a URL pública do webhook no painel. Hoje
+      # é lida e não valida nada — a validação x-signature é pendência aberta.
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false

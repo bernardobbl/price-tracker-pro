@@ -150,8 +150,12 @@ export interface ChargeStatus {
  *     em desenvolvimento o webhook **nunca** chega. Sem isto, seria impossível
  *     testar o fluxo completo sem montar um túnel público.
  *
- * O custo é uma chamada à API do provedor por polling — aceitável porque a
- * página consulta a cada 4s e só enquanto a cobrança está aberta.
+ * O custo é uma chamada à API do provedor por polling, e é por isso que o
+ * intervalo do checkout é uma **escada** (3s no 1º minuto → 10s até os 5 min →
+ * 30s no resto), não um valor fixo: a 4s fixos seriam até 450 consultas por
+ * tentativa de checkout, contra ~94 hoje. O porquê está em
+ * `docs/auditoria-branch-checkout-pix.md` §1 — se algum dia esse ritmo mudar
+ * no `checkout.html`, refaça a conta contra o rate-limit do `app.ts`.
  */
 export async function getChargeStatus(
   chargeId: string,

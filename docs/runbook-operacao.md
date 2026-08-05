@@ -16,11 +16,20 @@
 
 ## 1. 🚦 Portão de go-live
 
-**Nada de `DEMO = false` antes de todas estas linhas estarem marcadas.** Não é burocracia: cada
-item corresponde a uma promessa já publicada por escrito.
+**Nada de `MERCADOPAGO_ENV=production` antes de todas estas linhas estarem marcadas.** Não é
+burocracia: cada item corresponde a uma promessa já publicada por escrito.
+
+> **Por que o gatilho mudou de nome.** Este portão dizia "nada de `DEMO = false`" — o que fazia
+> sentido quando o checkout era uma maquete. Hoje `DEMO` já é `false` e mesmo assim **nenhum
+> dinheiro circula**, porque as credenciais são de teste. A bandeira que separa "não cobra" de
+> "cobra de verdade" passou a ser `MERCADOPAGO_ENV`, e é ela que este portão protege. Manter o
+> nome antigo faria a lista parecer violada quando não está — e uma lista que parece violada
+> deixa de ser lida.
 
 - [ ] Chave Pix cadastrada na conta do Mercado Pago
 - [ ] Credenciais de **produção** no `.env` do backend (nunca no repositório, nunca no front)
+- [ ] `MERCADOPAGO_ENV=production` **e** `NODE_ENV=production` no Render — o config recusa a
+      cobrança se as duas não combinarem, e o log do boot é onde isso aparece
 - [ ] Webhook apontando para a URL de produção e **testado** com um pagamento real de R$ 0,01 seu
 - [ ] Tabela `subscriptions` criada, com o índice único por `charge_id`
 - [ ] Os 10 testes de `vigencia-do-acesso.md` §5 passando
