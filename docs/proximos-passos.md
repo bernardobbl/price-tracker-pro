@@ -1,64 +1,46 @@
 # Próximos passos — retomar daqui
 
 > **Para o Bernardo do futuro.** Escrito em 04/ago/2026 no fim de uma sessão, para você conseguir
-> voltar sem reler tudo. Comece por aqui.
+> voltar sem reler tudo. **Atualizado em 05/ago/2026 (tarde)** — teste ponta a ponta concluído,
+> dados de teste limpos, PR #22 pronto para review. Comece por aqui.
 >
-> **Branch:** `feat/checkout-pix`.
+> **Branch:** `feat/checkout-pix` → [PR #22](https://github.com/bernardobbl/price-tracker-pro/pull/22).
 
 ---
 
 ## 🔴 RETOMAR AQUI — o que fazer na próxima sessão
 
-Tudo compila, 232 testes passam e o código está commitado. **Falta uma coisa só antes do PR:**
+**270 testes passam** (209 backend + 61 frontend). O fluxo de checkout Pix foi exercitado de
+ponta a ponta em 05/ago/2026 — cobrança criada, APRO aprovou sozinho (~7s), reconciliação via
+polling, assinatura no banco, gate `active: true`. Registro completo em
+[`docs/teste-ponta-a-ponta.md`](./teste-ponta-a-ponta.md).
 
-### 1. Teste ponta a ponta com pagamento sandbox (~30 min)
+### 1. Merge do PR #22
 
-Nunca ninguém clicou em "Gerar pagamento" e viu um QR de verdade aparecer. É o único caminho
-do sistema que ainda não foi exercitado.
+A branch está pronta. Depois do merge na `main`:
 
-```bash
-cd ~/Desktop/"Price Tracker Pro" && git checkout feat/checkout-pix
-# terminal 1
-cd backend && npm run dev
-# terminal 2
-cd frontend && npm run dev
-```
+- A Vercel faz deploy automático do frontend (checkout, documentos legais, visual).
+- O backend no Render precisa das variáveis `MERCADOPAGO_*` já configuradas — conferir no painel
+  que o deploy passou e que o log mostra `[MercadoPago] Configurado env: "test"`.
 
-Depois, no navegador:
+### 2. Pendências pós-merge (ordem recomendada)
 
-1. `http://localhost:5173` → **fazer login** (o checkout exige sessão)
-2. `http://localhost:5173/checkout.html`
-   - deve aparecer seu e-mail em "Conta que vai receber o acesso"
-   - deve aparecer a faixa amarela "Ambiente de desenvolvimento"
-3. Escolher o plano → marcar o aceite → **Gerar pagamento**
-4. **Esperado:** QR real do sandbox do Mercado Pago + código copia e cola
-5. Pagar com a **conta de teste** (painel do Mercado Pago → Suas integrações → Contas de teste)
-6. **O polling deve virar "pago" sozinho, sem webhook nenhum** — é a reconciliação do
-   `GET /charge/:id` fazendo o papel dele. Este é o ponto que prova o coração do sistema.
-7. Conferir no Supabase:
+| # | O quê | Quando | Urgência |
+|---|---|---|---|
+| 1 | **Secrets de SMTP + `FRONTEND_URL`** no GitHub Actions | depois do merge | Baixa — ninguém tem assinatura ainda |
+| 2 | **Revisão jurídica** dos 3 documentos | antes de dinheiro real | Alta para go-live |
+| 3 | **Credenciais de produção** + portão de go-live | por último | Irreversível — ver `runbook-operacao.md` §1 |
 
-```sql
-select c.status as cobranca, c.amount_cents, s.plan, s.starts_at, s.expires_at
-from billing_charges c
-left join subscriptions s on s.charge_id = c.id
-order by c.created_at desc limit 3;
-```
+O irreversível (produção) vem **depois** do que ainda pode ser corrigido de graça.
 
-Esperado: cobrança `paid` e uma assinatura com vigência de 1 mês ou 12 meses **exatos**.
+### 3. Dívida técnica conhecida (não bloqueia o merge)
 
-**Se algo falhar**, o mais provável em ordem: (a) chave Pix não cadastrada na conta do Mercado
-Pago — trava a API inteira; (b) `MERCADOPAGO_*` faltando no `backend/.env`; (c) CORS, se o
-`FRONTEND_URL` do backend não incluir `http://localhost:5173`.
+- Validação `x-signature` do webhook — exige URL pública primeiro
+- Estorno + reembolso proporcional (a matemática existe; falta o endpoint)
+- Exclusão de conta + exportação LGPD
+- Limitar alertas do plano grátis (`FREE_ALERT_LIMIT = Infinity` hoje)
 
-### 2. Decidir: um PR ou três?
-
-A branch mistura três frentes independentes — **visual** (login/header/gauge + fix do eixo Y),
-**legal** (documentos + aceite) e **billing** (gate + Mercado Pago). Um PR só é aceitável;
-três contam a história melhor. Se dividir, é antes do merge.
-
-### 3. Só então abrir o PR
-
-Comandos na §7 deste arquivo.
+Detalhes na §3 deste arquivo e em `docs/runbook-operacao.md`.
 
 ---
 
@@ -100,7 +82,39 @@ O backend de pagamento existe e o checkout está ligado a ele:
 | `POST /checkout` · `GET /charge/:id` (com reconciliação) · `POST /webhook` | `backend/src/routes/billingRoute.ts` |
 | Checkout ligado, com login obrigatório (opção A) | `frontend/public/checkout.html` |
 
-**Testes:** 171 no backend e 61 no frontend passando (última rodada do Bernardo, 04/ago).
+**Testes:** 209 no backend e 61 no frontend passando (05/ago, após a auditoria).
+
+### ✅ Teste ponta a ponta — FEITO (05/ago/2026)
+
+Exercitado localmente com `MERCADOPAGO_ENV=test`. Resultado:
+
+| Etapa | Status |
+|---|---|
+| Cobrança criada no Mercado Pago | ✅ |
+| QR + copia e cola gerados | ✅ |
+| APRO aprovou sozinho (~7s) | ✅ |
+| Reconciliação via polling (sem webhook) | ✅ |
+| Assinatura criada no banco (`paid`, 5990, `1.0`, `anual`, 1 year) | ✅ |
+| Gate `/api/fuel/entitlement` → `active: true` | ✅ |
+| Dados de teste limpos no Supabase | ✅ |
+
+Correção descoberta no teste: email real recusado no sandbox (`invalid_email_for_sandbox`) —
+`buildPayer` passou a enviar `@testuser.com` em teste. Roteiro completo:
+[`docs/teste-ponta-a-ponta.md`](./teste-ponta-a-ponta.md).
+
+### ✅ Auditoria da branch — FEITA (05/ago/2026)
+
+Revisão independente de tudo o que a branch traz, registrada em
+`docs/auditoria-branch-checkout-pix.md`. Encontrou 1 bug real, 3 lacunas e 2 docs errados —
+**todos já corrigidos**:
+
+| O quê | Onde | Estado |
+|---|---|---|
+| Polling a 4s fixos estourava o rate limit (429 silencioso → tela mentia sobre pagamento confirmado) | `checkout.html` | ✅ escada 3s→10s→30s + 429 e falha repetida visíveis na tela |
+| `billingService.ts` sem teste nenhum | `test/billingService.test.ts` | ✅ 26 testes: idempotência nas 2 camadas, `user_id` nulo, valor divergente, reconciliação, filtro por dono |
+| Valor pago nunca conferido contra o cobrado | `billingService.ts` §6 | ✅ divergência vira `AMOUNT_MISMATCH` e log de erro, não assinatura |
+| `legalVersion` aceitava qualquer string do cliente | `lib/legalVersions.ts` | ✅ lista branca; 5 testes novos no `schemas.test.ts` |
+| Docs desatualizados (rodapé, prazo do QR) | este arquivo | ✅ corrigidos |
 
 ### Documentos desta frente
 
@@ -144,22 +158,14 @@ Nada disso eu consigo fazer — precisa ser você, e algumas travam o resto.
 
 > A Etapa A original foi concluída — ver §1. O que segue é o que resta.
 
-### Rumo ao PR — o teste que falta
+### ~~Rumo ao PR — o teste que faltava~~ ✅ FEITO (05/ago/2026)
 
-Tudo compilou e os testes unitários passam, mas **o fluxo completo com um pagamento de teste
-do Mercado Pago ainda não foi exercitado**. Antes do PR, rode uma vez:
+O fluxo completo foi exercitado — ver §1 "Teste ponta a ponta". O webhook continua sendo
+otimização de latência; a reconciliação do `GET /charge/:id` é a garantia que importa, e
+funciona.
 
-1. `npm run dev` nos dois pacotes, logar no app, abrir `localhost:5173/checkout.html`
-2. Marcar o aceite → **Gerar pagamento** → deve aparecer um QR real do ambiente de teste
-3. Pagar usando a conta de teste do Mercado Pago (painel → Contas de teste), ou aguardar
-   expirar e conferir que a tela reflete
-4. O polling deve virar "pago" **sem webhook nenhum** — é a reconciliação do
-   `GET /charge/:id` fazendo o papel dele
-5. Conferir no Supabase: `billing_charges` com status `paid` e uma linha nova em
-   `subscriptions` com a vigência certa
-
-Se o passo 4 funcionar, o coração inteiro está provado. O webhook vira otimização de
-latência (confirmação em segundos em vez de no próximo polling).
+> ⏱️ **O polling é uma escada, não 4s fixos:** 3s no 1º minuto, 10s até os 5 min, 30s no
+> resto. O porquê está em `docs/auditoria-branch-checkout-pix.md` §1.
 
 ### Produção (não bloqueia o PR)
 
@@ -202,7 +208,7 @@ Prometido por escrito, ainda não existe:
 
 ### Etapa C — Só depois de A e B
 
-- [ ] Rodapé do app React com links para `/termos`, `/privacidade`, `/reembolso` (hoje só o checkout linka)
+- [x] ~~Rodapé do app React com links para `/termos`, `/privacidade`, `/reembolso`~~ — **já estava feito**, e este arquivo é que estava desatualizado. Ver `frontend/src/App.tsx`, `<footer className="site-footer">`: os três links e a isenção da ANP.
 - [ ] Revisão jurídica
 - [ ] `DEMO = false` + credencial de produção
 - [ ] Limitar alertas do plano grátis — **a landing já promete "alertas ilimitados" no Premium, e hoje o grátis também é ilimitado.** Sem isso, não há motivo para pagar. (Já apontado na §8 do plano da Fase 10.)
@@ -217,7 +223,7 @@ Prometido por escrito, ainda não existe:
 4. **Renovar antecipado soma, não substitui.** Senão a pessoa perde os dias que já pagou.
 5. **Cold start do Render.** A API dorme após 15 min no plano grátis. Um webhook que chega nesse momento pode receber timeout — o Mercado Pago reenvia, mas o seu handler precisa ser idempotente (ver 2).
 6. **`LEGAL_VERSION` no `checkout.html` precisa subir junto** com qualquer edição nos documentos. Sem isso você não prova o que a pessoa aceitou.
-7. **Só o `expiration_time` da order não expira a assinatura.** São coisas diferentes: um é o prazo do QR (15 min), outro é a vigência do acesso (1 mês / 12 meses).
+7. **Só o `expiration_time` da order não expira a assinatura.** São coisas diferentes: um é o prazo do QR (**30 min** — `QR_EXPIRES_MINUTES` no `billingService.ts`, espelhado em `EXPIRES_SECONDS` no `checkout.html`), outro é a vigência do acesso (1 mês / 12 meses).
 8. **O webhook precisa recusar `user_id` vazio.** A coluna é nullable por causa da anonimização (LGPD), então o banco aceita uma assinatura sem dono sem reclamar — foi exatamente o que aconteceu no teste manual de 04/ago. Em produção isso vira dinheiro recebido sem ninguém liberado. **Valide no código antes do insert:** se não achou o usuário, é erro, não linha órfã.
 
 ---
@@ -251,7 +257,7 @@ A Etapa A saiu no mesmo dia, não em 2–3. O que resta:
 
 | | Esforço | Depende de |
 |---|---|---|
-| Teste ponta a ponta com pagamento sandbox (§3) | ~30 min | só você, na sua máquina |
+| ~~Teste ponta a ponta com pagamento sandbox~~ | ✅ feito 05/ago | — |
 | Estorno + reembolso proporcional (Etapa B) | 1–2 dias | nada |
 | Exclusão de conta + exportação LGPD (Etapa B) | 1 dia | nada |
 | Webhook com assinatura validada | ~2 h | URL pública (deploy) |
@@ -259,50 +265,29 @@ A Etapa A saiu no mesmo dia, não em 2–3. O que resta:
 
 ---
 
-## 7. Preparar o PR
+## 7. PR #22 — pronto para review
 
-**Checklist antes de abrir:**
+**Checklist:**
 
-- [ ] `npm test` nos dois pacotes (última contagem: 171 + 61)
-- [ ] O teste ponta a ponta da §3 (pagamento sandbox → assinatura criada)
-- [ ] Decidir: **um PR ou três?** A branch mistura três frentes independentes —
-      visual (login/header/gauge + fix do eixo Y), legal (documentos + aceite) e
-      billing (gate + Mercado Pago). Um PR só é honesto para repositório pessoal;
-      três contam a história melhor no portfólio. Se for dividir, é
-      `git rebase -i` ou cherry-pick em branches novas **antes** do push.
-- [ ] Lembrar: **o repositório é público.** Push = tudo visível, incluindo os
-      preços e os documentos legais em rascunho. Nada disso é segredo de verdade
-      (o checkout está no ar na Vercel de qualquer forma), mas é bom decidir
-      conscientemente.
-- [ ] O que **não** entra no PR: `.env` (já ignorado), credenciais, e nada de
-      `MERCADOPAGO_*` em texto claro em lugar nenhum — conferir com
-      `git log -p | grep -c "APP_USR-[A-Za-z0-9]"` (deve dar 0).
+- [x] `npm test` nos dois pacotes (**209 + 61**)
+- [x] Teste ponta a ponta (pagamento sandbox → assinatura criada → gate ativo)
+- [x] Decisão: **um PR só** — as três frentes (visual, legal, billing) contam a história
+      completa do checkout; dividir agora seria retrabalho sem ganho.
+- [x] Repositório público — preços e documentos legais em rascunho são intencionais.
+- [x] Nenhuma credencial no histórico do git.
 
-**Corpo sugerido do PR:** o resumo da §1 deste arquivo já é 90% da descrição.
+**PR:** https://github.com/bernardobbl/price-tracker-pro/pull/22
 
-### Comandos
+Para marcar como pronto (se ainda estiver em rascunho):
 
 ```bash
-cd ~/Desktop/"Price Tracker Pro"
-git checkout feat/checkout-pix
-git push -u origin feat/checkout-pix
+gh pr ready 22
 ```
 
-Só isso já salva a branch no GitHub. **O PR é um passo à parte** — abrir só depois do
-teste da §1, porque a descrição vai afirmar que o fluxo funciona.
-
-Com o GitHub CLI (`brew install gh` se não tiver):
+Para merge após review:
 
 ```bash
-gh pr create \
-  --base main \
-  --head feat/checkout-pix \
-  --title "feat: checkout Pix com Mercado Pago, gate de assinatura e documentos legais" \
-  --body-file docs/PR_BODY.md \
-  --draft
+gh pr merge 22 --squash   # ou --merge, como preferir
 ```
-
-O `--draft` é de propósito: marca como "ainda não terminei", que é a verdade até o teste passar.
-Tira o rascunho depois com `gh pr ready`.
 
 Sem o CLI, o push imprime um link `https://github.com/.../pull/new/feat/checkout-pix` — é só abrir.

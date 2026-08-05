@@ -160,6 +160,22 @@ router.post(
         return res.status(200).json({ received: true, ignored: true });
       }
 
+      // Divergência de valor e cobrança sem dono são permanentes: reenviar a
+      // notificação mil vezes dará o mesmo resultado. 200 encerra a fila de
+      // retentativas — o `logger.error` do serviço é que pede atenção humana,
+      // e o dinheiro fica visível em `billing_charges` para tratar à mão
+      // (procedimento em docs/runbook-operacao.md).
+      if (
+        err instanceof BillingError &&
+        (err.code === "AMOUNT_MISMATCH" || err.code === "USER_REQUIRED")
+      ) {
+        logger.error(
+          { orderId, code: err.code },
+          "[Billing] Notificação exige intervenção manual — não será reenviada"
+        );
+        return res.status(200).json({ received: true, needsReview: true });
+      }
+
       // Aqui a falha é nossa (banco fora, provedor instável). 500 faz o
       // Mercado Pago reenviar — que é exatamente o que queremos, porque o
       // processamento é idempotente e um pagamento não pode se perder.

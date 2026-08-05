@@ -474,6 +474,10 @@
   // Versão dos documentos legais aceitos aqui. SUBA ISTO sempre que editar
   // termos.html, privacidade.html ou reembolso.html — o backend grava o valor
   // junto com a data do aceite, e é essa dupla que prova o que a pessoa leu.
+  //
+  // ⚠️ O backend valida contra uma LISTA BRANCA (`backend/src/lib/legalVersions.ts`).
+  // Acrescente a versão nova LÁ PRIMEIRO e só depois aqui — na ordem inversa, o
+  // checkout responde 400 para todo mundo até o backend subir.
   var LEGAL_VERSION = '1.0';
 
   var PLANS = {
@@ -481,7 +485,15 @@
     mensal: { label:'Premium mensal', cents:1690, cycle:'renova todo mês',    perMonth:'R$ 16,90/mês' }
   };
 
-  var state = { plan:'anual', chargeId:null, poll:null, tick:null, left:EXPIRES_SECONDS };
+  var state = {
+    plan:'anual', chargeId:null, tick:null, left:EXPIRES_SECONDS,
+    // Polling: `poll` é id de setTimeout (não de setInterval — o intervalo
+    // cresce com o tempo, ver §POLLING). `pollFails` conta falhas seguidas
+    // para avisar na tela em vez de engolir o erro.
+    poll:null, pollStartedAt:0, pollFails:0,
+    // Última mensagem pintada — evita repintar e reiniciar o spinner.
+    statusKind:null, statusText:null
+  };
 
   function trackEvent(name, props){
     // TODO: Vercel Analytics / Plausible
@@ -746,6 +758,12 @@
   }
 
   function setStatus(kind, text, spinning){
+    // Repintar com a MESMA mensagem reiniciaria a animação do spinner a cada
+    // poll — o giro travaria em looping curto e pareceria bug. Sai cedo.
+    if (state.statusKind === kind && state.statusText === text) return;
+    state.statusKind = kind;
+    state.statusText = text;
+
     var box = $('statusBox');
     box.className = 'status status-' + (kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : 'wait');
     box.innerHTML = (spinning ? '<span class="spin" aria-hidden="true"></span>' : '')
@@ -760,7 +778,7 @@
       state.left--;
       if (state.left <= 0){
         clearInterval(state.tick);
-        clearInterval(state.poll);
+        stopPolling();
         $('timer').textContent = '00:00';
         setStatus('bad', 'O código expirou. Gere um novo para pagar.');
         $('againBtn').style.display = 'inline-flex';
@@ -775,28 +793,126 @@
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // POLLING — com intervalo crescente, e não fixo
+  // ══════════════════════════════════════════════════════════════════════════
   // Polling é só para a INTERFACE saber quando atualizar. Quem libera o acesso
-  // é o webhook no backend — nunca esta página.
+  // é o backend — nunca esta página.
+  //
+  // ⚠️ POR QUE NÃO É `setInterval(…, 4000)`:
+  //
+  // O QR vale 30 minutos e a API do backend limita 300 requisições por IP a
+  // cada 15 minutos. A 4 s fixos seriam 225 requisições em 15 min e até 450 na
+  // janela inteira — quem demorasse para pagar tomaria 429 **antes** do código
+  // expirar. E como o erro era silencioso, o pior caso era o pior possível numa
+  // tela de cobrança: a pessoa paga, o backend confirma, e a tela continua
+  // dizendo "Aguardando o pagamento…" para sempre. Com IP compartilhado (NAT de
+  // operadora, escritório) duas pessoas no checkout estouravam em ~7 min.
+  //
+  // A escada abaixo respeita a forma real do Pix: quase todo pagamento cai no
+  // primeiro minuto, e quem passa disso saiu para pegar o celular.
+  //
+  // Contas conferidas: **64 requisições em 15 min** (contra o limite de 300) e
+  // **94 na janela de 30 min** (contra 450 antes) — folga de quase 5x mesmo com
+  // duas pessoas no mesmo IP. E, de quebra, 94 consultas ao Mercado Pago em vez
+  // de 450, porque este endpoint reconcilia com o provedor a cada chamada.
+  var POLL_STEPS = [
+    { until:  60, every:  3 },      // 1º minuto: 20 chamadas — Pix cai aqui
+    { until: 300, every: 10 },      // até 5 min: mais 24
+    { until: Infinity, every: 30 }  // resto da janela: mais 50
+  ];
+
+  function pollDelayMs(elapsedSeconds){
+    for (var i = 0; i < POLL_STEPS.length; i++){
+      if (elapsedSeconds < POLL_STEPS[i].until) return POLL_STEPS[i].every * 1000;
+    }
+    return 30000;
+  }
+
+  function stopPolling(){
+    clearTimeout(state.poll);
+    state.poll = null;
+  }
+
   function startPolling(){
-    clearInterval(state.poll);
-    state.poll = setInterval(function(){
-      // Além de consultar, este endpoint RECONCILIA com o provedor quando a
-      // cobrança ainda está pendente — é o que permite testar sem webhook
-      // público e o que salva um pagamento cuja notificação se perdeu.
-      fetch(API + '/api/billing/charge/' + encodeURIComponent(state.chargeId), {
-        headers: authHeaders()
+    stopPolling();
+    state.pollStartedAt = Date.now();
+    state.pollFails = 0;
+    schedulePoll();
+  }
+
+  function schedulePoll(){
+    var elapsed = (Date.now() - state.pollStartedAt) / 1000;
+    state.poll = setTimeout(pollOnce, pollDelayMs(elapsed));
+  }
+
+  function pollOnce(){
+    // Além de consultar, este endpoint RECONCILIA com o provedor quando a
+    // cobrança ainda está pendente — é o que permite testar sem webhook
+    // público e o que salva um pagamento cuja notificação se perdeu.
+    fetch(API + '/api/billing/charge/' + encodeURIComponent(state.chargeId), {
+      headers: authHeaders()
+    })
+      .then(function(r){
+        // 429: passamos do limite do backend. Insistir no mesmo ritmo só
+        // renova o bloqueio — cai para o degrau mais lento e AVISA, porque o
+        // silêncio aqui é que fazia a página mentir sobre um pagamento já
+        // confirmado.
+        if (r.status === 429){
+          setStatus('wait',
+            'Muitas consultas seguidas — reduzindo o ritmo. Se você já pagou, '
+            + 'o acesso é liberado assim que a confirmação chegar.', true);
+          state.poll = setTimeout(pollOnce, 30000);
+          return null;
+        }
+
+        // 401: o token do Supabase venceu enquanto a pessoa esperava. O
+        // pagamento não se perde — ele está amarrado à cobrança no backend,
+        // não a esta aba. Dizer isso importa: sem a frase, "sessão expirada"
+        // numa tela de pagamento parece que o dinheiro sumiu.
+        if (r.status === 401){
+          stopPolling();
+          setStatus('bad',
+            'Sua sessão expirou nesta aba. Se você já pagou, o acesso está garantido — '
+            + 'entre de novo para vê-lo. Se ainda não pagou, entre e gere um novo código.');
+          $('againBtn').style.display = 'inline-flex';
+          return null;
+        }
+
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.json();
       })
-        .then(function(r){ return r.json(); })
-        .then(function(d){
-          if (d.status === 'paid')    return onPaid();
-          if (d.status === 'expired'){ clearInterval(state.poll); }
-        })
-        .catch(function(){ /* silencioso: cold start do backend é normal */ });
-    }, 4000);
+      .then(function(d){
+        if (!d) return;                      // 429 reagendou, ou 401 encerrou
+        state.pollFails = 0;
+        if (d.status === 'paid')      return onPaid();
+        if (d.status === 'expired')   return stopPolling();
+        if (d.status === 'cancelled' || d.status === 'refunded'){
+          stopPolling();
+          setStatus('bad', 'Esta cobrança foi cancelada. Gere um novo código para pagar.');
+          $('againBtn').style.display = 'inline-flex';
+          return;
+        }
+        setStatus('wait', 'Aguardando o pagamento… você pode deixar esta página aberta.', true);
+        schedulePoll();
+      })
+      .catch(function(){
+        // Uma falha isolada é normal (cold start do Render leva 30-60 s).
+        // Falha REPETIDA não é, e a pessoa precisa saber — ela pode já ter
+        // pago e estar olhando para uma tela que não vai mudar sozinha.
+        state.pollFails++;
+        if (state.pollFails >= 3){
+          setStatus('bad',
+            'Não estamos conseguindo confirmar o pagamento agora. Se você já pagou, '
+            + 'o acesso é liberado assim que a conexão voltar — atualize esta página '
+            + 'em alguns minutos para conferir.');
+        }
+        schedulePoll();
+      });
   }
 
   function onPaid(){
-    clearInterval(state.poll);
+    stopPolling();
     clearInterval(state.tick);
     $('pixPanel').classList.remove('show');
     $('formCard').style.display = 'none';

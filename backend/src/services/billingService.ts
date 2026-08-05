@@ -14,6 +14,9 @@
  *     ninguém liberado. Recusamos aqui, no código.
  *  4. **Idempotência em duas camadas:** índice único no banco e verificação
  *     antes de inserir. O webhook chega repetido; sem isso, a vigência dobra.
+ *  5. **O valor pago é conferido contra o valor cobrado.** O snapshot da order
+ *     já traz o total; comparar custa uma linha e troca confiança por
+ *     verificação. Divergência vira alarme, não assinatura.
  */
 
 import { supabase } from "../config/supabaseClient";
@@ -32,6 +35,7 @@ export class BillingError extends Error {
     | "CHARGE_NOT_FOUND"
     | "USER_REQUIRED"
     | "ALREADY_PROCESSED"
+    | "AMOUNT_MISMATCH"
     | "PROVIDER_FAILED";
 
   constructor(code: BillingError["code"], message: string) {
@@ -249,9 +253,33 @@ export async function confirmPaymentByOrderId(orderId: string): Promise<ConfirmR
     return { created: false, status: "paid", chargeId: id };
   }
 
+  // 6. O valor pago tem de ser o valor cobrado.
+  //
+  //    Na prática o Pix não permite pagar a menos: o QR carrega o valor da
+  //    order que nós mesmos criamos. Mas o snapshot já traz o número, a
+  //    comparação custa uma linha, e ela troca "confio que o provedor não
+  //    mudou o valor" por "conferi". Se um dia a API passar a aceitar valor
+  //    parcial, ou se uma order de outro ambiente cair aqui por engano, é este
+  //    if que impede um mês de acesso vendido por qualquer preço.
+  //
+  //    Divergência não vira assinatura — vira alarme. `amountCents` nulo (a
+  //    API não devolveu total) não bloqueia: não conseguir conferir é
+  //    diferente de conferir e dar errado.
+  const cobrado = charge.amount_cents as number;
+  if (snapshot.amountCents != null && snapshot.amountCents !== cobrado) {
+    logger.error(
+      { chargeId: id, cobrado, pago: snapshot.amountCents, orderId },
+      "[Billing] Valor pago diverge do cobrado — assinatura NÃO criada"
+    );
+    throw new BillingError(
+      "AMOUNT_MISMATCH",
+      "Valor pago não confere com o valor da cobrança."
+    );
+  }
+
   const now = new Date();
 
-  // 6. Vigência somando o saldo restante, se houver assinatura ativa.
+  // 7. Vigência somando o saldo restante, se houver assinatura ativa.
   const atual = await getActiveSubscription(userId, now);
   const expiresAt = computeExpiresAt({
     plan,
@@ -259,7 +287,7 @@ export async function confirmPaymentByOrderId(orderId: string): Promise<ConfirmR
     currentExpiresAt: atual?.expiresAt ?? null,
   });
 
-  // 7. Cria a assinatura. A 2ª camada de idempotência é o índice único em
+  // 8. Cria a assinatura. A 2ª camada de idempotência é o índice único em
   //    (provider, charge_id): se duas notificações correrem juntas, uma perde.
   const { error: subError } = await supabase.from("subscriptions").insert({
     user_id: userId,

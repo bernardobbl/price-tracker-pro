@@ -93,6 +93,55 @@ function describeError(err: unknown): { message: string; status?: number } {
 }
 
 /**
+ * Monta o bloco `payer` — e aqui mora a única concessão ao ambiente de teste.
+ *
+ * ## Por que existe o `first_name: "APRO"`
+ *
+ * **Um Pix de sandbox não pode ser pago.** O código copia e cola devolvido no
+ * ambiente de teste não é um Pix válido: nenhum banco o reconhece, e a conta de
+ * teste do Mercado Pago também não paga QR de Pix. Sem uma saída, a order
+ * ficaria em `action_required` para sempre e o fluxo completo jamais poderia
+ * ser exercitado antes de mexer com dinheiro real — que é justamente quando
+ * não se quer descobrir um erro.
+ *
+ * A saída oficial do Mercado Pago é uma **order de valores predefinidos**:
+ * `payer.first_name = "APRO"` faz a order nascer `action_required` e mudar
+ * sozinha para aprovada em seguida, como se alguém tivesse pago. Documentado em
+ * https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/integration-test/pix
+ *
+ * ## Por que isto não é um risco em produção
+ *
+ * O gatilho é `env === "test"`, que vem de `MERCADOPAGO_ENV` — e o config
+ * **recusa o boot** com `NODE_ENV=production` + `MERCADOPAGO_ENV=test`. Não há
+ * combinação em que produção envie `APRO`.
+ *
+ * Em produção o `payer` vai só com o email, que é o que temos: o checkout não
+ * pede nome, e inventar um seria pior que omitir.
+ *
+ * ## Por que o email muda no sandbox
+ *
+ * A API recusa qualquer email que não termine em `@testuser.com` no ambiente de
+ * teste (`invalid_email_for_sandbox`). O email real do usuário continua sendo
+ * gravado na nossa cobrança — só não vai para o provedor enquanto estivermos
+ * em `MERCADOPAGO_ENV=test`.
+ */
+const SANDBOX_PAYER_EMAIL = "test_user_br@testuser.com";
+
+function buildPayer(payerEmail: string): Record<string, string> {
+  const config = getMercadoPagoConfig();
+
+  if (config?.env === "test") {
+    logger.info(
+      { emailReal: payerEmail },
+      "[MercadoPago] Ambiente de teste: enviando payer.first_name=APRO e email @testuser.com (obrigatório no sandbox)."
+    );
+    return { email: SANDBOX_PAYER_EMAIL, first_name: "APRO" };
+  }
+
+  return { email: payerEmail };
+}
+
+/**
  * Cria uma cobrança Pix e devolve o QR pronto.
  *
  * O header `X-Idempotency-Key` é **obrigatório** na API de Orders — e é um
@@ -121,7 +170,7 @@ export async function createPixOrder(input: CreatePixOrderInput): Promise<PixOrd
             },
           ],
         },
-        payer: { email: payerEmail },
+        payer: buildPayer(payerEmail),
       },
       {
         headers: {
