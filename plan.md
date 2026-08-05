@@ -8,6 +8,202 @@
 
 ---
 
+## 📍 ESTADO ATUAL — 05/ago/2026 (leia esta seção primeiro)
+
+> Esta seção existe porque o projeto passou a ter **seis documentos** e eles começaram a se
+> contradizer. Em 05/ago/2026 essa contradição custou caro: a §7.6 aqui afirmava que os secrets de
+> SMTP estavam no GitHub Actions, o `docs/proximos-passos.md` afirmava que faltavam, e **os dois
+> estavam errados sobre coisas diferentes**. O resultado foi um alerta semanal que nunca enviou
+> email nenhum, sem ninguém perceber por semanas.
+>
+> **A regra que sai daí: um fato mora num lugar só.** O mapa abaixo diz qual documento é dono de quê.
+
+### Mapa dos documentos — quem é dono de qual verdade
+
+| Documento | É a fonte da verdade sobre | **Não** fale disto aqui |
+|---|---|---|
+| **`plan.md`** (este) | Roadmap, fases, **status geral**, decisões de arquitetura, registro histórico do porquê | Passo a passo operacional |
+| `docs/proximos-passos.md` | Como retomar a frente de **pagamentos**: armadilhas, o que falta codar, como rodar local | Status das outras fases |
+| `docs/runbook-operacao.md` | Procedimento manual: estorno, reembolso, exclusão de dados, **portão de go-live** | Arquitetura |
+| `docs/vigencia-do-acesso.md` | As 6 decisões de vigência (mês de calendário, renovação, corte) | Qualquer outra coisa |
+| `docs/recebimento-sem-cnpj.md` | Comparativo de provedores, taxas, o achado do Pix Automático | Implementação |
+| `docs/fase10-pagamentos.md` | **Histórico** do plano original de pagamento (AbacatePay, recorrência) | Estado atual — está desatualizado por natureza |
+| `docs/auditoria-*.md`, `docs/teste-*.md`, `docs/testar-*.md` | Registro datado de uma auditoria ou teste específico | Nada além daquele evento |
+
+> Documento de registro (auditoria, teste) **nunca é atualizado depois**: ele conta o que era verdade
+> naquela data. Quem precisa de estado atual vem para cá.
+
+### Onde o produto está
+
+**No ar e funcionando:** app público em `precos-combustivel-br.vercel.app`, API no Render, ingestão
+semanal pelo GitHub Actions, alertas de preço por email, checkout Pix ligado com **credenciais de
+teste**. Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22
+(`1b4d02f`, 05/ago/2026).
+
+**Testes:** 235 no backend · 83 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+
+**Nenhum dinheiro circula ainda** — `MERCADOPAGO_ENV=test`. O portão de go-live está no
+`docs/runbook-operacao.md` §1.
+
+### Corrigido em 05/ago/2026 (a sessão de varredura)
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| Alerta semanal **nunca enviou email** em produção | secrets do Actions | Faltavam os cinco `SMTP_*`. Corrigido e **verificado com email real na caixa de entrada**. §7.6 tinha uma afirmação falsa sobre isso |
+| `sendPriceAlertEmail` marcava alerta como avisado sem enviar | `emailService.ts` + `fuelAlertService.ts` | `triggered: true` é porta de mão única — o alerta ficava queimado. Agora só marca com envio confirmado. +2 testes |
+| Alertas presos ao sucesso da ingestão | `scripts/ingest.ts` + `scheduleWeeklyAnpJob.ts` | A ANP publica mensal, então quase toda semana volta `skipped` e os alertas passavam semanas sem ser olhados |
+| Cadastro aceitava email sem TLD | `lib/emailValidation.ts` (novo) | Uma conta real foi criada com `...@gmail` e nunca recebeu nada. +9 testes |
+| Aviso do Supabase mentia sobre o próprio estado | `config/supabaseClient.ts` | Alarme falso em todo log de ingestão treina quem lê a ignorar o log |
+| Guard do ingest calado sobre SMTP | `.github/workflows/ingest.yml` | É o aviso que teria denunciado tudo isso semanas antes |
+| Checkout prometia "renova todo mês" | `checkout.html` | Única linha do produto a prometer débito automático, ao lado do preço |
+| `render.yaml` sem as variáveis `MERCADOPAGO_*` | `render.yaml` | Blueprint escondia a dependência |
+| Links internos apontando para a URL bonita | `premium.html`, `checkout.html`, `PlanBadge`, rodapé | Ver abaixo — errado **três vezes seguidas**, agora travado por teste |
+
+### 🔗 A armadilha dos links internos (errada 3× em 05/ago/2026)
+
+Vale seção própria porque não foi descuido isolado: foi a **mesma** falha repetida em três lugares
+diferentes, e o formato dela é o que a torna traiçoeira.
+
+As páginas fora do React vivem em `frontend/public/` e são servidas pelo nome do arquivo
+(`/premium.html`). O `vercel.json` cria apelidos bonitos (`/premium`, `/premium/checkout`) por
+**rewrite** — que é coisa da Vercel. No `vite dev` esses apelidos não existem: caem no fallback do
+SPA e devolvem o `index.html`.
+
+Efeito: o usuário clica em "Assinar o Premium" e volta para o dashboard, como se o botão estivesse
+quebrado. E o pior é o formato — **funciona em produção e falha em desenvolvimento**. Quem testa
+local acha que estragou alguma coisa; quem confere em produção não vê problema nenhum. Foi
+exatamente por isso que o erro sobreviveu a três correções.
+
+**Regra:** link interno aponta para o **arquivo real**, nunca para o apelido. A URL bonita segue
+funcionando para quem digita na barra de endereço.
+
+**Travado por teste:** `frontend/src/lib/staticLinks.test.ts` varre os `href` das páginas
+estáticas — inclusive os montados em JavaScript, que eram metade do problema — e falha se algum não
+resolver para um arquivo existente em `public/`. O teste foi validado ao contrário: o link errado
+foi reintroduzido de propósito, ele falhou com a mensagem certa, e o arquivo foi restaurado.
+
+### ✅ A dívida dos documentos legais foi paga — 05/ago/2026
+
+As três promessas publicadas que existiam só como SQL manual viraram código, nesta ordem:
+
+**1. Estorno e reembolso proporcional** (`billingService.previewRefund` / `refundCharge`)
+
+Duas rotas administrativas: `GET /api/billing/refund/:id` mostra o que a política manda devolver
+sem tocar em dinheiro; `POST /api/billing/refund` executa. O `POST` exige repetir o valor do
+preview e recusa se divergir — a diferença entre "o sistema devolveu R$ 39,93" e "alguém digitou
+um número e o sistema obedeceu". As três regras estão no código: integral em 7 dias (art. 49 do
+CDC, aplicado inclusive ao mensal e mesmo tendo usado), proporcional por meses inteiros no anual,
+e nada no mensal fora do prazo.
+
+Ordem deliberada: **provedor primeiro, banco depois**. Se a chamada externa falhar, nada muda —
+ninguém fica sem acesso e sem dinheiro. Se o banco falhar depois do estorno, o log grita e a
+próxima consulta da order reconcilia.
+
+Junto veio o furo que o runbook avisava e ninguém tinha fechado: **estorno feito pelo painel do
+Mercado Pago agora corta o acesso sozinho**, porque `confirmPaymentByOrderId` passou a encerrar a
+assinatura ao ver `refunded`. Antes, o dinheiro voltava e a pessoa continuava assinante.
+
+**2. Exclusão de conta e exportação (LGPD art. 18)** (`accountService`)
+
+`GET /api/account/export` e `DELETE /api/account`, ambas sobre a conta do próprio token — não
+existe id de terceiro. O `DELETE` exige `{"confirm":"EXCLUIR MINHA CONTA"}`, porque um `DELETE` sem
+atrito é um acidente com data marcada.
+
+O conflito real: a política promete apagar os dados **e** guardar o registro de pagamento por 5
+anos. As duas só coexistem **anonimizando** — `user_id` vira `null` em `subscriptions` e
+`billing_charges`, favoritos e alertas caem em cascata. Anonimizar vem **antes** de remover o
+usuário: na ordem inversa, uma falha deixaria registro fiscal órfão.
+
+**3. O app React enxerga a assinatura** (`PlanBadge` + `useEntitlement`)
+
+`GET /api/fuel/entitlement` existia havia um mês sem nenhum consumidor. Agora o header mostra três
+estados — Premium com data, Premium vencendo (mesma janela de 8 dias do aviso por e-mail, porque
+e-mail se perde) e plano gratuito com caminho para `/premium` — e o rodapé ganhou o link que
+faltava. Continua **sem ser** controle de acesso: o portão é o backend, no `POST /api/fuel/alerts`.
+
+**Nova variável de ambiente:** `ADMIN_EMAILS` (lista separada por vírgula) autoriza as rotas de
+estorno. **Falha fechado** — sem ela, ninguém é admin e as rotas respondem 503. Declarada no
+`.env.example` e no `render.yaml`.
+
+### Superfície da API depois desta sessão
+
+| Rota | Quem pode | Para quê |
+|---|---|---|
+| `GET /api/fuel/*` | público | Consulta de preço, série, snapshot — sem login, por decisão de produto |
+| `GET /api/fuel/entitlement` | autenticado | Situação do plano, **para a interface** (não é o portão) |
+| `POST /api/fuel/alerts` | autenticado | **É o portão** — aplica a cota do plano gratuito |
+| `POST /api/billing/checkout` · `GET /charge/:id` | autenticado | Cria a cobrança Pix e o polling |
+| `POST /api/billing/webhook` | público | Só o provedor chama; o corpo nunca é confiado |
+| `GET /api/billing/refund/:id` · `POST /api/billing/refund` | **admin** | Preview e execução do estorno |
+| `GET /api/account/export` · `DELETE /api/account` | autenticado | Direitos do titular (LGPD art. 18) |
+
+### ✅ Plano gratuito limitado — 05/ago/2026
+
+`FREE_ALERT_LIMIT` passou de `Infinity` para **1**. O que se paga agora é **ser avisado sem
+precisar voltar no site**, que é exatamente a promessa da landing.
+
+**Por que 1, e não 2 ou 3.** O motorista de carro flex — o caso mais comum do Brasil — quer
+comparar gasolina *e* etanol, o que são dois alertas. Um limite de 2 cobriria justamente esse caso
+e ninguém encostaria nele: o plano pago existiria no papel. Com 1, a fronteira cai num lugar
+honesto e fácil de explicar — *acompanhe um combustível de graça; para comparar dois, ou seguir
+mais de uma cidade, assine*.
+
+**O que deliberadamente NÃO foi limitado, e o porquê:**
+
+- **Consulta de preço.** É pública e sem login, e é o que o README vende como diferencial
+  (comparando com CamelCamelCamel/Keepa). Um recrutador que batesse num paywall na 4ª busca
+  fecharia a aba antes de ver o gráfico, o sinal de compra e o ranking de postos. Além disso,
+  contar consultas de visitante anônimo exigiria guardar algo por pessoa — que a Política de
+  Privacidade afirma que não fazemos.
+- **Favoritos.** Salvar série não custa nada e é o que dá utilidade diária ao app. Apertar os dois
+  eixos faria o gratuito parecer uma demonstração travada.
+
+**A falha aberta que veio junto, e foi fechada.** O `alertQuota.ts` avisava desde 04/ago que quem
+contava alertas era o `listFuelAlerts`, que devolve `[]` tanto para "não tem alerta" quanto para "o
+banco não respondeu". Com cota infinita era inofensivo; com cota finita liberaria todo mundo
+justamente quando o sistema está menos confiável. Novo `countFuelAlerts` devolve `null` quando não
+dá para saber, e a rota **recusa** (503) nesse caso — falha fechado.
+
+Na tela, bater no limite **não** é pintado de vermelho: não é erro de quem digitou, é uma fronteira
+do produto. Vira um aviso em tom de atenção com link para o Premium, e a mensagem diz o que a
+pessoa ainda pode fazer (trocar a série do alerta que já tem, de graça) em vez de só negar.
+
+### O que falta — em ordem
+
+**Código (não depende de ninguém):**
+
+1. **Validação `x-signature` do webhook** — depende de URL pública cadastrada no painel primeiro.
+
+**Só o Bernardo resolve:**
+
+2. **Apagar a conta com email sem TLD** (`9f7a8e4c-77a3-4b2e-bb23-fd9e3e56a83f`) — Authentication →
+   Users. Ela nunca receberá email nenhum.
+3. **Revisão jurídica** dos 3 documentos — trava o dinheiro real, não o código.
+4. **Credenciais de produção + portão de go-live** — irreversível, por último.
+5. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
+
+> **A lista de código está praticamente vazia** — o que sobrou depende de um passo manual seu
+> (cadastrar a URL do webhook no painel) ou de terceiros (advogado). Depois da revisão jurídica, o
+> único caminho restante é o portão de go-live do `runbook-operacao.md` §1.
+
+### O fio que puxou esta sessão inteira
+
+Vale registrar, porque o padrão se repete: começou com *"me lembre onde paramos na branch de
+pagamentos"*. A auditoria da branch estava limpa e os testes passavam — e mesmo assim saíram daí
+**oito defeitos**, todos do mesmo tipo: **falha que não faz barulho**.
+
+Alerta semanal que nunca enviou email e terminava verde. Alerta marcado como "avisado" sem envio.
+Avaliação de alertas pulada semana após semana por estar presa a um `if`. Cadastro aceitando
+endereço indeliverável. Log gritando alarme falso. Documento afirmando com confiança algo que nunca
+aconteceu. Link que funciona em produção e falha em desenvolvimento.
+
+Nenhum deles quebrava nada visivelmente. Todos foram encontrados **conferindo o que os documentos
+afirmavam contra o que o código fazia** — e a lição que fica é a regra que abre esta seção: *um
+fato mora num lugar só*, e afirmação escrita ao lado de um sucesso real herda a credibilidade dele
+sem ter merecido.
+
+---
+
 ## 1. Diagnóstico do estado atual
 
 ### O que já está bom (a base é honesta)
@@ -601,8 +797,18 @@ armadilhas conhecidas de CORS/agendamento/cold start.
 - [x] **7.6 · SMTP** ✅ **ALERTA FUNCIONANDO EM PRODUÇÃO** — email recebido na **caixa de entrada** (não spam).
   ⚠️ **Descoberta que mudou o plano:** o **Render Free bloqueia saída nas portas 25, 465 e 587**, exatamente as
   de SMTP — o Gmail na 587 **não funciona** a partir do backend hospedado. Solução: **Brevo na porta 2525**
-  (não bloqueada), só variáveis de ambiente, zero código. As mesmas credenciais foram para os secrets do
-  GitHub, para o alerta semanal do Actions também enviar.
+  (não bloqueada), só variáveis de ambiente, zero código. ~~As mesmas credenciais foram para os secrets do
+  GitHub, para o alerta semanal do Actions também enviar.~~
+  > 🔴 **CORREÇÃO — 05/ago/2026: esta última frase era falsa.** O painel do Actions foi conferido e os
+  > *Repository secrets* são só `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`. Nenhum
+  > `SMTP_*` chegou lá. Consequência: **o alerta semanal nunca enviou email em produção** — o
+  > `sendPriceAlertEmail` sai calado (`if (!tx) return`) e o job termina verde.
+  > O que a 7.6 realmente validou foi o alerta **imediato**, que roda no **Render** — onde as credenciais
+  > existem. Dois caminhos, dois ambientes, e o teste cobriu um só; com `ANP_CRON=off`, o Actions é o único
+  > caminho do alerta recorrente. Detalhes e correção em `docs/proximos-passos.md` §0.1.
+  > _Lição (a mesma da Ponta Solta 3, e por isso vale o dobro):_ **afirmação escrita ao lado de um sucesso
+  > real herda a credibilidade dele.** "Funcionou" era verdade sobre um caminho; a frase seguinte, sobre o
+  > outro, não foi verificada e sobreviveu semanas.
   _Ressalva conhecida:_ o remetente é um `@gmail.com`, e o Brevo avisa que isso não cumpre os requisitos de
   Google/Yahoo/Microsoft (não dá para assinar DKIM num domínio que não é nosso). Funcionou no teste, mas a
   entregabilidade só fica sólida com **domínio próprio autenticado** — mais um argumento a favor dos R$ 40.

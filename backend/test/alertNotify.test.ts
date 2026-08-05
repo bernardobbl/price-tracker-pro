@@ -7,7 +7,10 @@ const h = vi.hoisted(() => ({
     error: null,
   })),
   eqUpdate: vi.fn(async () => ({ error: null })),
-  sendEmail: vi.fn(async () => {}),
+  // Devolve `true` porque é esse o contrato: `sendPriceAlertEmail` só responde
+  // `true` quando o email realmente saiu, e o `notifyAndMark` depende disso para
+  // marcar o alerta. O teste de SMTP indisponível está no `alertNoSmtp.test.ts`.
+  sendEmail: vi.fn(async () => true),
   getSnapshot: vi.fn(),
 }));
 

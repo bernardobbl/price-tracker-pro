@@ -81,6 +81,19 @@ jobs:
           if [ -z "$FRONTEND_URL" ]; then
             echo "::warning::Variable FRONTEND_URL não definida — os emails de alerta sairão sem o link para a série."
           fi
+          # SMTP ausente é a falha MAIS SILENCIOSA deste job, e custou semanas:
+          # sem transporte, sendPriceAlertEmail() faz `if (!tx) return` e o job
+          # termina VERDE, contando alertas "notificados" que nunca saíram da
+          # máquina. O guard não bloqueia (a ingestão dos preços é a função
+          # principal e vale por si), mas grita na aba Actions.
+          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASS" ] || [ -z "$EMAIL_FROM" ]; then
+            echo "::warning::Secrets de SMTP ausentes — NENHUM email será enviado nesta rodada (nem alerta de preço, nem aviso de vencimento). A ingestão segue normal."
+          elif [ -z "$SMTP_PORT" ]; then
+            # Sem SMTP_PORT o emailService assume 587 — a porta que o Render Free
+            # bloqueia e que motivou a migração para o Brevo:2525 na Fase 7.6.
+            # Aqui o runner é do GitHub, mas o silêncio seria o mesmo tipo de erro.
+            echo "::warning::SMTP_PORT não definido — o código assume 587. Confirme se o provedor esperado é 2525 (Brevo)."
+          fi
 
       - name: Setup Node
         if: env.skip != 'true'

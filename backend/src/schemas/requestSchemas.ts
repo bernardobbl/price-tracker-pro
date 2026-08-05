@@ -69,5 +69,33 @@ export const uuidParamSchema = z.object({
   id: z.string().uuid("id deve ser um UUID."),
 });
 
+/**
+ * Confirmação de estorno.
+ *
+ * `expectedCents` **não** é o valor a devolver — é a confirmação de que quem
+ * pede está vendo a mesma conta que o backend calculou. O valor real sai da
+ * política, no `previewRefund`; divergência recusa a operação. Dinheiro saindo
+ * merece uma confirmação que não seja um clique só.
+ */
+export const refundChargeSchema = z.object({
+  chargeId: z.string().uuid("chargeId deve ser um UUID."),
+  expectedCents: z
+    .number()
+    .int("expectedCents deve ser um inteiro em centavos.")
+    .nonnegative("expectedCents não pode ser negativo."),
+});
+
+/**
+ * Exclusão de conta.
+ *
+ * Exige digitar a palavra exata. É irreversível e apaga favoritos e alertas em
+ * cascata — um `DELETE` que dispara sem atrito é um acidente esperando data.
+ */
+export const deleteAccountSchema = z.object({
+  confirm: z.literal("EXCLUIR MINHA CONTA", {
+    message: 'Para confirmar, envie confirm: "EXCLUIR MINHA CONTA".',
+  }),
+});
+
 export type CreateTrackedSeriesInput = z.infer<typeof createTrackedSeriesSchema>;
 export type CreateFuelAlertInput = z.infer<typeof createFuelAlertSchema>;

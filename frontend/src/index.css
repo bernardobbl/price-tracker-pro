@@ -220,6 +220,88 @@ body {
   border-radius: 999px;
 }
 
+/* ── Aviso de cota do plano gratuito ───────────────────────────────────────
+   Deliberadamente NÃO usa o vermelho de `.error`. Bater no limite do plano não
+   é erro de quem digitou — é uma fronteira do produto. Pintar de vermelho
+   ensinaria a pessoa a achar que fez algo errado, e ela fez exatamente o que o
+   app convida a fazer. O tom de atenção é o mesmo do selo "vencendo". */
+.quota-notice {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--warn);
+  background: var(--warn-soft);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: var(--warn-deep);
+}
+
+.quota-notice p {
+  margin: 0 0 0.6rem;
+  line-height: 1.45;
+}
+
+.quota-notice-cta {
+  display: inline-block;
+  font-weight: 600;
+  color: var(--warn-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.quota-notice-cta:hover {
+  color: var(--camel);
+}
+
+/* ── Selo do plano ─────────────────────────────────────────────────────────
+   Mesma forma do `.auth-email` de propósito: são vizinhos no header e
+   pertencem à mesma família de informação ("quem você é / o que você tem").
+   As cores é que separam os três estados, e cada uma usa um sinal que já
+   existe na paleta em vez de inventar um tom novo. */
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.plan-badge--active {
+  color: var(--good-deep);
+  background: var(--good-soft);
+  border-color: var(--good);
+}
+
+/* Vencendo usa o tom de atenção, não o de erro: é um lembrete, não um
+   problema — a pessoa não vai ser cobrada nem perde o que salvou. */
+.plan-badge--expiring {
+  color: var(--warn-deep);
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+
+.plan-badge--free {
+  color: var(--ink-soft);
+  background: var(--surface-soft);
+}
+
+.plan-badge--free:hover,
+.plan-badge--expiring:hover {
+  border-color: var(--camel);
+}
+
+/* Em tela estreita o header já é apertado; o selo some antes do e-mail porque
+   é a informação menos urgente das duas. O caminho para o Premium continua no
+   rodapé, que existe em qualquer largura. */
+@media (max-width: 560px) {
+  .plan-badge {
+    display: none;
+  }
+}
+
 .btn-logout {
   display: inline-flex;
   align-items: center;

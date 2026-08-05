@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { createFuelAlert } from "./api/client";
+import { ApiError, createFuelAlert } from "./api/client";
 import { Icon } from "./components/Icon";
 import { AuthPage } from "./components/AuthPage";
 import { HeaderWire } from "./components/HeaderWire";
+import { PlanBadge } from "./components/PlanBadge";
 import { Sidebar } from "./components/Sidebar";
 import { DetailPanel } from "./components/DetailPanel";
 import { ToastContainer } from "./components/Toast";
@@ -12,6 +13,7 @@ import { useFavorites } from "./hooks/useFavorites";
 import { useAlerts } from "./hooks/useAlerts";
 import { useToasts } from "./hooks/useToasts";
 import { useApiWaking } from "./hooks/useApiWaking";
+import { useEntitlement } from "./hooks/useEntitlement";
 import { sameSeries } from "./lib/format";
 import { supabase } from "./supabaseClient";
 import type { TrackedSeries } from "./types";
@@ -28,12 +30,14 @@ function App() {
   const fuel = useFuelSeries();
   const favorites = useFavorites(canManage);
   const { alerts, reload: reloadAlerts, remove: removeAlert } = useAlerts(canManage);
+  const { entitlement } = useEntitlement(auth.user?.id);
   const { toasts, push, remove: removeToast } = useToasts();
   const apiWaking = useApiWaking();
 
   const [alertThreshold, setAlertThreshold] = useState("");
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
+  const [alertQuotaHit, setAlertQuotaHit] = useState(false);
 
   // Login é OPT-IN (padrão Keepa/CamelCamelCamel): o dashboard de consulta é
   // público — a tela de auth só aparece quando o usuário pede (ou quando uma
@@ -75,6 +79,7 @@ function App() {
   const handleCreateAlert = async (e: React.FormEvent) => {
     e.preventDefault();
     setAlertError(null);
+    setAlertQuotaHit(false);
 
     if (!canManage) {
       requestLogin();
@@ -105,6 +110,11 @@ function App() {
       push("success", "Alerta salvo! Você será avisado por email.");
     } catch (err: unknown) {
       setAlertError(err instanceof Error ? err.message : "Erro ao salvar alerta");
+      // Bater no limite do plano gratuito não é erro da pessoa — é o momento em
+      // que faz sentido mostrar o caminho para o Premium. Guardamos o código
+      // para a tela decidir; procurar palavras dentro da mensagem quebraria na
+      // primeira vez que alguém melhorasse a redação.
+      setAlertQuotaHit(err instanceof ApiError && err.code === "ALERT_QUOTA_EXCEEDED");
     } finally {
       setAlertSaving(false);
     }
@@ -163,6 +173,7 @@ function App() {
         </div>
         {canManage ? (
           <div className="auth-row auth-row--logged">
+            <PlanBadge entitlement={entitlement} logged={canManage} />
             <span className="auth-email"><Icon name="user" size={14} /> {auth.user!.email}</span>
             <button type="button" className="btn-logout" onClick={auth.logout}>
               <Icon name="logout" size={14} /> Sair
@@ -236,6 +247,7 @@ function App() {
           onAlertThresholdChange={setAlertThreshold}
           alertSaving={alertSaving}
           alertError={alertError}
+          alertQuotaHit={alertQuotaHit}
           onCreateAlert={handleCreateAlert}
         />
       </main>
@@ -253,6 +265,7 @@ function App() {
           {" "}— dados abertos. Não são o preço da bomba neste instante.
         </p>
         <nav className="site-footer-links" aria-label="Documentos legais">
+          <a href="/premium.html">Premium</a>
           <a href="/termos.html">Termos de Uso</a>
           <a href="/privacidade.html">Privacidade</a>
           <a href="/reembolso.html">Reembolso</a>

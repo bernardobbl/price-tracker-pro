@@ -85,3 +85,17 @@ export interface FuelAlert {
     label: string;
   } | null;
 }
+
+/**
+ * Situação da assinatura, vinda de `GET /api/fuel/entitlement`.
+ *
+ * ⚠️ Isto é **para a interface**, não é o portão. O gate de verdade roda no
+ * backend, no `POST /api/fuel/alerts` — esconder um botão nunca foi controle de
+ * acesso. Aqui serve só para a pessoa saber o que ela tem.
+ */
+export interface Entitlement {
+  active: boolean;
+  plan: "mensal" | "anual" | null;
+  expiresAt: string | null;
+  daysLeft: number | null;
+}

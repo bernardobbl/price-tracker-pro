@@ -61,10 +61,19 @@ async function main() {
   );
   if (result.message) console.log(`[ingest] Mensagem: ${result.message}`);
 
-  if (result.status === "success") {
-    const { evaluated, notified } = await evaluateAllFuelAlerts();
-    console.log(`[ingest] Alertas reavaliados: ${evaluated} avaliados · ${notified} notificados`);
-  }
+  // Reavaliação dos alertas.
+  //
+  // ⚠️ Fora do `if (status === "success")` de propósito, e isso já foi um bug:
+  // a ANP publica em ritmo mensal, então a maioria das execuções semanais volta
+  // `skipped` (mesmo hash de conteúdo). Preso ao sucesso, o bloco inteiro era
+  // pulado semana após semana — em três execuções seguidas de 05/ago/2026,
+  // nenhum alerta foi sequer olhado.
+  //
+  // E o alvo do alerta é do usuário, não da ANP: alguém que baixa o alvo hoje
+  // precisa ser avaliado contra o preço que já está no banco, mesmo que nenhum
+  // arquivo novo tenha saído. Mesma justificativa do `sendExpiryNotices` abaixo.
+  const { evaluated, notified } = await evaluateAllFuelAlerts();
+  console.log(`[ingest] Alertas reavaliados: ${evaluated} avaliados · ${notified} notificados`);
 
   // Fase 9 — retenção automática (free tier). RETENTION_MONTHS=0 desliga.
   const deleted = await applyRetention();

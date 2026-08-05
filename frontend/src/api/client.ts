@@ -1,4 +1,5 @@
 import type {
+  Entitlement,
   FuelAlert,
   FuelSeriesPoint,
   SnapshotSummary,
@@ -136,6 +137,32 @@ async function extractError(response: Response, fallback: string): Promise<strin
   if (err && typeof err === "object" && typeof err.message === "string") return err.message;
   if (typeof err === "string") return err;
   return fallback;
+}
+
+/**
+ * Erro da API que carrega o **código** junto da mensagem.
+ *
+ * A mensagem serve para ler; o código serve para decidir. Sem ele, a única
+ * forma de a interface reagir a um caso específico — como a cota de alertas
+ * estourada — seria procurar palavras dentro do texto, que quebra no dia em que
+ * alguém melhorar a redação.
+ */
+export class ApiError extends Error {
+  code: string | null;
+  status: number;
+
+  constructor(message: string, code: string | null, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+async function toApiError(response: Response, fallback: string): Promise<ApiError> {
+  const body = await response.clone().json().catch(() => null);
+  const code = typeof body?.error?.code === "string" ? body.error.code : null;
+  return new ApiError(await extractError(response, fallback), code, response.status);
 }
 
 // ── Consulta pública (dados da ANP) ─────────────────────────────────────────
@@ -280,7 +307,10 @@ export async function createFuelAlert(payload: CreateFuelAlertPayload): Promise<
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error(await extractError(response, "Erro ao salvar alerta"));
+    // `ApiError` e não `Error`: a cota do plano gratuito (402
+    // `ALERT_QUOTA_EXCEEDED`) precisa virar um convite na tela, não só um texto
+    // vermelho — e a interface só consegue distinguir esse caso pelo código.
+    throw await toApiError(response, "Erro ao salvar alerta");
   }
   return response.json();
 }
@@ -293,5 +323,28 @@ export async function deleteFuelAlert(alertId: string): Promise<void> {
   });
   if (!response.ok) {
     throw new Error(await extractError(response, "Erro ao excluir alerta"));
+  }
+}
+
+// ── Assinatura ──────────────────────────────────────────────────────────────
+
+/**
+ * Situação do plano do usuário.
+ *
+ * Sem sessão devolve `null` em vez de erro: visitante não logado não tem
+ * assinatura, e isso é estado normal, não falha. Erro de rede também vira
+ * `null` — a situação do plano é informação secundária e não pode derrubar o
+ * dashboard de quem só quer ver preço.
+ */
+export async function fetchEntitlement(): Promise<Entitlement | null> {
+  const headers = await getAuthHeaders();
+  if (!headers.Authorization) return null;
+
+  try {
+    const response = await apiFetch("/api/fuel/entitlement", { headers });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
   }
 }

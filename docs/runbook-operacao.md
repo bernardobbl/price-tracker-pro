@@ -79,47 +79,78 @@ order by s.expires_at;
 
 ## 3. Procedimentos
 
-### 3.1 Cliente pede reembolso dentro de 7 dias (art. 49 do CDC)
+### 3.1 e 3.2 Reembolso — ✅ AUTOMATIZADO em 05/ago/2026
 
-Devolução **integral**, sem discutir, mesmo que ele tenha usado.
+> **Não faça mais à mão.** As duas regras da política (integral em 7 dias, proporcional no anual)
+> viraram código, e o acesso é encerrado na mesma operação — que era justamente o passo que
+> dependia de alguém lembrar de rodar um `UPDATE`.
 
-1. Confirme por e-mail que recebeu o pedido (prometido: **2 dias úteis**).
-2. Localize a cobrança:
-   ```sql
-   select id, charge_id, amount_cents, plan, paid_at
-   from subscriptions s join auth.users u on u.id = s.user_id
-   where u.email = 'cliente@exemplo.com' order by paid_at desc limit 1;
-   ```
-3. No painel do Mercado Pago: **Atividade → a transação → Estornar**, valor total.
-4. ⚠️ **Corte o acesso na mesma hora** — o estorno no painel não avisa o seu sistema:
-   ```sql
-   update subscriptions
-      set expires_at = now(), status = 'refunded'
-    where charge_id = '<charge_id>';
-   ```
-   **Nunca apague a linha.** Ela é prova fiscal e você prometeu guardar por 5 anos.
-5. Responda ao cliente confirmando, com o prazo do banco.
+**Pré-requisito:** seu e-mail em `ADMIN_EMAILS` no ambiente do backend. Sem a variável, as rotas
+respondem 503 para todo mundo (fail-closed).
 
-### 3.2 Reembolso proporcional do anual (depois dos 7 dias)
-
-A política promete devolver os **meses inteiros ainda não usados**.
+**Passo 1 — localize a cobrança.**
 
 ```sql
--- Calcula o valor a devolver
-select
-  s.amount_cents / 100.0                                       as pago,
-  floor(extract(epoch from (s.expires_at - now())) / 2629746)   as meses_inteiros_restantes,
-  round(
-    s.amount_cents / 100.0
-    * floor(extract(epoch from (s.expires_at - now())) / 2629746)
-    / 12
-  , 2)                                                          as devolver
-from subscriptions s join auth.users u on u.id = s.user_id
-where u.email = 'cliente@exemplo.com' and s.status = 'active';
+select bc.id as charge_id, bc.plan, bc.amount_cents/100.0 as pago, bc.paid_at, bc.status
+  from billing_charges bc
+  join auth.users u on u.id = bc.user_id
+ where u.email = 'cliente@exemplo.com'
+ order by bc.paid_at desc nulls last;
 ```
 
-Confira contra o exemplo publicado na política: cancelou no 4º mês → 8 meses restantes →
-`59,90 × 8 / 12 = R$ 39,93`. Depois, estorno parcial no painel e o mesmo `update` do passo 3.1.4.
+**Passo 2 — veja o que a política manda devolver.** Não move dinheiro:
+
+```bash
+curl -s https://price-tracker-pro-api.onrender.com/api/billing/refund/<charge_id> \
+  -H "Authorization: Bearer <seu_token_supabase>"
+```
+
+Devolve a regra aplicada (`cdc-7-dias`, `prorata-anual` ou `sem-reembolso`), o valor em centavos e
+uma frase pronta para colar na resposta ao cliente.
+
+**Passo 3 — execute**, repetindo o valor que veio no preview:
+
+```bash
+curl -s -X POST https://price-tracker-pro-api.onrender.com/api/billing/refund \
+  -H "Authorization: Bearer <seu_token_supabase>" \
+  -H "Content-Type: application/json" \
+  -d '{"chargeId":"<charge_id>","expectedCents":3993}'
+```
+
+O `expectedCents` **tem de bater** com o calculado, senão a operação é recusada. Não é burocracia:
+é a diferença entre "o sistema devolveu R$ 39,93" e "alguém digitou um número e o sistema
+obedeceu". O pró-rata também cai a cada mês que passa, então confirmar o valor evita executar um
+preview velho.
+
+**O que acontece automaticamente:** estorno no provedor (total com corpo vazio, parcial com valor +
+id da transação), `billing_charges.status = 'refunded'`, e a assinatura encerrada com
+`status = 'refunded'` e `expires_at = agora`. **A linha nunca é apagada** — é prova fiscal e os
+Termos prometem guardá-la.
+
+**Se o provedor recusar** (falta de saldo é o caso comum), **nada é alterado no banco**. Ninguém
+fica sem acesso e sem dinheiro. O log traz `[Billing] Provedor recusou o estorno`.
+
+**Estorno feito pelo painel do Mercado Pago também corta o acesso agora** — a próxima consulta da
+order vê `refunded` e encerra a assinatura sozinha. Era exatamente o furo que este runbook avisava:
+"o estorno no painel não avisa o seu sistema".
+
+<details>
+<summary>Procedimento manual (guardado caso as rotas estejam fora)</summary>
+
+1. Painel do Mercado Pago: **Atividade → a transação → Estornar**.
+2. Corte o acesso na mão:
+   ```sql
+   update subscriptions set expires_at = now(), status = 'refunded'
+    where charge_id = '<charge_id>';
+   update billing_charges set status = 'refunded' where id = '<charge_id>';
+   ```
+3. Confira o pró-rata contra o exemplo publicado: cancelou no 4º mês → 8 meses restantes →
+   `59,90 × 8 / 12 = R$ 39,93`.
+
+</details>
+
+**Prazos que continuam sendo seus:** confirmar o recebimento do pedido em até 2 dias úteis e
+solicitar o estorno em até 5 dias úteis, como a política promete.
 
 ### 3.3 Aviso antes de vencer — ✅ AUTOMATIZADO em 04/ago/2026
 
@@ -164,27 +195,48 @@ update subscriptions set warned_at = null where charge_id = '<charge_id>';
 
 </details>
 
-### 3.4 Pedido de exclusão de dados (LGPD art. 18)
+### 3.4 Exclusão e exportação de dados (LGPD art. 18) — ✅ AUTOMATIZADO em 05/ago/2026
 
-Prazo prometido: resposta em **15 dias**, exclusão em **30**.
+> **O próprio titular resolve, sem passar por você.** Duas rotas autenticadas, agindo sempre sobre
+> a conta do token — não existe parâmetro de "qual usuário".
 
-⚠️ **Atenção ao conflito:** você prometeu apagar os dados *e* guardar o registro de pagamento por
-5 anos. Os dois se resolvem **anonimizando** em vez de deletar tudo.
+| O quê | Rota | Efeito |
+|---|---|---|
+| Cópia dos dados | `GET /api/account/export` | JSON com conta, favoritos, alertas, assinaturas e cobranças. Baixa como arquivo |
+| Excluir a conta | `DELETE /api/account` com `{"confirm":"EXCLUIR MINHA CONTA"}` | Anonimiza o registro fiscal e remove o usuário |
+
+⚠️ **O conflito que isso resolve:** a Política de Privacidade promete apagar os dados **e** guardar
+os registros de pagamento por 5 anos. As duas coisas só coexistem **anonimizando** em vez de
+deletar: `subscriptions.user_id` e `billing_charges.user_id` viram `null`, favoritos e alertas caem
+em cascata, o usuário sai do `auth.users`. Valor e data continuam lá, sem apontar para pessoa
+nenhuma.
+
+A ordem no código é anonimizar **antes** de remover o usuário. Se a remoção falhar, sobra uma conta
+com registro já desvinculado — recuperável, e o log grita. Na ordem inversa, uma falha deixaria
+registro fiscal órfão ou apagado.
+
+**Exclusão é imediata**, não em 30 dias. O prazo publicado é um teto, não uma meta.
+
+> O `on delete set null` das duas colunas já estava certo desde a migração 003 — a preocupação
+> registrada aqui ("ajuste antes do go-live") era infundada. Conferido em 05/ago/2026.
+
+<details>
+<summary>Procedimento manual (guardado caso as rotas estejam fora)</summary>
 
 ```sql
 -- 1. Anonimiza o vínculo, preservando o registro fiscal
-update subscriptions
-   set user_id = null
+update subscriptions    set user_id = null
+ where user_id = (select id from auth.users where email = 'cliente@exemplo.com');
+update billing_charges  set user_id = null
  where user_id = (select id from auth.users where email = 'cliente@exemplo.com');
 
 -- 2. Apaga os dados pessoais (favoritos e alertas caem em cascata)
 delete from auth.users where email = 'cliente@exemplo.com';
 ```
-> Para isso funcionar, `subscriptions.user_id` precisa aceitar `null` e usar
-> `on delete set null` em vez de `cascade`. **Ajuste antes do go-live** — ver
-> `vigencia-do-acesso.md` §3.
 
-Depois, confirme por e-mail que foi feito.
+</details>
+
+Depois, confirme por e-mail que foi feito — o prazo de resposta de **15 dias** continua sendo seu.
 
 ### 3.5 Pagou e o acesso não liberou
 

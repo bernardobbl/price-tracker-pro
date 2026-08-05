@@ -30,6 +30,14 @@ interface DetailPanelProps {
   onAlertThresholdChange: (v: string) => void;
   alertSaving: boolean;
   alertError: string | null;
+  /**
+   * O erro foi a cota do plano gratuito (402), e não uma falha.
+   *
+   * Merece tratamento próprio: bater no limite não é engano de quem digitou, é
+   * o único momento em que oferecer o Premium é útil em vez de propaganda. Um
+   * texto vermelho igual ao de "valor inválido" desperdiçaria isso.
+   */
+  alertQuotaHit?: boolean;
   onCreateAlert: (e: React.FormEvent) => void;
 }
 
@@ -51,6 +59,7 @@ export function DetailPanel({
   onAlertThresholdChange,
   alertSaving,
   alertError,
+  alertQuotaHit = false,
   onCreateAlert,
 }: DetailPanelProps) {
   // ── Derivados (recortados pelo período) ──
@@ -310,7 +319,15 @@ export function DetailPanel({
                 {avaliacaoAlvo.tipo === "invalido" && (
                   <p className="error">{avaliacaoAlvo.mensagem}</p>
                 )}
-                {alertError && <p className="error">{alertError}</p>}
+                {alertError && !alertQuotaHit && <p className="error">{alertError}</p>}
+                {alertError && alertQuotaHit && (
+                  <div className="quota-notice" role="status">
+                    <p>{alertError}</p>
+                    <a className="quota-notice-cta" href="/premium.html">
+                      Ver o Premium
+                    </a>
+                  </div>
+                )}
               </form>
             ) : (
               <div className="login-cta">

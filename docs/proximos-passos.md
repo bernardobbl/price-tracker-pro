@@ -1,23 +1,110 @@
-# Próximos passos — retomar daqui
+# Próximos passos — a frente de pagamentos
 
-> **Para o Bernardo do futuro.** Escrito em 04/ago/2026 no fim de uma sessão, para você conseguir
-> voltar sem reler tudo. **Atualizado em 05/ago/2026 (noite)** — segunda varredura de pontas
-> soltas, três corrigidas e uma aberta (§0). Comece por aqui.
+> ## 📍 O status geral mora no `plan.md`, não aqui
 >
-> **Branch:** `feat/checkout-pix` → [PR #22](https://github.com/bernardobbl/price-tracker-pro/pull/22).
+> Este arquivo é a fonte da verdade sobre **como retomar a frente de pagamentos**: as armadilhas, o
+> que falta codar, como rodar local. Para saber **em que pé o projeto está**, vá em
+> [`plan.md` → 📍 Estado atual](../plan.md).
+>
+> A divisão não é burocracia: em 05/ago/2026 este arquivo e o `plan.md` afirmavam coisas diferentes
+> sobre os secrets de SMTP, os dois estavam errados, e o alerta semanal ficou semanas sem enviar
+> email nenhum. **Um fato mora num lugar só.**
+>
+> **Para o Bernardo do futuro.** Escrito em 04/ago/2026, atualizado em 05/ago/2026 (noite).
+>
+> **Branch:** `feat/checkout-pix` → [PR #22](https://github.com/bernardobbl/price-tracker-pro/pull/22)
+> — **mergeado** na `main` em 05/ago/2026 (`1b4d02f`).
 
 ---
 
 ## 0. 🔎 Segunda varredura — 05/ago/2026 (noite)
 
 Revisão independente da branch depois da auditoria, procurando o que tinha escapado. Verificado
-do zero: `tsc` limpo nos dois pacotes, `eslint` limpo nos dois, **209 testes no backend e 61 no
-frontend passando**, working tree limpo, nenhum `.env` versionado.
+do zero: `tsc` limpo nos dois pacotes, `eslint` limpo nos dois, working tree limpo, nenhum `.env`
+versionado. Os testes saíram de 209+61 para **211 no backend e 70 no frontend** — os 11 novos são
+as regressões dos bugs achados aqui.
+
+### 0.1 ✅ RESOLVIDO — o alerta semanal nunca tinha enviado email em produção
+
+> **Fechado no mesmo dia, 05/ago/2026.** Os cinco secrets foram cadastrados no Actions (copiados do
+> painel do Render, Brevo na porta **2525**) e o envio foi **verificado com email real chegando na
+> caixa de entrada** — não no spam, o que também derruba a ressalva de entregabilidade da Fase 7.6.
+> O relato abaixo fica como registro do diagnóstico.
+
+Descoberto ao conferir o painel do GitHub em 05/ago/2026, e era **mais grave que o item que
+estávamos investigando**. Os *Repository secrets* do Actions tinham exatamente três nomes:
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. **Nenhum `SMTP_*`, nenhum
+`EMAIL_FROM`.**
+
+O que isso causa, hoje, toda segunda-feira:
+
+```
+ingest.ts → evaluateAllFuelAlerts() → sendPriceAlertEmail()
+                                        └─ getTransporter() devolve null
+                                           (falta SMTP_HOST/USER/PASS/EMAIL_FROM)
+                                        └─ `if (!tx) return;`  ← sai calado
+```
+
+O job termina verde. O log conta quantos alertas foram "notificados". **E nenhum email sai.**
+
+### Por que isso passou despercebido tanto tempo
+
+O `plan.md` §7.6 afirma, sobre a solução do Brevo: *"As mesmas credenciais foram para os secrets
+do GitHub, para o alerta semanal do Actions também enviar."* **Essa frase não é verdade** — ou
+nunca foi executada, ou os secrets foram perdidos depois. Ela foi escrita junto com um sucesso
+real e por isso ninguém duvidou dela.
+
+O sucesso real era outro: a Fase 7.6 validou o alerta **imediato** (`POST /api/fuel/alerts` →
+`evaluateFuelAlertImmediately`), que roda **no Render**, onde as credenciais do Brevo existem de
+fato. Dois caminhos diferentes, com ambientes diferentes, e o teste cobriu só um. Como o Render
+está com `ANP_CRON=off`, o Actions é o **único** caminho do alerta recorrente em produção.
+
+> É a mesma lição da Ponta Solta 3 da Fase 7.7, que já tinha nos pegado com o `FRONTEND_URL`:
+> **mudar onde algo executa troca o conjunto de variáveis de ambiente junto.** Da primeira vez
+> perdemos o link dentro do email; desta vez, o email inteiro.
+
+**Onde estão as credenciais certas:** no painel do **Render** (Environment do
+`price-tracker-pro-api`) — são as do **Brevo, porta 2525**. ⚠️ **Não** copie do `backend/.env`
+local: lá está Gmail na 587, e a própria Fase 7.6 registra que essa combinação não funciona a
+partir de host (o Render Free bloqueia 25/465/587).
+
+**Correção junto:** o `guard` do `ingest.yml` avisava quando faltava `FRONTEND_URL` mas ficava
+calado sobre SMTP — justamente o que teria mostrado isso na aba Actions há semanas. Agora avisa.
+
+### 0.2 Os três bugs de código que o diagnóstico acima destravou
+
+Achar o secret faltando foi o começo. Procurar **por que ninguém notou** rendeu três defeitos reais,
+todos corrigidos em 05/ago/2026:
+
+**a) O alerta era marcado como avisado sem que o email saísse.** `sendPriceAlertEmail` devolvia
+`void` e caía num `return` mudo sem SMTP; o `notifyAndMark` gravava `triggered: true` assim mesmo.
+Como `triggered` só volta a `false` quando o preço sobe acima do alvo, o alerta ficava **queimado** —
+a pessoa nunca seria avisada. Agora a função devolve booleano e nada é marcado sem envio confirmado.
+O `sendExpiryNoticeEmail` sempre fez assim; foi o modelo. Regressão trancada em
+`test/alertNoSmtp.test.ts`.
+
+**b) A avaliação dos alertas estava presa ao sucesso da ingestão.** `if (result.status === "success")`
+parecia economia e custava caro: a ANP publica CSVs **mensais**, então a maioria das execuções
+semanais volta `skipped` por hash idêntico — em três execuções seguidas de 05/ago, nenhum alerta foi
+sequer olhado. E o alvo do alerta é do usuário: quem baixa o alvo hoje precisa ser avaliado contra o
+preço que já está no banco. Corrigido no `scripts/ingest.ts` **e** no `scheduleWeeklyAnpJob.ts`.
+
+**c) O cadastro aceitava email sem domínio de topo.** O campo usava só `type="email"`, e a validação
+do HTML5 aceita `alguem@gmail` — válido pela RFC, indeliverável na internet. Uma conta real foi
+criada assim em 23/jul/2026 e passou meses sem receber nada: nem alerta, nem aviso de vencimento,
+nem recuperação de senha. Novo `frontend/src/lib/emailValidation.ts`, aplicado **só no cadastro**
+(no login não — quem já tem conta torta precisa conseguir entrar para pedir a correção).
+
+### ✅ Já feito, ao contrário do que este arquivo dizia
+
+- **Variable `FRONTEND_URL`** — existe no Actions (`https://precos-combustivel-br.vercel.app`),
+  junto com `BACKEND_URL`. A ação manual da Fase 7.7 foi cumprida; era este arquivo que não sabia.
 
 ### ✅ Corrigido nesta varredura
 
 | # | O quê | Onde | Por que importava |
 |---|---|---|---|
+| 0 | O aviso do Supabase mentia sobre o próprio estado | `config/supabaseClient.ts` | Disparava sempre que faltasse a *anon key* e afirmava "operações remotas serão puladas" — mesmo com a service_role presente, quando nada era pulado. O Actions cai exatamente nesse caso, então todo log de ingestão abria com alarme falso. Alarme falso recorrente treina quem lê a ignorar o log inteiro. |
 | 1 | O Resumo do checkout dizia **"renova todo mês"** no plano mensal | `checkout.html` (`PLANS.mensal.cycle`) | Era a **única linha do produto a prometer débito automático**, ao lado do preço, numa tela de pagamento. Todo o resto — a própria página três linhas abaixo, a `premium.html` e a Política de Reembolso — diz "compra avulsa, sem cobrança automática". Sobrou do texto anterior ao merge da `main`, que arrumou a `premium.html` e não o objeto `PLANS`. Agora: **"1 mês de acesso"**. |
 | 2 | `render.yaml` **não declarava nenhuma variável `MERCADOPAGO_*`** | `render.yaml` | O blueprint é o registro de quais variáveis o serviço precisa. Sem as quatro ali, um serviço recriado a partir dele sobe com a cobrança desligada (503 no checkout) e nada no arquivo explica o porquê. Adicionadas como `sync: false` — os valores continuam no painel, só a dependência ficou visível. |
 | 3 | Três docs desatualizados | `billingService.ts`, `runbook-operacao.md` §1, `fase10-pagamentos.md` | O comentário do `getChargeStatus` ainda dizia "a página consulta a cada 4s" (é escada desde a auditoria); o portão de go-live disparava em `DEMO = false`, que **já é false** — o gatilho certo é `MERCADOPAGO_ENV=production`, e um portão que parece violado deixa de ser lido; o `fase10-pagamentos.md` abria dizendo "só existe na branch `feat/premium-landing`" e "nada implementado", com AbacatePay no título. |
@@ -47,38 +134,65 @@ do item "limitar alertas do plano grátis" da Etapa C — os dois só fazem sent
 
 ## 🔴 RETOMAR AQUI — o que fazer na próxima sessão
 
-**270 testes passam** (209 backend + 61 frontend). O fluxo de checkout Pix foi exercitado de
+**281 testes passam** (211 backend + 70 frontend). O fluxo de checkout Pix foi exercitado de
 ponta a ponta em 05/ago/2026 — cobrança criada, APRO aprovou sozinho (~7s), reconciliação via
 polling, assinatura no banco, gate `active: true`. Registro completo em
 [`docs/teste-ponta-a-ponta.md`](./teste-ponta-a-ponta.md).
 
-### 1. Merge do PR #22
+### ✅ Concluído em 05/ago/2026
 
-A branch está pronta. Depois do merge na `main`:
+- **PR #22 mergeado** na `main` (`1b4d02f`). Vercel publicou; conferido que a página em produção é
+  a versão nova. API no Render respondendo `{"status":"ok"}`.
+- **Secrets de SMTP no Actions** — os cinco cadastrados, envio verificado com email real na caixa
+  de entrada.
 
-- A Vercel faz deploy automático do frontend (checkout, documentos legais, visual).
-- O backend no Render precisa das variáveis `MERCADOPAGO_*` configuradas **no painel** — o
-  `render.yaml` agora as declara como `sync: false`, o que registra a dependência mas **não
-  preenche valor nenhum**. Conferir que o deploy passou e que o log do boot traz
-  `[MercadoPago] Configurado` com `env: "test"`. Se o log não aparecer, ou aparecer o aviso de
-  `MERCADOPAGO_ENV`, a cobrança subiu desligada e o checkout responde 503.
+> **Sobre as variáveis `MERCADOPAGO_*` no Render: não preencha ainda.** O `render.yaml` define
+> `NODE_ENV=production`, e o config **recusa** a combinação `NODE_ENV=production` +
+> `MERCADOPAGO_ENV=test` — de propósito, para ninguém pagar um QR de sandbox que não cobra nada.
+> Preencher com o token de teste dá o mesmo resultado de não preencher: checkout em 503. Elas
+> entram junto com as credenciais de **produção**, no portão de go-live.
+>
+> Consequência aceita conscientemente: `/premium` está no ar linkando um checkout que hoje só
+> responde erro. Decidido em 05/ago **deixar como está** — o tráfego é ~zero e a cobrança liga em
+> semanas. Se demorar mais que isso, trate o `BILLING_DISABLED` na tela em vez de dizer "tente de
+> novo em instantes", que é mentira.
 
-### 2. Pendências pós-merge (ordem recomendada)
+### ✅ A dívida dos documentos legais foi paga — 05/ago/2026
 
-| # | O quê | Quando | Urgência |
+As três promessas publicadas que só existiam como SQL manual viraram código. Detalhe completo em
+[`plan.md` → 📍 Estado atual](../plan.md); o essencial para quem for mexer:
+
+| O quê | Onde | O que muda na prática |
+|---|---|---|
+| Estorno integral e pró-rata | `GET/POST /api/billing/refund` (admin) | O `POST` exige repetir o valor do preview. Recusa divergência **antes** de chamar o provedor |
+| Estorno pelo painel do MP | `confirmPaymentByOrderId` | Passou a encerrar a assinatura ao ver `refunded` — o furo que este runbook avisava |
+| Exportar e excluir conta | `GET /api/account/export`, `DELETE /api/account` | Anonimiza `user_id` em `subscriptions` e `billing_charges`; favoritos e alertas caem em cascata |
+| App enxerga a assinatura | `PlanBadge` + `useEntitlement` | Selo no header (ativo / vencendo / grátis) e link para `/premium` no rodapé |
+
+**Nova env:** `ADMIN_EMAILS`. Sem ela, ninguém é admin e as rotas de estorno respondem 503.
+
+⚠️ **Armadilha nova, para a lista da §4:** o estorno chama o provedor **antes** de mexer no banco.
+Não inverta. Se inverter, uma falha na chamada externa deixa o cliente sem acesso e sem dinheiro,
+que é o pior resultado possível. Na ordem atual, falha do provedor não altera nada.
+
+### O que fazer agora — ordem
+
+| # | O quê | Depende de | Nota |
 |---|---|---|---|
-| 1 | **Secrets de SMTP + `FRONTEND_URL`** no GitHub Actions | depois do merge | Baixa — ninguém tem assinatura ainda |
-| 2 | **Revisão jurídica** dos 3 documentos | antes de dinheiro real | Alta para go-live |
-| 3 | **Credenciais de produção** + portão de go-live | por último | Irreversível — ver `runbook-operacao.md` §1 |
+| 1 | **Revisão jurídica** | advogado | Pode correr em paralelo |
+| 2 | **Credenciais de produção + go-live** | item acima | Irreversível — `runbook-operacao.md` §1 |
 
 O irreversível (produção) vem **depois** do que ainda pode ser corrigido de graça.
 
-### 3. Dívida técnica conhecida (não bloqueia o merge)
+> ✅ **O limite do plano gratuito foi ligado em 05/ago/2026** — `FREE_ALERT_LIMIT = 1`. A armadilha
+> que este trecho avisava (contagem vinda do `listFuelAlerts`, que confunde "sem alertas" com
+> "banco fora") foi fechada junto: o `countFuelAlerts` devolve `null` quando não dá para saber e a
+> rota recusa com 503. O raciocínio do número está no `alertQuota.ts` e no `plan.md`.
 
-- Validação `x-signature` do webhook — exige URL pública primeiro
-- Estorno + reembolso proporcional (a matemática existe; falta o endpoint)
-- Exclusão de conta + exportação LGPD
-- Limitar alertas do plano grátis (`FREE_ALERT_LIMIT = Infinity` hoje)
+### Dívida técnica conhecida
+
+- Validação `x-signature` do webhook — exige URL pública cadastrada no painel primeiro
+- Apagar a conta com email sem TLD (`9f7a8e4c-77a3-4b2e-bb23-fd9e3e56a83f`): nunca receberá email
 
 Detalhes na §3 deste arquivo e em `docs/runbook-operacao.md`.
 
@@ -186,7 +300,7 @@ Nada disso eu consigo fazer — precisa ser você, e algumas travam o resto.
 | 3 | **Criar a aplicação** e pegar as credenciais de teste | [Suas integrações](https://www.mercadopago.com.br/developers/panel/app) | Trava o desenvolvimento. |
 | 4 | **Revisão jurídica** dos 3 documentos | Advogado | Trava o dinheiro real, não o código. |
 | 5 | **Decidir o gatilho de virar MEI** | Você + contador | Nada agora. Decida o número ("quando passar de X/mês") para não virar susto depois. |
-| 6 | **Secrets de SMTP + variable `FRONTEND_URL`** no GitHub Actions | Settings → Secrets and variables → Actions | **O aviso de vencimento.** O código está pronto e rodando no job semanal, mas sem SMTP o e-mail não sai (o log diz isso) e sem `FRONTEND_URL` ele sai sem o link de renovação. Conferir na aba Actions: `[ingest] Avisos de vencimento: N elegíveis · N enviados` |
+| 6 | **Secrets de SMTP** no GitHub Actions — os cinco: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Settings → Secrets and variables → Actions → aba **Secrets** | **Conferido em 05/ago: não existe nenhum deles.** Trava o alerta semanal de preço (que hoje não envia nada) e o aviso de vencimento. Copie do painel do **Render**, não do `.env` local — ver §0.1. A variable `FRONTEND_URL` **já está lá**, não mexa. |
 
 > Os documentos legais são **rascunhos meus, não parecer jurídico.** Estão escritos a partir do que
 > o produto realmente faz — o que é mais do que a maioria dos modelos genéricos entrega — mas
@@ -233,7 +347,7 @@ URL pública. Então: URL pública → pegar o segredo → implementar a valida�
 
 Prometido por escrito, ainda não existe:
 
-- [x] ~~**Aviso antes de vencer**~~ — **FEITO em 04/ago/2026.** Janela de 8 dias (o job é semanal), roda no `scripts/ingest.ts` via GitHub Actions. Falta só configurar os secrets de SMTP e a variable `FRONTEND_URL` no Actions.
+- [x] ~~**Aviso antes de vencer**~~ — **código FEITO em 04/ago/2026**, janela de 8 dias (o job é semanal), roda no `scripts/ingest.ts` via GitHub Actions. ⚠️ **Mas não sai email nenhum ainda:** faltam os secrets de SMTP no Actions (§0.1). A variable `FRONTEND_URL` já está configurada.
 - [ ] **Estorno** — endpoint de refund + webhook `refunded` que zera `expires_at` na hora
 - [ ] **Reembolso proporcional** do anual — a matemática já existe e está testada (`computeProRataRefundCents`); falta o endpoint e a chamada ao provedor
 - [ ] **Exclusão de conta a pedido** — a Política de Privacidade promete em 30 dias
@@ -288,6 +402,17 @@ cd frontend && npm run dev
 No checkout, o botão **"Gerar pagamento" começa desabilitado** — marque o aceite para liberar.
 
 As URLs sem `.html` (`/termos`, `/premium/checkout`) só funcionam na Vercel, que faz o rewrite.
+
+> ⚠️ **E é por isso que os links do código apontam para o arquivo real**, nunca para o apelido.
+> Em 05/ago/2026 essa armadilha pegou três vezes seguidas: o selo do plano, o rodapé do app e os
+> botões "Assinar" da landing apontavam para `/premium` e `/premium/checkout`. Em produção
+> funcionava; no `vite dev` o apelido cai no fallback do SPA e devolve o `index.html` — o clique
+> parecia não fazer nada e a pessoa voltava ao dashboard. **Funciona em produção e falha em
+> desenvolvimento** é o pior formato possível de bug: quem testa local acha que estragou algo, e
+> quem confere em produção não vê problema.
+>
+> A regra agora é verificada por teste: `frontend/src/lib/staticLinks.test.ts` varre os `href` das
+> páginas estáticas e falha se algum não resolver para um arquivo que existe em `public/`.
 
 ---
 

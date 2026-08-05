@@ -2,11 +2,21 @@
   ============================================================================
   PRICE TRACKER PRO — página de validação do Premium ("porta falsa")
   ----------------------------------------------------------------------------
-  ⚠️ ESTE ARQUIVO SÓ EXISTE NA BRANCH `feat/premium-landing`.
-     Não faça merge na main sem o critério de sucesso da Fase 10 do plan.md.
+  ⚠️ ~~ESTE ARQUIVO SÓ EXISTE NA BRANCH `feat/premium-landing`.~~
+     Desatualizado: mergeado na main pelo PR #22 em 05/ago/2026, e a cobrança
+     por trás dele existe de verdade (Mercado Pago, credenciais de teste).
+
+  🔗 REGRA DOS LINKS INTERNOS — leia antes de mexer em qualquer href.
+     Esta página é servida em DOIS endereços: /premium.html (o arquivo, que
+     funciona sempre) e /premium (apelido criado por rewrite no vercel.json,
+     que só existe NA VERCEL). No `vite dev` o apelido cai no fallback do SPA e
+     devolve o index.html — ou seja, o clique parece não funcionar e a pessoa
+     volta ao dashboard.
+     Por isso: **escreva sempre o arquivo real** (/premium.html,
+     /checkout.html), nunca o apelido. Já quebrou três vezes em 05/ago/2026.
+     O teste `src/lib/staticLinks.test.ts` trava essa regra.
 
   OBJETIVO: medir se o motorista comum PAGA, sem construir a infra de assinatura.
-  Servida em /premium (ver rewrite em frontend/vercel.json).
 
   MODELO DE PREÇO (decidido em 29/jul/2026, mensal reajustado em 29/jul/2026):
     • R$ 59,90/ano no anual -> R$ 4,99/mês   <- PLANO PRINCIPAL
@@ -20,7 +30,8 @@
        pra medir visitantes -> cliques -> pagamentos. Os eventos já disparam
        nos pontos certos (procure por trackEvent).
 
-  O checkout vive em /premium/checkout (frontend/public/checkout.html).
+  O checkout é o frontend/public/checkout.html — linke como /checkout.html
+  (o apelido /premium/checkout só existe na Vercel; ver a regra acima).
 
   DICA DE TESTE: rode 2-4 semanas. Sinal forte = alguém PAGA de verdade.
   ============================================================================
@@ -221,6 +232,11 @@
   .offer ul{ margin:18px 0 0; padding:0; list-style:none; display:grid; gap:8px; }
   .offer li{ color:var(--ink-soft); font-size:.96rem; display:flex; gap:9px; }
   .offer li::before{ content:"✓"; color:var(--good); font-weight:700; }
+  /* Diz o que o grátis já entrega, ao lado do que o pago acrescenta. Omitir
+     isso faria a lista parecer que alerta só existe pagando — e a pessoa
+     descobriria o contrário no primeiro uso, que é o pior momento para o
+     produto parecer que exagerou. */
+  .offer .offer-note{ color:var(--muted); font-size:.85em; }
 
   /* toggle mensal/anual */
   .toggle{
@@ -292,7 +308,7 @@
       <p class="lede">A gente vigia o preço do combustível na sua cidade com os dados da ANP e te avisa quando ele cai. Você só aparece pra economizar.</p>
 
       <div class="cta-row">
-        <a class="btn btn-primary" id="ctaHero" href="/premium/checkout?plan=anual">Assinar o Premium</a>
+        <a class="btn btn-primary" id="ctaHero" href="/checkout.html?plan=anual">Assinar o Premium</a>
         <span class="btn-sub">R$ 59,90/ano (sai R$ 4,99/mês) · ou R$ 16,90 no mensal · sem cobrança automática</span>
 
         <form class="email-form" id="emailForm" novalidate>
@@ -356,7 +372,7 @@
           <h2>Menos de um café por mês.</h2>
           <p class="offer-lede">Um tanque cheio custa uns R$ 300. Acertar o dia de abastecer já paga a assinatura do ano inteiro — várias vezes.</p>
           <ul>
-            <li>Alertas de queda em quantas séries você quiser</li>
+            <li>Alertas de queda em quantas séries você quiser <span class="offer-note">(o grátis acompanha 1)</span></li>
             <li>12 meses de histórico, com comparação entre cidades</li>
             <li>Cancela quando quiser, sem falar com ninguém</li>
             <li>Preço de fundador travado enquanto você for assinante</li>
@@ -378,7 +394,7 @@
             <!-- TODO: preços editáveis pra você testar (ver também o objeto PLANS no script). -->
             <div class="big-price" id="planPrice">R$ 59,90 <small>/ano</small></div>
             <div class="plan-note" id="planNote">Sai R$ 4,99 por mês — 70% mais barato que pagar mês a mês.</div>
-            <a class="btn" id="ctaOffer" href="/premium/checkout?plan=anual">Assinar agora</a>
+            <a class="btn" id="ctaOffer" href="/checkout.html?plan=anual">Assinar agora</a>
             <div class="slots" id="slots">Pix — cai na hora · compra avulsa</div>
           </div>
         </div>
@@ -413,7 +429,7 @@
       </details>
       <details>
         <summary>O app grátis vai continuar?</summary>
-        <div class="a">Sim. A consulta de preços e os gráficos seguem grátis. O Premium é para quem quer ser avisado em vez de ficar olhando.</div>
+        <div class="a">Sim, e sem pegadinha: <strong>consultar preço, ver o histórico, o sinal de compra e o ranking de postos continua grátis e sem login</strong> — para sempre, em quantas cidades você quiser. O plano gratuito também inclui <strong>1 alerta</strong>, e você pode trocar a série dele quando quiser, sem pagar nada. O Premium é para quem precisa acompanhar mais de uma série ao mesmo tempo — comparar gasolina e etanol, por exemplo, ou seguir a cidade de casa e a da estrada.</div>
       </details>
     </div>
   </div>
@@ -464,8 +480,8 @@
     elPrice.innerHTML = p.price;
     elNote.textContent = p.note;
     // o plano escolhido viaja na URL — o checkout confirma o preço no backend, nunca no front
-    ctaHero.href  = '/premium/checkout?plan=' + key;
-    ctaOffer.href = '/premium/checkout?plan=' + key;
+    ctaHero.href  = '/checkout.html?plan=' + key;
+    ctaOffer.href = '/checkout.html?plan=' + key;
     tabs.mensal.setAttribute('aria-pressed', String(key === 'mensal'));
     tabs.anual.setAttribute('aria-pressed', String(key === 'anual'));
     trackEvent('select_plan', { plan: key });

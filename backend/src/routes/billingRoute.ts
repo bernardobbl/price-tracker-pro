@@ -18,13 +18,16 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/authMiddle
 import { validate } from "../middleware/validate";
 import { sendError } from "../lib/httpError";
 import { logger } from "../lib/logger";
-import { createCheckoutSchema, uuidParamSchema } from "../schemas/requestSchemas";
+import { createCheckoutSchema, refundChargeSchema, uuidParamSchema } from "../schemas/requestSchemas";
 import { isBillingEnabled } from "../config/mercadoPago";
+import { requireAdmin } from "../middleware/requireAdmin";
 import {
   BillingError,
   confirmPaymentByOrderId,
   createCharge,
   getChargeStatus,
+  previewRefund,
+  refundCharge,
 } from "../services/billingService";
 
 const router = Router();
@@ -94,6 +97,67 @@ router.get(
     if (!status) return sendError(res, 404, "CHARGE_NOT_FOUND", "Cobrança não encontrada.");
 
     return res.json(status);
+  })
+);
+
+// ── Estorno (administrativo) ────────────────────────────────────────────────
+/**
+ * Duas rotas, e a separação é o ponto:
+ *
+ *   GET  /refund/:id  → o que a política manda devolver, **sem tocar em dinheiro**
+ *   POST /refund      → executa, exigindo que o valor confirmado bata com o cálculo
+ *
+ * Dá para ver a conta antes de mandar, e não dá para mandar um valor que a
+ * política não sustenta. A Política de Reembolso publicada diz que o cliente
+ * pede por e-mail e nós respondemos em até 5 dias úteis — então isto é
+ * ferramenta de operação, não autoatendimento. O que se ganha é a conta certa e
+ * o acesso encerrado no mesmo instante, sem SQL digitado à mão às 23h.
+ */
+router.get(
+  "/refund/:id",
+  requireAuth,
+  requireAdmin,
+  validate(uuidParamSchema, "params"),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    try {
+      return res.json(await previewRefund(req.params.id));
+    } catch (err) {
+      if (err instanceof BillingError) {
+        const status = err.code === "CHARGE_NOT_FOUND" ? 404 : 409;
+        return sendError(res, status, err.code, err.message);
+      }
+      throw err;
+    }
+  })
+);
+
+router.post(
+  "/refund",
+  requireAuth,
+  requireAdmin,
+  validate(refundChargeSchema),
+  asyncHandler<AuthenticatedRequest>(async (req, res) => {
+    if (!isBillingEnabled()) {
+      return sendError(res, 503, "BILLING_DISABLED", "Cobrança indisponível no momento.");
+    }
+
+    const { chargeId, expectedCents } = req.body;
+    const actor = req.user?.email ?? req.user?.id ?? "desconhecido";
+
+    try {
+      const outcome = await refundCharge({ chargeId, expectedCents, actor });
+      return res.json(outcome);
+    } catch (err) {
+      if (err instanceof BillingError) {
+        const status =
+          err.code === "CHARGE_NOT_FOUND" ? 404
+          : err.code === "PROVIDER_FAILED" ? 502
+          : err.code === "AMOUNT_MISMATCH" || err.code === "ALREADY_PROCESSED" ? 409
+          : 500;
+        return sendError(res, status, err.code, err.message);
+      }
+      throw err;
+    }
   })
 );
 
