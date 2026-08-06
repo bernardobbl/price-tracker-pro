@@ -110,6 +110,23 @@ vi.mock("../src/services/mercadoPagoClient", () => ({
   getOrder: mp.getOrder,
 }));
 
+// ── Comprovante de pagamento ────────────────────────────────────────────────
+// Falsos para poder afirmar DUAS coisas opostas: que o e-mail sai com os dados
+// certos, e que quando ele falha o pagamento continua valendo. A segunda é a
+// que importa mais — ver `enviarComprovante` no serviço.
+const mail = vi.hoisted(() => ({
+  getUserEmail: vi.fn(),
+  sendPaymentConfirmationEmail: vi.fn(),
+}));
+
+vi.mock("../src/services/userEmailService", () => ({
+  getUserEmail: mail.getUserEmail,
+}));
+
+vi.mock("../src/services/emailService", () => ({
+  sendPaymentConfirmationEmail: mail.sendPaymentConfirmationEmail,
+}));
+
 import {
   BillingError,
   confirmPaymentByOrderId,
@@ -154,6 +171,10 @@ beforeEach(() => {
   h.chargeSelectEq = [];
   mp.createPixOrder.mockReset();
   mp.getOrder.mockReset();
+  mail.getUserEmail.mockReset();
+  mail.sendPaymentConfirmationEmail.mockReset();
+  mail.getUserEmail.mockResolvedValue("cliente@exemplo.com");
+  mail.sendPaymentConfirmationEmail.mockResolvedValue(true);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -339,6 +360,106 @@ describe("confirmPaymentByOrderId — caminho feliz", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// O COMPROVANTE
+//
+// Os Termos prometem por escrito que a confirmação de pagamento chega por
+// e-mail, e durante toda a construção do checkout nada era enviado. O risco de
+// consertar isso é criar um problema pior que o original: uma falha de SMTP
+// derrubando a confirmação de um pagamento que já entrou. Daí o segundo bloco.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("confirmPaymentByOrderId — comprovante", () => {
+  beforeEach(() => {
+    h.chargeRow = cobrancaPendente();
+    mp.getOrder.mockResolvedValue(orderPaga());
+  });
+
+  it("envia o comprovante para o email do usuário quando a assinatura nasce", async () => {
+    await confirmPaymentByOrderId(ORDER);
+
+    expect(mail.getUserEmail).toHaveBeenCalledWith(USER);
+    expect(mail.sendPaymentConfirmationEmail).toHaveBeenCalledOnce();
+    expect(mail.sendPaymentConfirmationEmail.mock.calls[0][0].to).toBe("cliente@exemplo.com");
+  });
+
+  it("o comprovante leva valor, validade e o código da cobrança", async () => {
+    await confirmPaymentByOrderId(ORDER);
+
+    const { subject, text } = mail.sendPaymentConfirmationEmail.mock.calls[0][0];
+    expect(subject).toMatch(/Premium anual/);
+    expect(text).toContain("R$ 59,90");
+    expect(text).toContain(CHARGE_ID); // a alça para pedir reembolso depois
+  });
+
+  // O webhook chega repetido por garantia do provedor. Sem esta saída, cada
+  // reenvio mandaria outro comprovante da MESMA compra.
+  it("não reenvia quando a cobrança já estava paga", async () => {
+    h.chargeRow = cobrancaPendente({ status: "paid" });
+
+    await confirmPaymentByOrderId(ORDER);
+
+    expect(mail.sendPaymentConfirmationEmail).not.toHaveBeenCalled();
+  });
+
+  it("order ainda não paga não gera comprovante", async () => {
+    mp.getOrder.mockResolvedValue(orderPaga({ status: "pending", rawStatus: "action_required" }));
+
+    await confirmPaymentByOrderId(ORDER);
+
+    expect(mail.sendPaymentConfirmationEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmPaymentByOrderId — o comprovante NÃO pode derrubar o pagamento", () => {
+  beforeEach(() => {
+    h.chargeRow = cobrancaPendente();
+    mp.getOrder.mockResolvedValue(orderPaga());
+  });
+
+  // Esta é a razão de existir o try/catch em `enviarComprovante`. Se o erro
+  // subisse, o webhook responderia 500, o Mercado Pago reenviaria em laço até o
+  // SMTP voltar, e a tela de quem pagou seguiria dizendo "aguardando" por causa
+  // de um e-mail. "Não recebi o comprovante" e "paguei e não liberou" são
+  // problemas de ordens de grandeza diferentes.
+  it("SMTP explodindo não impede a assinatura", async () => {
+    mail.sendPaymentConfirmationEmail.mockRejectedValue(new Error("SMTP fora"));
+
+    const r = await confirmPaymentByOrderId(ORDER);
+
+    expect(r.created).toBe(true);
+    expect(r.status).toBe("paid");
+    expect(h.subInserts).toHaveLength(1);
+  });
+
+  it("SMTP não configurado (devolve false) também não impede", async () => {
+    mail.sendPaymentConfirmationEmail.mockResolvedValue(false);
+
+    const r = await confirmPaymentByOrderId(ORDER);
+
+    expect(r.created).toBe(true);
+    expect(h.subInserts).toHaveLength(1);
+  });
+
+  // Conta sem email é possível: a coluna vem do provedor de auth, não é nossa.
+  it("usuário sem email não impede — libera o acesso e registra o motivo", async () => {
+    mail.getUserEmail.mockResolvedValue(null);
+
+    const r = await confirmPaymentByOrderId(ORDER);
+
+    expect(r.created).toBe(true);
+    expect(mail.sendPaymentConfirmationEmail).not.toHaveBeenCalled();
+  });
+
+  it("falha ao BUSCAR o email também não impede", async () => {
+    mail.getUserEmail.mockRejectedValue(new Error("auth fora do ar"));
+
+    const r = await confirmPaymentByOrderId(ORDER);
+
+    expect(r.created).toBe(true);
+    expect(h.subInserts).toHaveLength(1);
+  });
+});
+
 describe("confirmPaymentByOrderId — idempotência (o webhook chega repetido)", () => {
   it("1ª camada: cobrança já 'paid' não cria segunda assinatura", async () => {
     h.chargeRow = cobrancaPendente({ status: "paid" });

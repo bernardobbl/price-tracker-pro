@@ -113,7 +113,31 @@ describe("checkout.html", () => {
     );
   });
 
-  // ── 5. 503 não pode virar "tente de novo" ───────────────────────────────
+  // ── 5. Cold start: silêncio de 50s numa tela de pagamento ───────────────
+  //
+  // O backend hiberna no free tier do Render e a primeira requisição leva até
+  // um minuto. Sem timeout nem aviso, o botão ficava "Gerando…" em silêncio e a
+  // leitura natural é "quebrou" — a pessoa fecha a aba no meio da compra.
+  it("avisa e desiste em vez de esperar calada pelo servidor acordar", () => {
+    const html = checkout as string;
+
+    expect(html, "o fetch do checkout voltou a não ter timeout").toContain("AbortController");
+    expect(html, "sumiu o aviso de que o servidor está acordando").toMatch(/Acordando o servidor/);
+    // Sem este caso, o abort cai na mensagem genérica de "tente de novo em
+    // instantes" — que, depois de um minuto esperando, soa como deboche.
+    expect(html, "o estouro de tempo não tem mensagem própria").toMatch(
+      /demorou demais para responder/
+    );
+    // Importa dizer que nada foi cobrado: a dúvida de quem desiste no meio de
+    // um pagamento é sempre "será que passou?".
+    //
+    // A frase está quebrada em duas linhas com concatenação (`'…' + '…'`), então
+    // procuramos só o pedaço que sobrevive à quebra — casar a frase inteira
+    // deixaria o teste refém da largura da linha.
+    expect(html).toContain("cobrança foi criada");
+  });
+
+  // ── 6. 503 não pode virar "tente de novo" ───────────────────────────────
   //
   // `BILLING_DISABLED` significa que as credenciais não estão no servidor:
   // insistir não muda nada. Mandar a pessoa tentar de novo é pedir para ela

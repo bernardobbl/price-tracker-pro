@@ -1,127 +1,93 @@
-fix(pagamentos+lgpd): o QR que "não levava a nada", o portão de go-live e a tela que faltava
+feat(billing): comprovante de pagamento, cold start no checkout e o milestone
 
-Começou com um relato de uso: "o QR Code e o código de pagamento não levam a
-nada — quando você copia o código ou lê o QR, não acontece nada."
+Três coisas que faltavam para o pagamento funcionar de verdade, mais um bug que
+ainda não tinha disparado.
 
-Não era bug. E, mesmo assim, era um defeito.
+── 1. O COMPROVANTE QUE OS TERMOS PROMETIAM E NÃO EXISTIA ───────────────────
 
-── O DIAGNÓSTICO ────────────────────────────────────────────────────────────
+`termos.html`, item "Sua conta":
 
-Um Pix de sandbox não é um Pix. Com MERCADOPAGO_ENV=test o `qr_code` devolvido
-não é reconhecido por banco nenhum: copiar ou ler o QR falha por desenho. Pior,
-o sandbox devolve `qr_code_base64: ""` — então o QR nem chegava a ser desenhado,
-e a caixa ficava com "QR Code aparece aqui" para sempre, parecendo carregamento
-travado. Os dois fatos juntos produzem exatamente o sintoma relatado.
+  "Informe um e-mail válido e que você controle — é por ele que os alertas E A
+  CONFIRMAÇÃO DE PAGAMENTO chegam."
 
-Tudo isso estava documentado — em `mercadoPagoClient.ts`, e um teste já provava
-o base64 vazio. Nada disso aparecia na tela. A única pista era a faixa dizendo
-"nenhuma cobrança é real", que se lê como "não vai te cobrar", não como "o seu
-banco vai recusar este código". São afirmações diferentes, e a segunda é a que
-a pessoa precisava.
+O `emailService` só sabia mandar duas coisas: alerta de preço e aviso de
+vencimento. O `billingService` não enviava nada ao confirmar um pagamento —
+nenhuma linha. Na prática: a pessoa pagaria R$ 59,90 e não receberia nada nosso.
+O único registro da compra seria um selo no header do app, que some ao limpar o
+navegador ou ao esquecer a senha.
 
-Comportamento documentado no código não é comportamento comunicado. O §7.6 do
-plan.md já tinha nos pegado assim com o SMTP. Quem está na tela de pagamento não
-lê o cliente do gateway.
+Novo `lib/paymentConfirmation.ts`, puro e testado. Cada bloco do e-mail responde
+a uma pergunta que aparece depois, quando ninguém está por perto: o que foi
+comprado e por quanto, até quando vale, o CÓDIGO DA COBRANÇA (a alça para pedir
+reembolso — depois de uma exclusão de conta é a única que resta), o prazo de 7
+dias do art. 49 do CDC com a data-limite calculada, e a ausência de cobrança
+automática, que é a dúvida nº 1 de quem acabou de pagar por Pix.
 
-── 1. O AMBIENTE AGORA SOBE ATÉ A TELA ──────────────────────────────────────
+── 2. E O COMPROVANTE NÃO PODE DERRUBAR O PAGAMENTO ─────────────────────────
 
-POST /api/billing/checkout devolve `environment: 'test'|'production'`, e o
-checkout mostra um aviso explícito no painel do Pix quando é sandbox.
+`enviarComprovante` engole qualquer erro de propósito, e isso merece explicação
+porque parece o contrário de uma boa prática.
 
-Vem do BACKEND, nunca do hostname: frontend publicado apontando para backend em
-modo teste é um caso real e a URL não denuncia. Campo ausente também aciona o
-aviso — mostrar "código de teste" num código real é constrangedor; esconder
-isso num código de teste custa uma reclamação.
+Ele roda depois de o dinheiro ter entrado e o acesso ter sido liberado. Se uma
+exceção subisse dali, `confirmPaymentByOrderId` falharia, o webhook responderia
+500, o Mercado Pago reenviaria a notificação em laço até o SMTP voltar — e a
+tela de quem pagou continuaria dizendo "aguardando" por causa de um e-mail. O
+mesmo caminho é usado pelo polling do checkout.
 
-── 2. O QUE JÁ EXISTIA E NINGUÉM VIA ────────────────────────────────────────
+"Não recebi o comprovante" e "paguei e não liberou" são problemas de ordens de
+grandeza diferentes. O try/catch é o que impede o segundo de nascer do primeiro.
+O que não se faz é engolir calado: cada saída sem e-mail vira log com o chargeId,
+para dar para reenviar à mão pelo runbook.
 
-`ticketUrl` — a página hospedada do Mercado Pago, com o mesmo QR — era devolvida
-pela API e descartada pelo front. É a saída de quem não consegue ler o QR desta
-tela, e agora aparece. Sem o base64, a caixa passa a dizer que o QR não veio e
-aponta para o copia e cola, que continua válido.
+Quatro testes cobram exatamente isso — SMTP explodindo, SMTP ausente, usuário sem
+e-mail e falha ao buscar o e-mail. Nos quatro, a assinatura nasce igual.
 
-── 3. 503 NÃO PODE VIRAR "TENTE DE NOVO" ────────────────────────────────────
+── 3. 50 SEGUNDOS DE BOTÃO MUDO NUMA TELA DE PAGAMENTO ──────────────────────
 
-É o estado de produção HOJE: as variáveis MERCADOPAGO_* não estão no Render, e
-/premium está no ar linkando este checkout. Quem clicasse em "Gerar pagamento"
-recebia um convite a repetir um caminho que nunca vai funcionar. O próprio
-proximos-passos.md previa isto. 429 também passou a ser distinguido.
+O backend hiberna no free tier do Render — o próprio painel avisa: "can delay
+requests by 50 seconds or more". O app React já tratava isso (timeout, retry,
+faixa de "carregando"). O `checkout.html` usava `fetch` puro, sem nada.
 
-── 4. O CONTADOR MENTIA ──────────────────────────────────────────────────────
+Resultado: clicar em "Gerar pagamento" com o servidor dormindo deixava o botão em
+"Gerando…" por quase um minuto, em silêncio. Numa tela de cobrança isso se lê
+como "quebrou", e a pessoa fecha a aba no meio da compra.
 
-O HTML abria em 15:00 com o QR valendo 30 min. Contador menor que o código faz a
-tela dizer "expirou" com o Pix ainda válido, e a pessoa desiste de um pagamento
-que teria funcionado. É a armadilha nº 7 do proximos-passos.md acontecendo.
+Agora avisa aos 4 s (no botão, não no painel do Pix — abrir o painel mostraria a
+caixa do QR vazia e o contador parado antes de existir cobrança nenhuma) e
+desiste aos 60 s com mensagem própria, dizendo que NENHUMA cobrança foi criada.
 
-── 5. ASSINATURA DO WEBHOOK (a última dívida declarada) ─────────────────────
+60 s e não 45 como no app React: aqui não há retry automático, porque repetir um
+POST poderia criar uma segunda cobrança.
 
-`lib/webhookSignature.ts`: HMAC-SHA256 do manifesto documentado, e 401 para o
-que não bater. O bloqueio registrado ("precisa de URL pública") já não existia —
-a API está no ar desde o merge do PR #22.
+── 4. UM BUG ARMADO EM TRÊS E-MAILS, AINDA NÃO DISPARADO ────────────────────
 
-Opcional por desenho: sem MERCADOPAGO_WEBHOOK_SECRET a rota aceita como antes e
-avisa UMA vez no log (não a cada notificação — alerta repetido some no ruído). O
-sistema já era seguro sem isso, porque a confirmação vem de um GET autenticado
-na API e nunca do corpo; o ganho é barrar a forjaria antes de gastar a consulta.
+`FRONTEND_URL` aceita lista separada por vírgula — é assim que se libera o
+domínio principal, os previews da Vercel e o localhost ao mesmo tempo, e o
+próprio `.env.example` mostra o formato. Só que TRÊS lugares jogavam o valor cru
+dentro do texto de e-mails: alerta de preço, aviso de vencimento e agora o
+comprovante.
 
-Duas armadilhas do manifesto, ambas presas por teste: `data.id` vai em minúsculas
-(os ids de order vêm sempre maiúsculos, então esquecer não falha "às vezes" —
-falha sempre, no primeiro pagamento real), e campo ausente sai da string em vez
-de virar vazio.
+Bastaria acrescentar uma segunda origem para todo link enviado virar:
 
-Deliberado: NÃO recusamos por `ts` velho. O Mercado Pago reenvia a mesma
-notificação a cada 15 min carregando a assinatura original — tolerância curta
-transformaria a retentativa, que existe para não perder pagamento, em 401.
+    https://app.vercel.app,http://localhost:5173/premium
 
-── 6. EXCLUIR A CONTA DEIXAVA A PESSOA SEM COMO PEDIR REEMBOLSO ─────────────
+Novo `publicAppUrl()` no `corsOrigins.ts`, usado nos três. Devolve a PRIMEIRA
+origem — regra simples o bastante para caber no `.env.example` e alguém seguir,
+em vez de uma heurística que acerta hoje e erra quando a configuração mudar.
 
-A resposta prometia que os registros "continuam servindo de base para um pedido
-de reembolso". Só que `user_id = null` torna a cobrança inalcançável por qualquer
-busca por pessoa, e o previewRefund só trabalha por chargeId. Promessa verdadeira
-no papel e inexequível na prática. Os ids agora vão na resposta.
+── 5. O MILESTONE, PORQUE O ESTADO ESTAVA ESPALHADO ─────────────────────────
 
-── 7. A TELA QUE FALTAVA PARA A POLÍTICA DE PRIVACIDADE ─────────────────────
+`plan.md` ganhou uma tabela única de 15 itens com tudo que falta até receber
+dinheiro: o que é código, o que é painel, o que é decisão sua, cada um com estado
+e ordem de execução. A pergunta "o que ainda falta?" levava vinte minutos e vinha
+com erro.
 
-Novo `AccountPanel`, aberto pelo e-mail no header: baixa a cópia dos dados em
-JSON e exclui a conta com confirmação digitada.
+Registrada ali também a armadilha que custou uma sessão: o
+MERCADOPAGO_WEBHOOK_SECRET já está no Render e a conferência CONTINUA DESLIGADA,
+porque o segredo mora dentro de `getMercadoPagoConfig()`, que devolve null sem
+`MERCADOPAGO_ACCESS_TOKEN`. E não adianta pôr o token de teste lá: o config
+recusa o boot com NODE_ENV=production + MERCADOPAGO_ENV=test. O item só pode ser
+verificado depois das credenciais de produção — "webhook primeiro, credenciais
+depois" parecia óbvio e estava errado para este projeto.
 
-As duas rotas existiam, testadas, e NENHUMA TELA CHAMAVA — mesmo padrão do
-/entitlement, que passou um mês existindo "para a interface" sem interface.
-Endpoint sem tela é promessa sem porta: na prática a Política de Privacidade
-continuava sendo cumprida por e-mail e comando manual.
-
-Duas decisões que não são óbvias:
-
-O aviso de "você tem Premium valendo" aparece ANTES do clique, não depois. O
-backend devolve `tinhaAssinaturaAtiva`, mas resposta chega quando a conta já
-sumiu — tarde demais para desistir. Quem permite avisar a tempo é o entitlement
-que a tela já tem em mãos.
-
-E a tela NÃO desloga sozinha depois de excluir. Os códigos de cobrança ficam
-visíveis até a pessoa fechar, porque depois da anonimização eles são a única
-alça para um pedido de reembolso — sair automaticamente varreria para debaixo
-do tapete a informação mais importante da operação.
-
-── 8. O CHECKOUT NÃO TINHA COMPILADOR ───────────────────────────────────────
-
-`frontend/src/lib/checkoutPage.test.ts`: é a única página que move dinheiro e a
-única sem tsc olhando. O teste confere que todo $('id') do script existe no HTML
-— um id errado devolve null, a linha seguinte estoura e derruba junto o polling
-que confirma o pagamento — e que o contador bate com EXPIRES_SECONDS.
-
-── 9. O PORTÃO DE GO-LIVE VIROU PROCEDIMENTO ────────────────────────────────
-
-runbook §1 deixou de ser só uma checklist e ganhou os passos: revisão jurídica
-(§1.1), webhook no painel (§1.2), credenciais de produção (§1.3), a compra real
-(§1.4) e as conferências finais (§1.5) — nesta ordem, porque o que ainda pode
-ser corrigido de graça vem antes do irreversível.
-
-Uma correção de fato ali: o runbook mandava testar com "um pagamento real de
-R$ 0,01". Isso NÃO É POSSÍVEL — o preço vem de PLAN_PRICE_CENTS e o corpo do
-checkout nem tem campo de valor, que é a regra que impede alguém de comprar o
-anual por um centavo. Criar um plano de teste para furar isso seria abrir a
-porta que a regra existe para fechar. O procedimento certo é comprar o mensal
-de si mesmo e estornar: custa no pior caso R$ 0,17 de taxa e exercita o caminho
-inteiro, incluindo o estorno.
-
-351 testes (250 backend + 101 frontend), tsc e eslint limpos nos dois pacotes.
+373 testes (271 backend + 102 frontend), tsc e eslint limpos nos dois pacotes.

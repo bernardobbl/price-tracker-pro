@@ -740,6 +740,47 @@
       showPix({ chargeId:'demo_' + Date.now(), brCode:fake, brCodeBase64:null, expiresIn:EXPIRES_SECONDS });
       return;
     }
+    // ── Cold start: a espera de 50 s que parecia um botão quebrado ─────────
+    //
+    // O backend roda no free tier do Render, que HIBERNA após ~15 min parado.
+    // O próprio painel avisa: "can delay requests by 50 seconds or more".
+    //
+    // O app React já tratava isso (timeout, retry e uma faixa de "carregando").
+    // Esta página não tratava nada: era `fetch` puro, sem timeout. Quem clicasse
+    // em "Gerar pagamento" com o servidor dormindo via o botão dizer "Gerando…"
+    // por quase um minuto, sem nenhuma explicação — e a leitura natural disso,
+    // numa tela de pagamento, é "quebrou". A pessoa fecha a aba.
+    //
+    // Duas defesas, e a primeira é a que mais importa:
+    //   1. AVISAR aos 4 s que a espera é normal e vai passar. O silêncio é o
+    //      problema, não a demora;
+    //   2. desistir aos 60 s com um erro claro, em vez de esperar para sempre.
+    //      60 e não 45 (como no app React) porque aqui não há retry automático:
+    //      repetir um POST poderia criar uma segunda cobrança.
+    var COLD_START_WARN_MS = 4000;
+    var CHECKOUT_TIMEOUT_MS = 60000;
+
+    var ctrl = ('AbortController' in window) ? new AbortController() : null;
+
+    // O aviso vai no BOTÃO, não no painel do Pix. Abrir o painel aqui mostraria
+    // a caixa do QR vazia e o contador parado em 30:00 antes de existir
+    // cobrança nenhuma — trocaria uma confusão por outra. O botão é onde a
+    // pessoa está olhando depois de clicar.
+    var avisoLento = setTimeout(function(){
+      setBtnLabel($('payBtn'), 'Acordando o servidor… (até 1 min)', true);
+    }, COLD_START_WARN_MS);
+
+    var estourou = false;
+    var relogio = setTimeout(function(){
+      estourou = true;
+      if (ctrl) ctrl.abort();
+    }, CHECKOUT_TIMEOUT_MS);
+
+    function encerrarEspera(){
+      clearTimeout(avisoLento);
+      clearTimeout(relogio);
+    }
+
     // O corpo leva SÓ a chave do plano e a versão dos documentos.
     // Não existe campo de valor aqui, e isso é deliberado: quem decide o preço
     // é o backend. Email e horário do aceite também saem de lá (do token e do
@@ -747,9 +788,11 @@
     fetch(API + '/api/billing/checkout', {
       method:'POST',
       headers: authHeaders({ 'Content-Type':'application/json' }),
-      body: JSON.stringify({ plan: state.plan, legalVersion: LEGAL_VERSION })
+      body: JSON.stringify({ plan: state.plan, legalVersion: LEGAL_VERSION }),
+      signal: ctrl ? ctrl.signal : undefined
     })
     .then(function(r){
+      encerrarEspera();
       // Cada código destes vira uma frase diferente porque cada um pede uma
       // AÇÃO diferente de quem está na tela. Um "tente de novo em instantes"
       // genérico é a pior resposta possível para 503 e 402: nos dois casos
@@ -771,10 +814,22 @@
       });
     })
     .catch(function(err){
+      encerrarEspera();
       console.error(err);
       $('payBtn').disabled = false;
       setBtnLabel($('payBtn'), 'Gerar pagamento', false);
       $('pixPanel').classList.add('show');
+
+      // Estouro do relógio: `abort()` chega aqui como AbortError, e sem este
+      // caso vira a mensagem genérica de "tente de novo em instantes" — que,
+      // depois de um minuto esperando, soa como deboche.
+      if (estourou){
+        setStatus('bad',
+          'O servidor demorou demais para responder. Ele hiberna quando fica '
+          + 'parado e às vezes leva mais de um minuto para acordar — nenhuma '
+          + 'cobrança foi criada. Tente de novo: a segunda costuma ser rápida.');
+        return;
+      }
 
       var code = err && err.code;
       var msg;

@@ -25,6 +25,34 @@ export function parseAllowedOrigins(raw: string | undefined): string[] {
 }
 
 /**
+ * A origem **pública** do app — a que vai dentro de um e-mail.
+ *
+ * ## O bug que isto evita
+ *
+ * `FRONTEND_URL` aceita uma lista separada por vírgula, e três lugares do
+ * backend jogavam o valor **cru** dentro do texto de e-mails: o alerta de
+ * preço, o aviso de vencimento e o comprovante de pagamento. No dia em que essa
+ * variável ganhar uma segunda origem — coisa que o próprio `.env.example`
+ * mostra como exemplo, e que basta um preview da Vercel para acontecer — todo
+ * link enviado vira isto:
+ *
+ *     https://app.vercel.app,http://localhost:5173/premium
+ *
+ * Um link quebrado num alerta é irritante. Num comprovante de pagamento, é a
+ * pessoa que acabou de pagar clicando e não chegando a lugar nenhum.
+ *
+ * ## Por que a primeira, e não a mais longa ou a "que parece produção"
+ *
+ * Porque é a única regra que dá para escrever no `.env.example` e alguém
+ * seguir: **a primeira é a principal**. Qualquer heurística mais esperta
+ * (ignorar localhost, preferir https) acerta hoje e erra no dia em que a
+ * configuração mudar por um motivo que ninguém previu.
+ */
+export function publicAppUrl(raw: string | undefined): string {
+  return parseAllowedOrigins(raw)[0] ?? DEFAULT_ORIGIN;
+}
+
+/**
  * Decide se uma origem pode ser aceita.
  * `undefined` = requisição sem header `Origin` (curl, healthcheck, same-origin,
  * app mobile) — o CORS não se aplica, então liberamos.

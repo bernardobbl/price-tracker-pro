@@ -12,6 +12,7 @@
 
 import { supabase } from "../config/supabaseClient";
 import { logger } from "../lib/logger";
+import { publicAppUrl } from "../lib/corsOrigins";
 import { getUserEmail } from "./userEmailService";
 import { sendExpiryNoticeEmail } from "./emailService";
 import {
@@ -90,7 +91,7 @@ export async function sendExpiryNotices(now: Date = new Date()): Promise<ExpiryN
         plan: sub.plan,
         expiresAt: sub.expiresAt,
         now,
-        appUrl: process.env.FRONTEND_URL,
+        appUrl: publicAppUrl(process.env.FRONTEND_URL),
       });
 
       try {

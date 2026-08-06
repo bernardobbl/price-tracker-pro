@@ -21,19 +21,23 @@
 
 import { supabase } from "../config/supabaseClient";
 import { logger } from "../lib/logger";
+import { publicAppUrl } from "../lib/corsOrigins";
 import {
   computeExpiresAt,
   computeProRataRefundCents,
   PLAN_PRICE_CENTS,
   type PlanKey,
 } from "../lib/subscriptionPeriod";
+import { montarConteudoConfirmacao } from "../lib/paymentConfirmation";
 import {
   createPixOrder,
   getOrder,
   refundOrder,
   type NormalizedStatus,
 } from "./mercadoPagoClient";
+import { sendPaymentConfirmationEmail } from "./emailService";
 import { getActiveSubscription } from "./subscriptionService";
+import { getUserEmail } from "./userEmailService";
 
 export class BillingError extends Error {
   code:
@@ -355,7 +359,84 @@ export async function confirmPaymentByOrderId(orderId: string): Promise<ConfirmR
     "[Billing] Assinatura criada a partir de pagamento confirmado"
   );
 
+  // 9. O comprovante. Depois de tudo, e sem poder atrapalhar nada.
+  await enviarComprovante({
+    userId,
+    plan,
+    amountCents: charge.amount_cents as number,
+    paidAt: now,
+    expiresAt,
+    chargeId: id,
+  });
+
   return { created: true, status: "paid", chargeId: id };
+}
+
+/**
+ * Manda o comprovante de pagamento — e **engole qualquer erro de propósito**.
+ *
+ * Esta função é chamada depois de o dinheiro ter entrado e o acesso ter sido
+ * liberado. A partir daí, nada que aconteça aqui pode mudar aquele resultado:
+ *
+ *  - deixar uma exceção subir faria o `confirmPaymentByOrderId` falhar, o
+ *    webhook responderia 500 e o Mercado Pago reenviaria a notificação. O
+ *    reprocessamento é idempotente, então não duplicaria a assinatura — mas
+ *    ficaria em laço até o SMTP voltar, e a tela do cliente continuaria
+ *    dizendo "aguardando" por causa de um e-mail;
+ *  - o `getChargeStatus` do polling também passa por aqui. Um erro aqui
+ *    quebraria a tela de quem acabou de pagar.
+ *
+ * "Não recebi o comprovante" e "paguei e não liberou" são problemas de ordens
+ * de grandeza diferentes. Este `try` é o que impede o segundo de nascer do
+ * primeiro.
+ *
+ * O que NÃO se faz é engolir em silêncio: cada saída sem e-mail vira log, com o
+ * `chargeId`, para dar para reenviar à mão pelo runbook.
+ */
+async function enviarComprovante(params: {
+  userId: string;
+  plan: PlanKey;
+  amountCents: number;
+  paidAt: Date;
+  expiresAt: Date;
+  chargeId: string;
+}): Promise<void> {
+  try {
+    const email = await getUserEmail(params.userId);
+    if (!email) {
+      logger.warn(
+        { chargeId: params.chargeId },
+        "[Billing] Pagamento confirmado mas o usuário não tem email — comprovante não enviado"
+      );
+      return;
+    }
+
+    const { subject, text } = montarConteudoConfirmacao({
+      plan: params.plan,
+      amountCents: params.amountCents,
+      paidAt: params.paidAt,
+      expiresAt: params.expiresAt,
+      chargeId: params.chargeId,
+      appUrl: publicAppUrl(process.env.FRONTEND_URL),
+    });
+
+    const enviado = await sendPaymentConfirmationEmail({ to: email, subject, text });
+
+    if (enviado) {
+      logger.info({ chargeId: params.chargeId }, "[Billing] Comprovante de pagamento enviado");
+    } else {
+      // Sem SMTP configurado. O acesso está liberado do mesmo jeito.
+      logger.warn(
+        { chargeId: params.chargeId },
+        "[Billing] SMTP indisponível — comprovante NÃO enviado (o acesso segue liberado)"
+      );
+    }
+  } catch (err) {
+    logger.error(
+      { err: err instanceof Error ? err.message : String(err), chargeId: params.chargeId },
+      "[Billing] Falha ao enviar o comprovante — pagamento e acesso NÃO foram afetados"
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -4,6 +4,7 @@ import {
   isOriginAllowed,
   normalizeOrigin,
   parseAllowedOrigins,
+  publicAppUrl,
 } from "../src/lib/corsOrigins";
 
 describe("parseAllowedOrigins", () => {
@@ -55,5 +56,41 @@ describe("isOriginAllowed", () => {
     expect(isOriginAllowed("https://app.vercel.app.evil.com", allowed)).toBe(false);
     // Protocolo diferente também não passa.
     expect(isOriginAllowed("http://app.vercel.app", allowed)).toBe(false);
+  });
+});
+
+/**
+ * `publicAppUrl` existe por causa de um bug que ainda não tinha acontecido —
+ * mas que estava armado em três e-mails diferentes.
+ *
+ * `FRONTEND_URL` aceita lista separada por vírgula (é assim que se libera o
+ * domínio principal + previews da Vercel + localhost). Só que o alerta de
+ * preço, o aviso de vencimento e o comprovante de pagamento jogavam o valor
+ * CRU dentro do texto do e-mail. Bastava alguém acrescentar uma segunda origem
+ * — coisa que o próprio `.env.example` mostra como exemplo — para todo link
+ * enviado virar `https://a.com,http://localhost:5173/premium`.
+ */
+describe("publicAppUrl", () => {
+  it("com uma origem só, devolve ela mesma", () => {
+    expect(publicAppUrl("https://precos-combustivel-br.vercel.app")).toBe(
+      "https://precos-combustivel-br.vercel.app"
+    );
+  });
+
+  it("com lista, devolve a PRIMEIRA — a regra é a principal vir na frente", () => {
+    expect(publicAppUrl("https://app.vercel.app,http://localhost:5173")).toBe(
+      "https://app.vercel.app"
+    );
+  });
+
+  it("tira a barra final, que a Vercel mostra e quebraria o link montado", () => {
+    // Sem isto, o e-mail sairia com `https://app.vercel.app//premium`.
+    expect(publicAppUrl("https://app.vercel.app/")).toBe("https://app.vercel.app");
+  });
+
+  it("sem a variável, cai no localhost em vez de devolver undefined", () => {
+    // Um `undefined` viraria "undefined/premium" dentro de um e-mail real.
+    expect(publicAppUrl(undefined)).toBe(DEFAULT_ORIGIN);
+    expect(publicAppUrl("   ")).toBe(DEFAULT_ORIGIN);
   });
 });

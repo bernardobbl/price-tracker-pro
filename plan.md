@@ -33,14 +33,80 @@
 > Documento de registro (auditoria, teste) **nunca é atualizado depois**: ele conta o que era verdade
 > naquela data. Quem precisa de estado atual vem para cá.
 
+### 🎯 MILESTONE: fazer o pagamento funcionar de verdade
+
+> **Por que esta seção existe.** Em 06/ago/2026 o estado do pagamento estava espalhado por quatro
+> documentos e três conversas, e a pergunta *"o que ainda falta para receber dinheiro?"* levava
+> vinte minutos para ser respondida — com erro. **Esta tabela é a resposta.** Um item só está
+> `✅` quando alguém o viu funcionando; "o código existe" não conta como pronto.
+>
+> Quando o último item fechar, esta seção vira registro histórico e some do topo.
+
+| # | O quê | Tipo | Estado | Onde |
+|---|---|---|---|---|
+| 1 | Checkout Pix, cobrança, gate, estorno, vigência | código | ✅ | testado ponta a ponta em sandbox (`docs/teste-ponta-a-ponta.md`) |
+| 2 | Aviso de "código de teste" no QR | código | ✅ | 05/ago — sem ele o QR de sandbox parece bug |
+| 3 | Validação `x-signature` do webhook | código | ✅ | `lib/webhookSignature.ts` |
+| 4 | Tela de exportar/excluir conta (LGPD) | código | ✅ | `AccountPanel` |
+| 5 | **Comprovante de pagamento por e-mail** | código | ✅ | 06/ago — os Termos prometiam e não existia |
+| 6 | **Timeout e aviso de cold start no checkout** | código | ✅ | 06/ago — 50 s de botão mudo numa tela de pagamento |
+| 7 | URL do webhook cadastrada no painel do MP | painel | ✅ | evento **Order**, aba de teste |
+| 8 | `MERCADOPAGO_WEBHOOK_SECRET` no Render | painel | ⚠️ | **colada, mas inerte** — ver a armadilha abaixo |
+| 9 | Chave Pix cadastrada na conta do MP | **você** | ⛔ | sem ela `/v1/orders` não funciona — trava tudo |
+| 10 | `ADMIN_EMAILS` no Render | painel | ⛔ | sem ela o estorno responde 503 — e estorno é obrigação legal |
+| 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
+| 12 | **Limpar o dado de teste do banco** | banco | ⛔ | 3 cobranças e as assinaturas do sandbox; sem isso a 1ª venda real fica indistinguível |
+| 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ⛔ | escrito e testado, **ainda não commitado** — não existe em produção |
+| 14 | Revisão jurídica dos 3 documentos | **você** | ⛔ | último item que trava as credenciais |
+| 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ⛔ | **irreversível** — a partir daqui o dinheiro é real |
+| 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
+| 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
+
+**Ordem de execução:** 9 → 10 → 12 → 13 (podem ser hoje, em qualquer ordem) → 14 → 15 → 8
+(confirmar) → 16 → 17. O passo a passo detalhado de cada um está em
+**`docs/runbook-operacao.md` §1**, que é a fonte da verdade do procedimento — aqui fica só o estado.
+
+> ⚠️ **`✅` na coluna de código significa "escrito e testado", não "no ar".** Os itens 5 e 6 estão
+> prontos no repositório e **não estão em produção** — daí o item 13 existir separado. Confundir as
+> duas coisas foi o que fez o `MERCADOPAGO_WEBHOOK_SECRET` ser colado num backend que ainda não
+> sabia o que fazer com ele.
+
+> ### ⚠️ A armadilha do item 8, e ela custou uma sessão inteira
+>
+> O `MERCADOPAGO_WEBHOOK_SECRET` já está no Render e **mesmo assim a conferência de assinatura
+> está desligada**. O motivo: o segredo mora *dentro* de `getMercadoPagoConfig()`, que devolve
+> `null` na primeira linha quando falta `MERCADOPAGO_ACCESS_TOKEN`. Sem token, o segredo é
+> inalcançável.
+>
+> E não adianta pôr o token de **teste** no Render para destravar: o `render.yaml` define
+> `NODE_ENV=production`, e o config **recusa o boot** com `NODE_ENV=production` +
+> `MERCADOPAGO_ENV=test` — a proteção que impede um cliente de pagar um QR de sandbox.
+>
+> **Consequência:** o item 8 só pode ser *verificado* depois do item 13. Simular a notificação
+> antes disso devolve 200, mas por causa da cobrança desligada, não porque a assinatura bateu —
+> um verde que não prova nada é pior que nenhum. A ordem "webhook primeiro, credenciais depois"
+> parecia óbvia e estava errada para este projeto.
+
+**Como saber que o item 13 pegou:** no log do Render (aba **Logs**, busque `MercadoPago`), logo
+depois de `Backend rodando na porta`:
+
+```json
+{"env":"production","validacaoDeAssinaturaDoWebhook":"ATIVA","msg":"[MercadoPago] Configurado"}
+```
+
+E, do lado do usuário: **o aviso amarelo de "código de teste" some do checkout.** Se ele continuar
+aparecendo, o backend ainda está em sandbox — não pague nada.
+
+---
+
 ### Onde o produto está
 
 **No ar e funcionando:** app público em `precos-combustivel-br.vercel.app`, API no Render, ingestão
 semanal pelo GitHub Actions, alertas de preço por email, checkout Pix ligado com **credenciais de
 teste**. Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22
-(`1b4d02f`, 05/ago/2026).
+(`1b4d02f`) e pelo #24 (`1e281c9`), em 05/ago/2026.
 
-**Testes:** 250 no backend · 101 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 271 no backend · 102 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
 
 **Nenhum dinheiro circula ainda** — `MERCADOPAGO_ENV=test`. O portão de go-live está no
 `docs/runbook-operacao.md` §1.
@@ -73,6 +139,9 @@ teste**. Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `mai
 | Contador do QR: HTML dizia 15:00, código valia 30 min | `checkout.html` | Contador curto faz a tela dizer "expirou" com o Pix válido |
 | Validação `x-signature` do webhook | `lib/webhookSignature.ts` (novo) | Última dívida técnica declarada. O bloqueio ("precisa de URL pública") já não existia desde o merge |
 | Exclusão de conta sem alça para reembolso | `accountService.ts` | Anonimizar torna a cobrança inalcançável por pessoa; sem devolver os `chargeId`, a promessa de reembolso era inexequível |
+| **Comprovante de pagamento não existia** | `lib/paymentConfirmation.ts` (novo) | Os Termos prometem por escrito que "a confirmação de pagamento" chega por e-mail. O `emailService` só sabia mandar alerta de preço e aviso de vencimento — quem pagasse R$ 59,90 não receberia nada nosso, e o único registro da compra seria um selo no header. Falha de SMTP **não** pode derrubar a confirmação: o `try/catch` do `enviarComprovante` é o que impede "não recebi o e-mail" de virar "paguei e não liberou" |
+| **Checkout sem timeout, e o Render hiberna** | `checkout.html` | 50 s de botão "Gerando…" mudo na tela de pagamento. O app React já tratava cold start; esta página usava `fetch` puro. Silêncio longo numa tela de cobrança lê-se como "quebrou" |
+| **`FRONTEND_URL` cru dentro de e-mails** | `lib/corsOrigins.ts` → 3 serviços | A variável aceita lista separada por vírgula (é assim que se libera previews da Vercel), e três e-mails jogavam o valor cru no texto. Bastava uma segunda origem para todo link virar `https://a.com,http://localhost:5173/premium`. Bug armado, ainda não disparado — pego em 06/ago |
 
 ### 🔗 A armadilha dos links internos (errada 3× em 05/ago/2026)
 

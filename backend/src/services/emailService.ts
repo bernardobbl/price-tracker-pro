@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { logger } from "../lib/logger";
+import { publicAppUrl } from "../lib/corsOrigins";
 import { montarConteudoAlerta, type SeriesRef } from "../lib/alertEmailContent";
 
 const SMTP_HOST = process.env.SMTP_HOST;
@@ -70,7 +71,7 @@ export async function sendPriceAlertEmail(params: PriceAlertEmailParams): Promis
     currentPrice: params.currentPrice,
     currency: params.currency,
     collectedAt: params.collectedAt,
-    appUrl: process.env.FRONTEND_URL,
+    appUrl: publicAppUrl(process.env.FRONTEND_URL),
   });
 
   await tx.sendMail({
@@ -96,6 +97,38 @@ export interface ExpiryNoticeEmailParams {
  * quebra: o job segue e o motivo fica no log.
  */
 export async function sendExpiryNoticeEmail(params: ExpiryNoticeEmailParams) {
+  const tx = getTransporter();
+  if (!tx) return false;
+
+  await tx.sendMail({
+    from: EMAIL_FROM,
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+  });
+  return true;
+}
+
+export interface PaymentConfirmationEmailParams {
+  to: string;
+  subject: string;
+  text: string;
+}
+
+/**
+ * Comprovante de pagamento.
+ *
+ * Conteúdo vem pronto de `montarConteudoConfirmacao` (puro e testado à parte).
+ *
+ * ⚠️ **Quem chama NÃO pode deixar uma falha daqui derrubar a confirmação do
+ * pagamento.** O dinheiro já entrou e o acesso já foi liberado quando este
+ * e-mail sai; SMTP fora do ar é um comprovante que não chegou, não uma venda
+ * desfeita. O `billingService` trata isso explicitamente — a diferença entre
+ * "não recebi o e-mail" e "paguei e não liberou" é enorme.
+ */
+export async function sendPaymentConfirmationEmail(
+  params: PaymentConfirmationEmailParams
+): Promise<boolean> {
   const tx = getTransporter();
   if (!tx) return false;
 
