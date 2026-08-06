@@ -311,12 +311,24 @@
         <a class="btn btn-primary" id="ctaHero" href="/checkout.html?plan=anual">Assinar o Premium</a>
         <span class="btn-sub">R$ 59,90/ano (sai R$ 4,99/mês) · ou R$ 16,90 no mensal · sem cobrança automática</span>
 
-        <form class="email-form" id="emailForm" novalidate>
-          <!-- TODO 1: troque a action por seu endpoint do Formspree -->
-          <input type="email" name="email" placeholder="Ainda em dúvida? Seu email" aria-label="Seu email" required />
-          <button class="btn btn-ghost" type="submit">Me avise</button>
-        </form>
-        <span class="form-note" id="formNote">Te aviso quando o Premium abrir. Sem spam.</span>
+        <!--
+          REMOVIDO EM 06/ago/2026 — captura de email da "porta falsa".
+
+          Este bloco era um <form> que pedia o email de quem estava "ainda em dúvida" e respondia
+          "Pronto! Te aviso assim que o Premium abrir. ✓". Três coisas erradas ao mesmo tempo, numa
+          página que passou a receber dinheiro real às 12:44 daquele dia:
+
+            1. O Premium JÁ ESTAVA ABERTO. O botão logo acima leva ao checkout e cobra de verdade.
+               A página convidava a assinar e, um centímetro abaixo, avisava que ainda não dava.
+            2. O email NÃO IA A LUGAR NENHUM. O envio era um `TODO 2` que nunca foi escrito — o
+               handler mostrava a mensagem de sucesso e chamava form.reset(). O dado era descartado.
+            3. Prometer contato e não guardar contato é promessa impossível de cumprir, feita por
+               escrito a um consumidor.
+
+          Era o último resíduo do experimento de porta falsa da Fase 10, que nunca chegou a rodar:
+          o backend de cobrança foi construído antes, e a landing ficou com a copy do plano
+          anterior. Se um dia existir lista de espera de verdade, ela volta COM endpoint que grava.
+        -->
       </div>
     </div>
 
@@ -508,22 +520,9 @@
   ctaHero.addEventListener('click', function(){ trackEvent('click_subscribe', { source: 'hero', plan: current }); });
   ctaOffer.addEventListener('click', function(){ trackEvent('click_subscribe', { source: 'oferta', plan: current }); });
 
-  // ---- Captura de email ----
-  var form = document.getElementById('emailForm');
-  var note = document.getElementById('formNote');
-  form.addEventListener('submit', function(e){
-    e.preventDefault();
-    var email = form.email.value.trim();
-    if (!email || email.indexOf('@') < 0){
-      note.textContent = 'Coloque um email válido pra eu te avisar.';
-      note.classList.remove('form-ok'); return;
-    }
-    trackEvent('signup_email', { plan: current });
-    // TODO 2: envie 'email' pro seu Formspree/endpoint aqui (fetch).
-    note.textContent = 'Pronto! Te aviso assim que o Premium abrir. ✓';
-    note.classList.add('form-ok');
-    form.reset();
-  });
+  // ---- Captura de email: removida em 06/ago/2026 ----
+  // O handler vivia aqui e prometia aviso sem guardar o email em lugar nenhum.
+  // O motivo completo está no comentário do HTML, onde o formulário ficava.
 </script>
 </body>
 </html>

@@ -304,21 +304,15 @@ pessoa ainda pode fazer (trocar a série do alerta que já tem, de graça) em ve
 
 ### O que falta — em ordem
 
-**Código (não depende de ninguém):**
+> **Esta lista tinha 5 itens e 4 já estavam feitos quando foi lida em 06/ago.** Ela duplicava a
+> tabela do milestone, e duas listas do mesmo assunto divergem sempre. **A tabela do milestone, lá
+> em cima, é a única lista de pendências deste documento.** Aqui fica só o que ela não cobre.
 
-1. **Validação `x-signature` do webhook** — depende de URL pública cadastrada no painel primeiro.
-
-**Só o Bernardo resolve:**
-
-2. **Apagar a conta com email sem TLD** (`9f7a8e4c-77a3-4b2e-bb23-fd9e3e56a83f`) — Authentication →
-   Users. Ela nunca receberá email nenhum.
-3. **Revisão jurídica** dos 3 documentos — trava o dinheiro real, não o código.
-4. **Credenciais de produção + portão de go-live** — irreversível, por último.
-5. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
-
-> **A lista de código está praticamente vazia** — o que sobrou depende de um passo manual seu
-> (cadastrar a URL do webhook no painel) ou de terceiros (advogado). Depois da revisão jurídica, o
-> único caminho restante é o portão de go-live do `runbook-operacao.md` §1.
+1. **Item 16 do milestone** — a compra real de ponta a ponta, feita por você e estornada.
+2. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
+3. **Fase 8** — faltam screenshots/GIF no README e o post de LinkedIn.
+4. **Validar a hipótese de mercado** — o experimento da Fase 10 nunca rodou. Não bloqueia nada
+   técnico; bloqueia saber se o produto tem cliente.
 
 ### O fio que puxou esta sessão inteira
 
@@ -338,57 +332,50 @@ sem ter merecido.
 
 ---
 
-## 1. Diagnóstico do estado atual
+## 1. De onde o projeto partiu (arqueologia — não é lista de pendências)
 
-### O que já está bom (a base é honesta)
-- Separação clara `backend/` (Express + TS) e `frontend/` (React + Vite + TS).
-- TypeScript nos dois lados, com `strict: true`.
-- Autenticação real com Supabase Auth (login/signup, sessão, logout).
-- **Row Level Security** bem configurado no `schema.sql` (cada usuário só vê o que é seu).
-- Alertas de preço por email (Nodemailer) + cron diário (`node-cron`).
-- Gráfico de evolução de preço com Chart.js.
+> **O que estava aqui e por que encolheu.** Esta seção guardava a baseline original: 6 pontos
+> fortes, 14 problemas numerados e a visão de produto — tudo escrito quando o app era um rastreador
+> de preços do **Mercado Livre**, que depois virou **Books to Scrape** e hoje é **preço de
+> combustível da ANP**. Dois produtos atrás.
+>
+> Os 14 problemas estavam todos resolvidos ou obsoletos, e a própria seção já avisava para não
+> tratá-los como pendências. Uma lista que precisa de um aviso dizendo "não leia isto como
+> pendência" é uma lista que devia ter saído — ela competia com a tabela do milestone pela mesma
+> pergunta (*o que falta?*) e dava a resposta errada.
 
-### Problemas e riscos (o que precisa mudar)
+**O ponto de partida, em uma linha:** Express + React + TS com Supabase, scraping dentro da request
+HTTP, persistência dupla em CSV e banco, zero testes, zero CI, zero deploy. O bug que abriu a
+Fase 6 é o melhor resumo do estado: o número em destaque na tela era a **média** dos preços em vez
+do **preço atual** — num rastreador de preços.
 
-> ⚠️ **Esta lista é a baseline ORIGINAL (pré-Fases 0–6.6) — mantida como registro histórico.**
-> A maioria já foi resolvida e alguns itens estão **desatualizados** (ex.: citam "Mercado Livre", que migramos
-> para Books to Scrape na Seção 6.5). A reconciliação item-a-item e o que realmente resta estão na
-> **Fase 6.7 — Reconciliação e dívidas remanescentes** (logo antes da Fase 7). Não trate os itens abaixo como
-> pendências ativas sem antes conferir a Fase 6.7.
+**O que sobreviveu intacto às duas viradas de domínio:** a separação backend/frontend, o
+TypeScript `strict`, o Supabase com Row Level Security e o alerta por e-mail. A base era honesta;
+o que mudou foi o que ela rastreia.
 
-**🔴 Críticos (quebram em produção ou confundem o usuário)**
-1. **Bug de UX no destaque de preço** (`App.tsx`): quando há mais de 1 registro, o número em destaque vira a **média** (rótulo "Média de preço") em vez do **preço atual**. Num rastreador de preços, o preço atual é o herói. A média é um dado secundário.
-2. **Persistência dupla e frágil**: grava em CSV local **e** em Supabase (`priceService.ts`). Os CSVs estão **commitados no git** e o filesystem de hosts de deploy (Render/Railway/Fly/Vercel) é **efêmero** → os dados em CSV se perdem a cada deploy. Fonte única de verdade tem que ser o Supabase.
-3. **Scraping dentro da request HTTP**: `POST /api/track` faz até 2 fetches ao Mercado Livre de forma síncrona, sem timeout/retry/cache. Lento (segundos), quebra fácil (seletores voláteis) e pode ser bloqueado. Scraping é trabalho de background, não de request.
+**As duas viradas de fonte, e o porquê de cada uma:**
 
-**🟠 Importantes (qualidade e escala)**
-4. **N+1 e caminhos duplicados nos alertas**: `evaluateAlertImmediately` e `evaluateAlertsForPrice` fazem lógica parecida; ambos chamam `auth.admin.getUserById` por alerta.
-5. **Sem validação de entrada** (nenhum Zod/schema): checagens manuais espalhadas.
-6. **Tipos duplicados** entre front e back (`PriceHistoryItem` existe nos dois — some manualmente).
-7. **Sem testes, sem CI, sem Docker, sem config de deploy.**
-8. **CSVs de dados reais commitados** (inclusive nomes com espaço/acento: `prices_capacete de moto.csv`) — poluem o repositório.
-9. **`requireAuth` faz bypass total** quando o Supabase não está configurado — ok para demo local, mas precisa ficar explícito.
+| De → Para | Quando | Motivo |
+|---|---|---|
+| Mercado Livre → Books to Scrape | Seção 6.5 | O ML passou a bloquear scraping (anti-bot) e a API oficial exige OAuth. Quebraria a demo no deploy, onde IP de servidor é bloqueado ainda mais |
+| Books to Scrape → ANP (combustível) | Fase 6.8 | Books to Scrape é sandbox **estático**: preço não muda, então o histórico era simulado. Um rastreador de preços sem preço que varia é uma maquete |
 
-**🟡 Polimento (o que faz parecer "produto")**
-10. UI não permite **excluir produto**, nem **listar/remover alertas**.
-11. Sem **estatísticas** (menor preço, maior preço, variação %, "melhor momento").
-12. Sem **skeletons/estados vazios bonitos**, só dark mode, sem responsividade testada.
-13. `README.md` fraco para portfólio: sem demo, sem screenshots, sem diagrama, sem stack badges.
-14. Mistura de `fetch` direto e `api/client.ts` no front (`handleSearch`, `handleCreateAlert` usam fetch cru).
+A segunda virada é a que define o projeto hoje: dado público real, que muda sozinho, com valor
+prático para quem abastece. Detalhe em `docs/` e na Fase 6.8.
 
 ---
 
-## 2. Visão do produto "10x"
+## 2. Visão do produto
 
-Um **rastreador de preços de verdade**, que um recrutador consegue abrir, usar em 30 segundos e entender o valor:
+Um rastreador de **preço de combustível** sobre os dados abertos da ANP, que qualquer pessoa abre e
+entende em 30 segundos:
 
-- Busca um produto → adiciona ao monitoramento → vê **preço atual, histórico e variação**.
-- Cria **alerta** ("me avise quando cair abaixo de X") e recebe **email**.
-- Dashboard com **cards de estatística** (atual / menor / maior / variação), gráfico interativo e lista de produtos gerenciável.
-- **Deploy público** (frontend + backend + banco) com **demo login** pronto para o recrutador testar.
-- Repositório com **README impecável**, testes, CI verde e diagrama de arquitetura.
+- Escolhe combustível + UF + município → vê **preço atual, histórico e variação** sem precisar de login.
+- Cria **alerta** ("me avise quando cair abaixo de X") e recebe **e-mail**.
+- Assina o **Premium** para ter mais de um alerta.
 
-Princípio norteador: **menos features novas, mais confiabilidade e acabamento.** 10x aqui é qualidade, não escopo.
+Princípio norteador, e ele não mudou desde o primeiro dia: **menos features novas, mais
+confiabilidade e acabamento.** 10x aqui é qualidade, não escopo.
 
 ---
 
@@ -1067,18 +1054,33 @@ Sem ação do Bernardo: o app já passa o valor explicitamente na RPC (não prec
 
 ---
 
-### Fase 10 — Experimento de monetização (⚠️ FORA DA MAIN — branch `feat/premium-landing`)
-**Meta:** descobrir se o motorista comum **paga** pelo alerta de preço, **antes** de construir
-assinatura, cobrança, webhook e área logada. Isto é um **experimento**, não uma feature: pode ser
-revertido inteiro apagando uma branch.
+### Fase 10 — Monetização ✅ CONCLUÍDA E NO AR (06/ago/2026)
 
-> **Status:** 🧪 EM EXPERIMENTAÇÃO (aberta em 29/jul/2026). Não é parte do escopo "10x de portfólio" —
-> a main continua sendo o projeto público estável. Se o experimento falhar, **nada** volta para a main
-> além desta anotação e do aprendizado.
+**Meta original:** descobrir se o motorista comum **paga** pelo alerta de preço, antes de construir
+assinatura, cobrança, webhook e área logada.
 
-**Regra de ouro desta fase:** nenhum commit deste experimento entra na `main` sem sinal de mercado.
-A `main` é o que o recrutador vê e o que está no ar em produção; ela não pode carregar página de
-preço de um produto que talvez ninguém queira.
+> ### ⚠️ Esta seção afirmou coisas falsas por uma semana — leia o que mudou
+>
+> Até 06/ago/2026 este cabeçalho dizia **"FORA DA MAIN — branch `feat/premium-landing`"** e
+> **"🧪 EM EXPERIMENTAÇÃO"**, com preços de **R$ 6,90/mês e R$ 5,00/mês no anual**. Todas as quatro
+> afirmações estavam erradas ao mesmo tempo:
+>
+> | O que a seção dizia | O que era verdade |
+> |---|---|
+> | Fora da `main` | Mergeada pelos PRs #22 (`1b4d02f`) e #24 (`1e281c9`) em 05/ago |
+> | Experimento descartável | Em produção, com credenciais reais desde 06/ago 12:44 |
+> | R$ 6,90/mês | **R$ 16,90** (`PLAN_PRICE_CENTS.mensal = 1690`) |
+> | R$ 5,00/mês no anual | **R$ 59,90/ano** (`PLAN_PRICE_CENTS.anual = 5990`) |
+>
+> **Por que isso é grave e não só desleixo:** o preço é a única informação deste documento que
+> também está publicada, num contrato, para quem paga. Um plano interno divergindo do preço cobrado
+> é o começo de uma disputa — e alguém lendo esta seção para responder *"quanto custa?"* teria
+> respondido errado com total confiança. É o mesmo padrão que fez o alerta semanal passar semanas
+> sem enviar e-mail: **afirmação escrita ao lado de um sucesso real herda a credibilidade dele sem
+> ter merecido.**
+>
+> A regra que sai daí: **preço mora no código** (`backend/src/lib/subscriptionPeriod.ts`), e todo
+> documento que citar preço cita de onde veio.
 
 #### Convenção de branches (vale para qualquer experimento futuro)
 | Item | Regra |
@@ -1092,94 +1094,256 @@ preço de um produto que talvez ninguém queira.
 | Merge | Só via PR, e **só se o critério de sucesso abaixo for atingido**. Se falhar: `git branch -D feat/premium-landing` + registrar o aprendizado na seção 7. |
 | Sincronização | Enquanto o experimento estiver vivo, `git rebase main` de vez em quando, para não acumular divergência. |
 
-#### Hipótese de preço (decidida em 29/jul/2026)
-- **R$ 6,90/mês** no plano mensal.
-- **R$ 5,00/mês no plano anual** (R$ 60/ano) — âncora de desconto (~28% off) e caixa antecipado.
-- ❌ **Vitalício descartado.** Motivo registrado para não reabrir a discussão: pagamento único com
-  custo de infra recorrente é receita que morre e despesa que não morre. Também impede reajuste e
-  destrói a métrica que importa num SaaS (MRR/retenção). Ficaria "barato" hoje e caro para sempre.
+#### Preço — o que vale hoje
 
-#### Tarefas
-- [ ] Criar a branch `feat/premium-landing` a partir da `main`.
-- [ ] Landing `/premium` ("porta falsa"): promessa, prova com dado real da ANP, preço, FAQ, captura de e-mail.
-- [ ] **Paleta = paleta do site** (`--paper`, `--brand`, `--camel`, `--good` de `frontend/src/index.css`).
-  O protótipo nasceu com uma paleta própria (concreto + LED âmbar); foi reconciliado com os tokens do app.
-- [ ] Captura de e-mail funcionando (Formspree ou endpoint próprio) — a lista é o ativo real deste teste.
-- [ ] Analytics de funil (Vercel Analytics/Plausible): visita → clique em "assinar" → e-mail → pagamento.
-- [ ] Link de cobrança Pix/cartão só quando decidir cobrar de verdade (Stripe ou AbacatePay).
-- [ ] Rodar **2 a 4 semanas** divulgando em canais reais (grupos de motorista/app, Reddit BR, LinkedIn).
+**Fonte da verdade: `backend/src/lib/subscriptionPeriod.ts` → `PLAN_PRICE_CENTS`.** O front nunca
+envia valor; o corpo do `POST /checkout` não tem campo de preço. É essa regra que impede alguém de
+comprar o anual por um centavo.
 
-#### Critério de sucesso / kill (definir antes de olhar o número, para não se enganar)
-- ✅ **Sinal forte:** alguém **paga** sem você pedir por favor. Ou ≥ 30 e-mails com intenção declarada.
-- ⚠️ **Sinal fraco:** tráfego bom, cliques em "assinar", zero e-mail → a promessa não convence.
-- ❌ **Kill:** < 5 e-mails em 4 semanas com tráfego razoável → apagar a branch, manter o app grátis
-  e registrar o aprendizado. Nada de "construir mais features para ver se aí vende".
-
-**DoD:** landing no preview do Vercel, funil medido, decisão escrita (merge ou kill) na seção 7 —
-e a `main` exatamente como estava antes, se o experimento morrer.
-
----
-
-## 4. Decisões de stack (mantém o que já é bom)
-
-| Camada | Hoje | Manter / Mudar |
+| Plano | Preço | Vigência |
 |---|---|---|
-| Frontend | React + Vite + TS + Chart.js | **Manter.** Adicionar hooks + toasts. |
-| Backend | Express + TS | **Manter.** Adicionar Zod + pino + error handler. |
-| Scraping | Axios + Cheerio | **Manter**, mas endurecer (retry/timeout) e tirar da request. |
-| DB/Auth | Supabase (Postgres + RLS) | **Manter** como fonte única (remover CSV). |
-| Email | Nodemailer | **Manter**, configurar SMTP real no deploy. |
-| Testes | — | **Adicionar** Vitest + Testing Library + supertest. |
-| CI/CD | — | **Adicionar** GitHub Actions. |
-| Deploy | — | Vercel (front) + Render/Railway (back) + Supabase (db). |
+| Mensal | R$ 16,90 | 1 mês de calendário |
+| Anual | R$ 59,90 | 12 meses de calendário |
+
+**Compra avulsa, sem renovação automática** — e a razão é regulatória, não de produto: o Pix
+Automático exige CNPJ por regra do Banco Central (`docs/recebimento-sem-cnpj.md`).
+
+❌ **Vitalício descartado**, e o motivo fica registrado para não reabrir a discussão: pagamento
+único com custo de infra recorrente é receita que morre e despesa que não morre. Também impede
+reajuste e destrói a métrica que importa (retenção). Ficaria "barato" hoje e caro para sempre.
+
+> **A hipótese original era outra.** Em 29/jul/2026 o plano era R$ 6,90/mês e R$ 5,00/mês no anual.
+> O preço subiu antes de qualquer venda; o registro fica porque a diferença entre o que se imaginou
+> cobrar e o que se cobra é informação útil quando a primeira venda real chegar.
+
+#### O que foi construído
+
+| Peça | Onde |
+|---|---|
+| Landing `/premium` e checkout Pix | `frontend/public/premium.html`, `checkout.html` |
+| Config com trava test/production | `backend/src/config/mercadoPago.ts` |
+| Cliente do provedor (único ponto de contato) | `services/mercadoPagoClient.ts` |
+| Orquestração: cobrança → confirmação → assinatura | `services/billingService.ts` |
+| Validação `x-signature` do webhook | `lib/webhookSignature.ts` |
+| Estorno e reembolso proporcional | `billingService.previewRefund` / `refundCharge` |
+| Comprovante de pagamento por e-mail | `lib/paymentConfirmation.ts` |
+| Exportar/excluir conta (LGPD art. 18) | `services/accountService.ts`, `AccountPanel` |
+
+**O experimento nunca chegou a rodar como planejado.** A ideia era uma "porta falsa" com captura de
+e-mail e 2 a 4 semanas de divulgação antes de escrever qualquer código de cobrança. Na prática o
+backend de pagamento foi construído primeiro e a validação de mercado ficou para depois — decisão
+que ninguém tomou explicitamente, e por isso vale registrar: **o critério de kill definido em
+29/jul (< 5 e-mails em 4 semanas → apagar a branch) nunca foi aplicado, porque a branch virou
+produção antes de existir o número.**
+
+O que sobra disso é uma pergunta ainda aberta, e o item 16 do milestone é a primeira chance de
+começar a respondê-la: **alguém paga sem você pedir por favor?**
+
+**DoD:** ✅ cobrança real funcionando, documentos legais publicados e revisados, estorno
+automatizado, portão de go-live cumprido (`docs/runbook-operacao.md` §1).
 
 ---
 
-## 5. Ordem sugerida de execução (checklist macro)
+## 4. Decisões de stack
 
-- [x] Fase 0 — Higiene do repo
-- [x] Fase 1 — Fonte única de verdade (Supabase, tira CSV)
-- [x] Fase 2 — Scraping robusto e fora da request
-- [x] Fase 3 — Validação, tipos, logger, cliente HTTP unificado
-- [x] Fase 4 — Testes
-- [x] Fase 5 — CI
-- [x] Fase 6 — UI/UX 10x (corrigir bug do preço + stats + gestão)
-- [x] Fase 6.5 — Redesign de inteligência de preço e busca (upgrade visual dinâmico)
-- [x] Fase 6.6 — Refino visual e identidade (tema claro editorial, estilo Camel)
-- [x] Fase 6.7 — Reconciliação da Seção 1 + dívidas remanescentes (#4, #9, contraste AA, menções obsoletas)
-- [x] **Fase 6.8 — Virada de domínio: preços reais de combustível (ANP)** ✅ (Frentes G–J completas: ETL,
-  realismo de coleta, produto sobre dados reais, front migrado, seed, testes e limpeza do Books to Scrape)
-- [x] **Ingestão REAL validada ponta a ponta** ✅ (sessão de revisão): URL/estrutura real da ANP corrigida
-  (arquivos mensais `dsan/ANO/precos-*-MM.csv`), `npm run ingest`, ~75k linhas/mês · 27 UFs · 0 rejeitadas.
-- [x] **Sessão de revisão crítica 3** ✅ — fixes 1–5 validados e2e com dado real: meses dinâmicos +
-  **descoberta de URLs pela listagem** (sobreviveu ao naming novo/typo/sem-extensão de 2026), agregação
-  em **SQL** (fim do cap de 1000 linhas), **explorar sem login**, fim da demo compartilhada, série padrão
-  na abertura. Banco: **614.987 linhas · out/2025→jun/2026 contínuo**.
-- [x] **Fase 6.9 — Pendências operacionais** ✅: chaves do Supabase **migradas para o modelo novo**
-  (`sb_publishable_`/`sb_secret_`) e as **legadas JWT desativadas** — resolve de forma definitiva o item
-  aberto desde a Fase 0. Commit/push com CI verde.
-- [x] **Fase 6.95 — Auditoria pré-deploy** ✅: posse da série no alerta (furo real de autorização), CORS
-  multi-origem, ingestão semanal migrada para GitHub Actions, keep-alive, cold start tratado no front,
-  dependabot sob política, `render.yaml`/`vercel.json`. **143 testes.**
-- [x] **Baseline Node 22** ✅: o `@supabase/supabase-js` passou a exigir `>=22`; alinhados `.nvmrc`,
-  `engines`, os dois workflows e o `render.yaml`.
-- [x] **Fase 7 — Deploy público** ✅ **CONCLUÍDA** — app na Vercel + API no Render + Supabase + Brevo,
-  R$ 0/mês, com o alerta por email validado ponta a ponta em produção.
-- [x] **Fase 7.7 — Correções do primeiro uso real** ✅ — chave truncada na Vercel (diagnóstico completo
-  registrado), mensagens de erro traduzidas, e o email de alerta reescrito para dizer a verdade e apontar
-  para o app. **177 testes.**
-- [~] Fase 8 — README + diagrama Mermaid + decisões/trade-offs + **About do repositório (description, link
-  da demo, topics)** feitos; falta **screenshots/GIF** e o **post de LinkedIn**.
-  _(O bloqueio do deploy caiu: o link da demo já existe.)_
-- [x] **Sessão de revisão crítica 4** ✅ (27/jul/2026) — auditoria com o projeto já no ar:
-  READMEs de `backend/` e `frontend/` (ainda da era Books to Scrape) reescritos, **GLP fantasma**
-  no seletor eliminado com a RPC `fuel_products()`, e `FRONTEND_URL` restaurada no workflow de
-  ingestão (o email do alerta semanal saía sem link). **178 testes.** Duas ações manuais pendentes:
-  reexecutar o `schema.sql` e criar a variable `FRONTEND_URL` no GitHub.
-- [x] Fase 9 — Operação contínua no free tier ✅ (**antecipada**): retenção automática ligada por padrão
-  (`RETENTION_MONTHS=12`, calibrado por medição real: platô ~280 MB ≈ 56%, SQL + serviço + testes)
-  e `npm run db:stats` para monitorar os 500 MB.
-  Falta só o keep-alive (depende do deploy). **Custo R$ 0 garantido por construção.**
+| Camada | Hoje | Nota |
+|---|---|---|
+| Frontend | React + Vite + TS + Chart.js | Páginas de venda (`premium`, `checkout`) são HTML puro em `public/`, fora do SPA |
+| Backend | Express + TS + Zod + pino | |
+| Ingestão | CSV mensal da ANP, descoberto por listagem | Fora da request, roda no GitHub Actions |
+| DB/Auth | Supabase (Postgres + RLS) | Fonte única de verdade |
+| Pagamento | Mercado Pago, API de Orders (Pix) | Taxa ~0,99% vence a taxa fixa do Asaas em ticket baixo |
+| E-mail | Nodemailer + Brevo | |
+| Testes | Vitest + Testing Library + supertest | 271 backend · 102 frontend |
+| CI/CD | GitHub Actions | |
+| Deploy | Vercel (front) + Render (back) + Supabase | R$ 0/mês |
+
+> **O que saiu daqui:** a tabela original listava *"Scraping: Axios + Cheerio"* com a instrução
+> "manter, mas endurecer". O scraping de e-commerce deixou de existir na Fase 6.8 — hoje a ingestão
+> baixa CSV publicado pela ANP. Manter a linha antiga faria alguém procurar um scraper que não está
+> mais lá.
+
+---
+
+## 4.5. 🧪 Bateria de testes de pagamento e visual (escrita em 06/ago/2026)
+
+> **Por que existe.** O checkout passou a cobrar dinheiro real às 12:44 de 06/ago. Até então, errar
+> custava um `git commit`. A partir daqui, cada caminho não testado é um jeito de alguém pagar e
+> não receber — ou de receber sem pagar.
+>
+> **Leia a coluna 💸 antes de executar qualquer coisa.** Ela diz se o passo cria cobrança real.
+
+### Como ler a tabela
+
+| Símbolo | Significa |
+|---|---|
+| 🟢 | Seguro. Não toca em dinheiro, não precisa de login. Automatizável |
+| 🔵 | Precisa de login, mas não cria cobrança |
+| 💸 | **Cria cobrança real no Mercado Pago.** Só o Bernardo, e só uma vez (é o item 16) |
+
+---
+
+### Bloco A — Fundação (🟢 automatizável, roda a qualquer momento)
+
+| # | Teste | Esperado |
+|---|---|---|
+| A1 | `npm test` no backend | 271 passando |
+| A2 | `npm test` no frontend | 102 passando |
+| A3 | `npx tsc --noEmit` nos dois pacotes | sem erro |
+| A4 | `npx eslint .` nos dois pacotes | sem erro |
+| A5 | `npm run build` nos dois pacotes | sem erro |
+| A6 | `staticLinks.test.ts` | todo `href` das páginas estáticas resolve para arquivo real em `public/` |
+
+> A6 é o teste que trava a armadilha dos links internos — o erro que foi cometido **três vezes** em
+> 05/ago porque funciona em produção e falha em desenvolvimento.
+
+### Bloco B — Estado do ambiente de produção (🟢)
+
+| # | Teste | Como | Esperado |
+|---|---|---|---|
+| B1 | Backend vivo | `GET /health` (**sem** o `/api`) | 200 |
+| B2 | Modo de cobrança | log do Render no boot | `env: "production"`, `temPublicKey: true` |
+| B3 | Assinatura do webhook | mesma linha | `validacaoDeAssinaturaDoWebhook: "ATIVA"` |
+| B4 | Banco limpo | `select count(*) from billing_charges` | 0 até a 1ª venda real |
+| B5 | Chave Pix na conta | teste de fumaça do `docs/teste-ponta-a-ponta.md` §3 | `action_required` + `qr_code` |
+
+### Bloco C — Visual das páginas públicas (🟢)
+
+Conferir em **desktop e mobile** (largura 390 px), tema claro e escuro:
+
+| # | Página | O que olhar |
+|---|---|---|
+| C1 | `/` | Seletor de combustível/UF/município, gráfico, estado vazio |
+| C2 | `/premium.html` | Preços **R$ 16,90 e R$ 59,90** — têm de bater com `PLAN_PRICE_CENTS` |
+| C3 | `/premium.html` | Nenhuma promessa de renovação automática. A compra é avulsa |
+| C4 | `/termos.html`, `/privacidade.html`, `/reembolso.html` | Abrem, versão bate com `LEGAL_VERSION = 1.0` |
+| C5 | Rodapé e links internos | Apontam para o **arquivo real** (`/premium.html`), não para o apelido |
+| C6 | `/premium/checkout` deslogado | Manda logar, não quebra |
+
+> **C2 é o teste mais importante deste bloco.** O preço na tela é a única informação que também
+> está num contrato. Se divergir do backend, o cliente vê um valor e paga outro.
+
+### Bloco D — Gate e cota (🔵 precisa de login, não cobra)
+
+| # | Teste | Esperado |
+|---|---|---|
+| D1 | Criar 1º alerta numa conta grátis | Funciona |
+| D2 | Criar 2º alerta na mesma conta | **Bloqueado** (`FREE_ALERT_LIMIT = 1`), em tom de aviso e **não** de erro vermelho, com link para o Premium |
+| D3 | Mensagem do bloqueio | Diz o que a pessoa **ainda pode** fazer (trocar a série do alerta que já tem), não só nega |
+| D4 | `GET /api/fuel/entitlement` | `active: false` numa conta sem assinatura |
+| D5 | Selo no header | "Plano gratuito" |
+| D6 | Rota de estorno com conta **não**-admin | 404 `NOT_FOUND` — quem não é admin não descobre que a rota existe |
+| D7 | Rota de estorno com a conta admin | 404 `CHARGE_NOT_FOUND` (cobrança inexistente) — prova que passou pelo `requireAdmin` |
+| D8 | Exportar dados da conta | Baixa o JSON com e-mail, favoritos, alertas |
+
+### Bloco E — Compra real 💸 (é o item 16; só o Bernardo, uma vez)
+
+> ⚠️ **Cada execução deste bloco cria uma cobrança de verdade.** Custo no pior caso: taxa de 0,99%
+> sobre R$ 16,90 = **R$ 0,17**. Não repita "para conferir".
+
+| # | Passo | Esperado |
+|---|---|---|
+| E1 | `/premium/checkout?plan=mensal` → aceitar → **Gerar pagamento** | QR + copia e cola em segundos |
+| E2 | **O aviso amarelo de "código de teste"** | **TEM DE ESTAR AUSENTE.** Se aparecer, o backend voltou para sandbox — **não pague** |
+| E3 | Contador do QR | 30 min, batendo com o backend (já errou: HTML dizia 15) |
+| E4 | Pagar o Pix no app do banco | Tela vira "Pagamento confirmado" sozinha (polling 3s no 1º minuto) |
+| E5 | `select * from billing_charges order by created_at desc limit 1` | `status = paid`, `amount_cents = 1690`, `paid_at` preenchido |
+| E6 | `select * from subscriptions order by starts_at desc limit 1` | `plan = mensal`, **1 mês de calendário** (não 30 dias), `legal_version = 1.0` |
+| E7 | Log do Render | `[Billing] Webhook processado` — se só aparecer a reconciliação do polling, o webhook não chega |
+| E8 | Selo no header | `Premium até DD/MM` |
+| E9 | Criar um 2º alerta | Agora **permitido** |
+| E10 | **Comprovante por e-mail** | Chega na caixa de entrada. Os Termos prometem isso por escrito |
+
+### Bloco F — Estorno 💸 (fecha o E; runbook §3.1)
+
+| # | Passo | Esperado |
+|---|---|---|
+| F1 | `GET /api/billing/refund/<id>` (preview) | Regra `cdc-7-dias`, devolução **integral** |
+| F2 | `POST /api/billing/refund` com valor divergente do preview | **Recusado** — é a diferença entre "o sistema calculou" e "alguém digitou" |
+| F3 | `POST` com o valor certo | Executa |
+| F4 | `select status, expires_at from subscriptions ...` | `status = refunded`, `expires_at` ≈ instante do estorno |
+| F5 | Selo no header | Volta para "Plano gratuito" |
+| F6 | Criar 2º alerta de novo | Bloqueado outra vez |
+
+> **Se o F4 ou o F5 falharem, pare tudo.** Dinheiro devolvido com acesso ainda ativo é o pior
+> estado possível, e o `logger.error` de `expireSubscriptionForCharge` grita quando acontece.
+
+### Bloco G — Regressão pós-estorno (🟢/🔵)
+
+| # | Teste | Esperado |
+|---|---|---|
+| G1 | Repetir B4 | A cobrança estornada continua na tabela, com `status = refunded` — registro fiscal não se apaga |
+| G2 | Excluir a conta de teste | Cobrança é **anonimizada, não apagada** (obrigação fiscal de 5 anos) |
+| G3 | Repetir C2 | Preços continuam batendo |
+
+---
+
+### 🔍 O que a 1ª execução encontrou — 06/ago/2026
+
+Blocos A, B e C rodados na mesma sessão em que a bateria foi escrita. **Tudo verde, com duas
+exceções** — e a segunda é a que justifica a bateria existir.
+
+| Achado | Onde | Gravidade |
+|---|---|---|
+| `GET /api/health` não existe; a rota é `/health`, sem o `/api` | a própria bateria | trivial — corrigido na tabela do bloco B |
+| **A landing coletava e-mail, prometia aviso e descartava o dado** | `premium.html` | ver abaixo |
+
+**O formulário da porta falsa sobreviveu ao go-live.** No topo do `premium.html`, logo abaixo do
+botão *Assinar o Premium* — que leva a um checkout cobrando de verdade —, havia um campo pedindo
+e-mail de quem estava "ainda em dúvida", com a legenda **"Te aviso quando o Premium abrir"**. Ao
+enviar, a página respondia *"Pronto! Te aviso assim que o Premium abrir. ✓"*.
+
+Três defeitos empilhados:
+
+1. **O Premium já estava aberto.** A mesma tela convidava a assinar e avisava que ainda não dava.
+2. **O e-mail não ia a lugar nenhum.** O envio era um `TODO 2` nunca escrito: o handler mostrava a
+   confirmação e chamava `form.reset()`. O dado era descartado no mesmo instante.
+3. **A promessa era inexequível por construção** — e feita por escrito a um consumidor, numa página
+   de venda.
+
+Nada disso quebrava nada: nenhum teste falhava, nenhum log reclamava, a tela parecia certa. É o
+mesmo padrão das oito falhas de 05/ago — **falha que não faz barulho** —, e foi encontrado do mesmo
+jeito: comparando o que a tela afirmava com o que o código fazia.
+
+Removido, com o motivo registrado no próprio HTML para ninguém "restaurar a funcionalidade" sem ler
+a história. Se um dia existir lista de espera de verdade, ela volta **com endpoint que grava**.
+
+### Ordem de execução recomendada
+
+```
+A (fundação) → B (ambiente) → C (visual) → D (gate)     ← tudo isto sem gastar nada
+                                              │
+                                              ▼
+                                      E (compra 💸) → F (estorno 💸) → G (regressão)
+```
+
+Se qualquer coisa em **A–D** falhar, conserte antes de chegar no E. O bloco E é o único que custa
+dinheiro e o único que não dá para repetir à vontade — chegue nele com todo o resto verde.
+
+---
+
+## 5. Linha do tempo — uma linha por marco
+
+> **Isto era um checklist de 45 linhas que repetia, em terceira versão, o que a §3 (roadmap) e a §7
+> (registro) já contavam.** Três listas do mesmo assunto envelhecem em três velocidades
+> diferentes. Ficou a versão curta; o detalhe de cada fase está na §3, e o "por quê" na §7.
+
+| Marco | Estado |
+|---|---|
+| Fases 0–5 — higiene, Supabase como fonte única, scraping fora da request, Zod/tipos/logger, testes, CI | ✅ |
+| Fases 6 → 6.7 — UI/UX, inteligência de preço, identidade visual, reconciliação de dívidas | ✅ |
+| **Fase 6.8 — virada de domínio para combustível (ANP)** | ✅ |
+| Ingestão real validada ponta a ponta — URLs descobertas por listagem, ~75k linhas/mês, 27 UFs | ✅ |
+| Revisão crítica 3 — meses dinâmicos, agregação em SQL (fim do cap de 1000 linhas), explorar sem login | ✅ |
+| Fase 6.9 — chaves do Supabase migradas para o modelo novo (`sb_publishable_`/`sb_secret_`) | ✅ |
+| Fase 6.95 — auditoria pré-deploy: posse da série no alerta (furo real de autorização), CORS, cold start | ✅ |
+| **Fase 7 — deploy público** (Vercel + Render + Supabase + Brevo, R$ 0/mês) | ✅ |
+| Fase 7.7 — correções do primeiro uso real (chave truncada na Vercel, erros traduzidos) | ✅ |
+| Revisão crítica 4 — READMEs da era Books to Scrape reescritos, GLP fantasma eliminado | ✅ |
+| Fase 9 — retenção automática (`RETENTION_MONTHS=12`, calibrada por medição real) | ✅ |
+| Sessão de varredura 05/ago — oito falhas silenciosas, incluindo o alerta semanal que nunca enviou | ✅ |
+| **Fase 10 — monetização no ar, cobrando de verdade** | ✅ |
+| Fase 8 — README e About do repositório feitos | 🔸 faltam screenshots/GIF e o post de LinkedIn |
 
 ---
 
@@ -1215,49 +1379,18 @@ do projeto. Deploy + README (Fases 7–8) destravam a dimensão de apresentaçã
 
 ---
 
-## 6. Como saberemos que ficou "10x" (critérios de sucesso)
+## 6. Critérios de sucesso "10x" — ✅ todos atingidos
 
-- ✅ Existe uma **URL pública** que qualquer recrutador abre e testa com login demo.
-- ✅ O **preço em destaque é o correto** (bug atual corrigido) e há cards de estatística.
-- ✅ **Dados persistem** após deploy (Supabase, sem CSV efêmero).
-- ✅ **CI verde** em cada PR (lint + type-check + testes).
-- ✅ **README** com demo, screenshots/GIF, diagrama e decisões técnicas.
-- ✅ Um **alerta real** dispara um **email real**.
-- ✅ Nada de segredos no git; repositório limpo e profissional.
+URL pública funcionando · preço em destaque correto · dados persistindo no Supabase · CI verde a
+cada PR · README com demo e diagrama · alerta real disparando e-mail real · nenhum segredo no git.
 
----
+O último a fechar foi o alerta real, e por um motivo que vale lembrar: ele *parecia* fechado desde
+o deploy e só passou a ser verdade em 05/ago, quando os cinco secrets `SMTP_*` entraram no GitHub
+Actions. Ver §7.
 
-## 6.5. Migração da fonte de dados: Mercado Livre → Books to Scrape
-
-> 📌 **Esta foi a 1ª migração de fonte.** Uma **2ª migração** (Books to Scrape → **ANP / combustível**) está
-> planejada na **Fase 6.8** — porque Books to Scrape é sandbox estático (preços não mudam), o que deixava o
-> histórico simulado. A ANP traz dados reais que variam no tempo. O registro abaixo fica como histórico.
-
-> **Por que:** o Mercado Livre passou a **bloquear scraping** (redireciona para uma página de
-> "account-verification" / anti-bot) e a **API oficial exige OAuth** (403 sem token). Isso quebraria a
-> demo no deploy (IP de servidor é bloqueado ainda mais). Decisão: **manter a ideia** (rastreador de
-> preços com **web scraping real**) e trocar a fonte para **[books.toscrape.com](https://books.toscrape.com)**
-> — um sandbox oficial feito para scraping, estável, sem bot e sem auth.
-
-**Validado ao vivo:** 20 itens/página, com título, preço (`.price_color`), estoque e link para a página de detalhe.
-Estrutura equivalente à do ML (lista → detalhe), então a refatoração é pequena.
-
-### O que muda (checklist da migração) ✅ CONCLUÍDA
-- [x] Criado `backend/src/scrapers/booksToScrapeScraper.ts` (substitui o `mercadoLivreScraper.ts`), com parsers puros
-  (`parseCatalogueListing`, `parseBookDetail`, `parseMoney`) + orquestradores (`searchBooks`, `scrapeBookPrice`).
-- [x] **Busca:** `searchBooks(q)` varre as páginas do catálogo (`catalogue/page-N.html`) e filtra por título.
-- [x] **Preço/moeda:** em **£** (como raspado); `fullPrice = discountedPrice` (sem desconto). `parseMoney` robusto a lixo de encoding.
-- [x] **Preços estáticos → histórico:** scrape pega o preço **real**; o `seed` gera ~30 dias com variação simulada (documentado no README).
-- [x] Atualizados `app.ts` (`/api/track`), `searchRoute`, `scheduleDailyPriceJob`, `priceService`, `productService`, schema e `seed`.
-- [x] **Fixtures e testes** trocados para o HTML do Books to Scrape (`booksListing.html`, `booksDetail.html`, `scraper.test.ts`).
-- [x] **UI e READMEs** atualizados: "Mercado Livre" → "Books to Scrape" (rastreador de preços de livros).
-- [x] Resto **intacto**: auth, Supabase/RLS, alertas, cron, gráficos, CI, deploy.
-
-**Validado ao vivo:** `/api/search?q=light` retorna livros reais; track de "A Light in the Attic" gravou **£51.77** no Supabase
-(via app no navegador). `tsc`/lint/testes/build limpos nos dois projetos.
-
-> **Alternativa registrada:** `dummyjson.com` (API JSON com busca e desconto) — descartada por ser
-> consumo de API, não scraping (perderia a skill principal do projeto). Fica como plano B.
+> **A seção 6.5 saiu daqui.** Ela detalhava a migração Mercado Livre → Books to Scrape em 30 linhas
+> de checklist — uma fonte de dados que o projeto abandonou na virada seguinte. O que importava
+> daquilo (o motivo de cada troca) está resumido na tabela da §1.
 
 ---
 
