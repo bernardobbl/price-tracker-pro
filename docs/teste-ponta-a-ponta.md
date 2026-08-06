@@ -61,10 +61,17 @@ mesmo sem notificação nenhuma — que é a garantia que importa.
 "funciona pior" — ela recusa a criação e nada mais anda.
 
 1. Entre no [painel do Mercado Pago](https://www.mercadopago.com.br/)
-2. Procure **Seu negócio → Pix** (ou "Cobrar com Pix")
-3. Confirme que existe **pelo menos uma chave cadastrada**
+2. Menu esquerdo → **Pix** (vai direto para `mercadopago.com.br/pix/home/hub`)
+3. Em **Minhas chaves**, confirme que existe **pelo menos uma chave cadastrada**
 
 Se não houver, cadastre agora. É o único item deste roteiro que não dá para contornar.
+
+> **O menu mudou de nome.** Este passo dizia "Seu negócio → Pix", e em 06/ago/2026 esse caminho
+> já não existia — o item virou só **Pix**, na barra lateral. Custou uma pergunta no meio da
+> execução, que é o tipo de atrito que um roteiro operacional existe para evitar.
+>
+> **A chave aleatória serve.** Não precisa ser CPF nem e-mail: a API só exige que a conta tenha
+> alguma chave, e a aleatória é a que menos expõe dado pessoal.
 
 ---
 

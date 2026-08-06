@@ -52,19 +52,63 @@
 | 6 | **Timeout e aviso de cold start no checkout** | código | ✅ | 06/ago — 50 s de botão mudo numa tela de pagamento |
 | 7 | URL do webhook cadastrada no painel do MP | painel | ✅ | evento **Order**, aba de teste |
 | 8 | `MERCADOPAGO_WEBHOOK_SECRET` no Render | painel | ⚠️ | **colada, mas inerte** — ver a armadilha abaixo |
-| 9 | Chave Pix cadastrada na conta do MP | **você** | ⛔ | sem ela `/v1/orders` não funciona — trava tudo |
-| 10 | `ADMIN_EMAILS` no Render | painel | ⛔ | sem ela o estorno responde 503 — e estorno é obrigação legal |
+| 9 | Chave Pix cadastrada na conta do MP | **você** | ✅ | 06/ago — chave **aleatória** já existia na conta real (painel → **Pix**). Teste de fumaça devolveu `action_required` + `qr_code` |
+| 10 | `ADMIN_EMAILS` no Render | painel | ✅ | 06/ago — provado com `GET /refund/<uuid-falso>` devolvendo **`CHARGE_NOT_FOUND`**, não `ADMIN_UNAVAILABLE` nem `NOT_FOUND`. Ver a nota abaixo |
 | 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
-| 12 | **Limpar o dado de teste do banco** | banco | ⛔ | 3 cobranças e as assinaturas do sandbox; sem isso a 1ª venda real fica indistinguível |
+| 12 | **Limpar o dado de teste do banco** | banco | ✅ | 06/ago — `billing_charges` e `subscriptions` a **0 linhas**, conferido no SQL Editor depois do `delete`. A 1ª linha que aparecer é venda real |
 | 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ✅ | `5795602` na `main`, 06/ago — Render e Vercel sobem sozinhos |
 | 14 | Revisão jurídica dos 3 documentos | **você** | ⛔ | último item que trava as credenciais |
 | 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ⛔ | **irreversível** — a partir daqui o dinheiro é real |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
 
-**Ordem de execução:** 9 → 10 → 12 → 13 (podem ser hoje, em qualquer ordem) → 14 → 15 → 8
-(confirmar) → 16 → 17. O passo a passo detalhado de cada um está em
-**`docs/runbook-operacao.md` §1**, que é a fonte da verdade do procedimento — aqui fica só o estado.
+**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ **feitos em 06/ago** → 14 → 15 → 8 (confirmar)
+→ 16 → 17. O passo a passo detalhado de cada um está em **`docs/runbook-operacao.md` §1**, que é a
+fonte da verdade do procedimento — aqui fica só o estado.
+
+### 🧪 Como o item 10 foi provado, e por que "o erro sumiu do log" não bastava
+
+O sinal óbvio de que `ADMIN_EMAILS` chegou é a linha `[Admin] ADMIN_EMAILS não configurada`
+desaparecer do boot. **Ela é insuficiente**, e o motivo apareceu na hora: a variável pode estar
+perfeitamente configurada e mesmo assim o admin não funcionar, porque o `requireAdmin` não compara
+com o Render — compara com o **e-mail do token do Supabase**. Variável certa + conta inexistente =
+404 na sua própria rota de estorno, sem uma linha de log dizendo isso.
+
+A prova positiva é `GET /api/billing/refund/<uuid-que-não-existe>` autenticado, porque a rota
+separa três estados pelo **código** do erro:
+
+| Resposta | Significa |
+|---|---|
+| `503 ADMIN_UNAVAILABLE` | a variável não chegou no Render |
+| `404 NOT_FOUND` | variável ok, mas o e-mail do token não está na lista |
+| `404 CHARGE_NOT_FOUND` | passou pelo `requireAdmin` — **é este que prova** |
+
+Os dois 404 são indistinguíveis pelo status e distintos pelo código: o `requireAdmin` devolve
+`NOT_FOUND` de propósito, para que quem não é admin não descubra que a rota existe. Em 06/ago a
+resposta foi `CHARGE_NOT_FOUND`, com a tabela vazia — exatamente o esperado.
+
+### ⚠️ O e-mail do admin não é o e-mail que você usa — descoberto em 06/ago
+
+`ADMIN_EMAILS` foi preenchida com `bernardobarcellosleite@gmail.com` e **nenhuma conta com esse
+e-mail existia no Supabase**. As três contas eram `bernardobarcellos18@gmail.com` (outro e-mail),
+`bernardobarcellosleite@gmail` (sem TLD — a conta quebrada de 05/ago) e a de demonstração.
+
+O estorno teria respondido 404 e a descoberta cairia no item 16, com dinheiro real na mesa.
+Resolvido criando a conta com o e-mail certo. **A regra que sai daí:** `ADMIN_EMAILS` não é uma
+configuração de servidor, é uma **afirmação sobre uma conta que precisa existir** — e só o teste
+acima verifica as duas pontas ao mesmo tempo.
+
+**Conta órfã removida na mesma sessão.** A `bernardobarcellosleite@gmail`, sem TLD, foi apagada do
+Supabase em 06/ago. Ela era a última evidência viva do bug que originou o `lib/emailValidation.ts`:
+o cadastro aceitava e-mail sem TLD, a conta nascia inalcançável e nenhum e-mail — alerta, aviso de
+vencimento, comprovante — chegava nela. A validação impede novas; esta era anterior a ela e ficou
+para trás. Fica o registro, já que o dado se foi.
+
+> **Nota sobre o item 12 e um falso conflito.** O `docs/proximos-passos.md` também diz "dados de
+> teste limpos no Supabase ✅", com data de 05/ago. **Não é contradição:** aquilo é o registro do
+> teste ponta a ponta local daquele dia, e registro datado não se atualiza. O item 12 daqui é
+> outro evento — a limpeza do banco de **produção**, feita em 06/ago. Quem quiser saber o estado
+> do banco hoje lê esta tabela, não aquele registro.
 
 > ⚠️ **`✅` na coluna de código significa "escrito e testado", não "no ar".** Os itens 5 e 6 estão
 > prontos no repositório e **não estão em produção** — daí o item 13 existir separado. Confundir as

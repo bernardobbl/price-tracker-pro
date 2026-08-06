@@ -26,12 +26,15 @@ burocracia: cada item corresponde a uma promessa já publicada por escrito.
 > nome antigo faria a lista parecer violada quando não está — e uma lista que parece violada
 > deixa de ser lida.
 
-- [ ] Chave Pix cadastrada na conta do Mercado Pago
+- [x] Chave Pix cadastrada na conta do Mercado Pago — chave **aleatória**, conferida em 06/ago no
+      painel (menu **Pix**) e provada pelo teste de fumaça
 - [ ] Revisão jurídica dos 3 documentos concluída → **§1.1**
 - [ ] Webhook cadastrado no painel + `MERCADOPAGO_WEBHOOK_SECRET` no Render → **§1.2**
 - [ ] Credenciais de **produção** no Render, nunca no repositório e nunca no front → **§1.3**
 - [ ] `MERCADOPAGO_ENV=production` **e** `NODE_ENV=production` no Render — o config recusa a
       cobrança se as duas não combinarem, e o log do boot é onde isso aparece → **§1.3**
+- [x] `ADMIN_EMAILS` no Render **e uma conta no Supabase com esse e-mail** — 06/ago, provado por
+      `GET /api/billing/refund/<uuid-falso>` devolver `CHARGE_NOT_FOUND` → **§1.6**
 - [ ] Compra real de ponta a ponta, feita por você, **e depois estornada** → **§1.4**
 - [ ] Tabela `subscriptions` criada, com o índice único por `charge_id`
 - [ ] Os 10 testes de `vigencia-do-acesso.md` §5 passando
@@ -254,6 +257,46 @@ mandando uma versão que a lista branca ainda não conhece.
 **O que NÃO precisa mudar no go-live:** `DEMO` já é `false`, os links já apontam para os arquivos
 reais, e o `checkout.html` lê o ambiente do backend. Se você se pegar editando o front para subir
 em produção, pare e confira o que está fazendo.
+
+---
+
+### §1.6 `ADMIN_EMAILS` — e a conta que precisa existir do outro lado
+
+Sem esta variável, as rotas de estorno respondem **503** e ninguém é admin, nem em
+desenvolvimento (`middleware/requireAdmin.ts`, fail-closed de propósito: env incompleta não pode
+virar rota pública que devolve dinheiro).
+
+**Passo 1 — no Render** (`price-tracker-pro-api` → Environment): `ADMIN_EMAILS` = seu e-mail.
+Aceita lista separada por vírgula; o código faz `trim` e `lowercase`, então maiúscula e espaço
+sobrando não quebram.
+
+**Passo 2 — confira que existe uma conta no app com esse e-mail.** Supabase → Authentication →
+Users. Este passo parece redundante e **não é**: o `requireAdmin` compara com o e-mail do token do
+Supabase, não com o Render. Em 06/ago a variável estava certa e a conta não existia — o estorno
+teria dado 404 e ninguém saberia até a primeira venda real.
+
+**Passo 3 — a prova.** Logado no app, no console do navegador:
+
+```js
+const k = Object.keys(localStorage).find(x => x.includes('auth-token'));
+const tok = JSON.parse(localStorage.getItem(k)).access_token;
+const r = await fetch('https://price-tracker-pro-api.onrender.com/api/billing/refund/00000000-0000-0000-0000-000000000000',
+                      { headers: { Authorization: 'Bearer ' + tok } });
+console.log(r.status, await r.text());
+```
+
+| Resposta | Significa |
+|---|---|
+| `503 ADMIN_UNAVAILABLE` | a variável não chegou no Render |
+| `404 NOT_FOUND` | variável ok, mas o e-mail do token não está na lista |
+| `404 CHARGE_NOT_FOUND` | passou pelo `requireAdmin` — **é este que prova** |
+
+É seguro: a rota de preview não toca em dinheiro por desenho, e o UUID é inventado.
+
+> **Por que não basta olhar o log.** A ausência de `[Admin] ADMIN_EMAILS não configurada` no boot
+> só descarta o primeiro caso. O segundo — variável certa, conta ausente ou com e-mail diferente —
+> é silencioso no log e idêntico ao terceiro pelo status HTTP. Só o **código** do erro separa os
+> dois.
 
 ---
 
