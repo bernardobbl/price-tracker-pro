@@ -56,7 +56,7 @@
 | 10 | `ADMIN_EMAILS` no Render | painel | ⛔ | sem ela o estorno responde 503 — e estorno é obrigação legal |
 | 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
 | 12 | **Limpar o dado de teste do banco** | banco | ⛔ | 3 cobranças e as assinaturas do sandbox; sem isso a 1ª venda real fica indistinguível |
-| 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ⛔ | escrito e testado, **ainda não commitado** — não existe em produção |
+| 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ✅ | `5795602` na `main`, 06/ago — Render e Vercel sobem sozinhos |
 | 14 | Revisão jurídica dos 3 documentos | **você** | ⛔ | último item que trava as credenciais |
 | 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ⛔ | **irreversível** — a partir daqui o dinheiro é real |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
