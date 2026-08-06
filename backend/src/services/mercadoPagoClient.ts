@@ -12,7 +12,11 @@
 
 import axios from "axios";
 import { randomUUID } from "node:crypto";
-import { getMercadoPagoConfig, MERCADOPAGO_API } from "../config/mercadoPago";
+import {
+  getMercadoPagoConfig,
+  MERCADOPAGO_API,
+  type MercadoPagoEnv,
+} from "../config/mercadoPago";
 import { logger } from "../lib/logger";
 
 export class MercadoPagoError extends Error {
@@ -47,6 +51,16 @@ export interface PixOrder {
   /** Página pronta do Mercado Pago com o QR, alternativa ao nosso. */
   ticketUrl: string | null;
   status: string;
+  /**
+   * Ambiente que gerou este código — e ele precisa chegar até a tela.
+   *
+   * Um brCode de `test` **não é um Pix pagável**: nenhum banco o reconhece
+   * (ver `buildPayer` abaixo). Sem este campo, o checkout mostra um QR
+   * indistinguível do real, a pessoa tenta pagar, o banco recusa e não há nada
+   * na tela explicando o porquê — foi exatamente o que aconteceu em 05/ago/2026.
+   * O front não tem como deduzir isso sozinho: ele não vê o token nem a env.
+   */
+  environment: MercadoPagoEnv;
 }
 
 /** Status normalizado — o resto do sistema não precisa conhecer o vocabulário do provedor. */
@@ -196,6 +210,8 @@ export async function createPixOrder(input: CreatePixOrderInput): Promise<PixOrd
       brCodeBase64: method.qr_code_base64 ? String(method.qr_code_base64) : null,
       ticketUrl: method.ticket_url ? String(method.ticket_url) : null,
       status: String(data.status ?? "unknown"),
+      // `client()` acima já garantiu que a config existe (ela lança se não).
+      environment: getMercadoPagoConfig()?.env ?? "test",
     };
   } catch (err) {
     if (err instanceof MercadoPagoError) throw err;

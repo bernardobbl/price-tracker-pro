@@ -134,6 +134,15 @@ describe("deleteAccount", () => {
     expect(r.cobrancasAnonimizadas).toBe(1);
   });
 
+  // Depois de `user_id = null`, nenhuma busca por pessoa alcança a cobrança, e
+  // o `previewRefund` só trabalha por `chargeId`. Devolver os ids aqui é o que
+  // torna possível o pedido de reembolso que a resposta promete — sem eles, a
+  // promessa é verdadeira no papel e inexequível na prática.
+  it("devolve os ids das cobranças — a única alça que sobra para pedir reembolso", async () => {
+    const r = await deleteAccount("u1");
+    expect(r.cobrancasParaReembolso).toEqual(["c1"]);
+  });
+
   it("sinaliza quando a pessoa estava abrindo mão de acesso já pago", async () => {
     h.ativas = [{ id: "s1" }];
     const r = await deleteAccount("u1");

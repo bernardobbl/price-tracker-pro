@@ -348,3 +348,91 @@ export async function fetchEntitlement(): Promise<Entitlement | null> {
     return null;
   }
 }
+
+// ── Direitos do titular (LGPD art. 18) ──────────────────────────────────────
+//
+// A Política de Privacidade promete, por escrito, "receber uma cópia dos seus
+// dados em formato legível" e "apagar seus dados e encerrar a conta". As rotas
+// existiam e **nenhuma tela chamava** — na prática, a promessa dependia de
+// alguém escrever um e-mail e outro alguém rodar um comando. Estas duas funções
+// são o que fecha a distância entre o texto publicado e o produto.
+
+/**
+ * Baixa a cópia dos dados do usuário como arquivo JSON.
+ *
+ * Devolve o nome do arquivo salvo. O download é feito aqui, e não no
+ * componente, por um motivo prático: a resposta exige o header `Authorization`,
+ * então não dá para simplesmente apontar um `<a href>` para a rota — o
+ * navegador não mandaria o token. É preciso buscar, virar `blob` e disparar o
+ * clique num link temporário.
+ */
+export async function downloadAccountData(): Promise<string> {
+  const headers = await getAuthHeaders();
+  if (!headers.Authorization) {
+    throw new Error("Sessão expirada. Entre de novo para exportar seus dados.");
+  }
+
+  const response = await apiFetch("/api/account/export", { headers });
+  if (!response.ok) {
+    throw await toApiError(response, "Não consegui gerar a cópia dos seus dados");
+  }
+
+  const blob = await response.blob();
+  const nome = `price-tracker-pro-meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Sem o revoke, o blob fica preso na memória da aba até ela fechar.
+  URL.revokeObjectURL(url);
+
+  return nome;
+}
+
+export interface DeleteAccountResult {
+  assinaturasAnonimizadas: number;
+  cobrancasAnonimizadas: number;
+  tinhaAssinaturaAtiva: boolean;
+  /**
+   * Códigos das cobranças que ficaram anônimas.
+   *
+   * ⚠️ **Precisam chegar aos olhos da pessoa antes de a tela virar.** Depois da
+   * exclusão, `user_id` é `null` e não existe mais busca por pessoa que alcance
+   * aquele pagamento: estes códigos são a única forma de identificá-lo num
+   * pedido de reembolso.
+   */
+  cobrancasParaReembolso: string[];
+  mensagem: string;
+}
+
+/**
+ * Exclui a conta do usuário logado.
+ *
+ * A palavra de confirmação é exigida pelo backend, não inventada aqui — o
+ * schema recusa qualquer corpo que não traga exatamente `EXCLUIR MINHA CONTA`.
+ * Repetir a constante no cliente seria criar uma segunda fonte da verdade para
+ * um texto que, se divergir, quebra a operação inteira; por isso ela vem do
+ * `types.ts`, num lugar só.
+ */
+export async function deleteAccount(confirm: string): Promise<DeleteAccountResult> {
+  const authHeaders = await getAuthHeaders();
+  if (!authHeaders.Authorization) {
+    throw new Error("Sessão expirada. Entre de novo para excluir a conta.");
+  }
+
+  const response = await apiFetch("/api/account", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify({ confirm }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Não consegui excluir a conta agora");
+  }
+
+  return response.json();
+}

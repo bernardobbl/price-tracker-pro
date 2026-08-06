@@ -68,6 +68,13 @@ export interface CreatedCharge {
   brCodeBase64: string | null;
   ticketUrl: string | null;
   expiresAt: string;
+  /**
+   * `test` ou `production`. Vai para a tela porque um código de sandbox **não
+   * é pagável** — e sem avisar, o checkout mostra um QR que o banco recusa sem
+   * nenhuma explicação. Não é segredo: quem está logado já poderia descobrir
+   * tentando pagar.
+   */
+  environment: "test" | "production";
 }
 
 /**
@@ -124,6 +131,10 @@ export async function createCharge(input: CreateChargeInput): Promise<CreatedCha
       brCodeBase64: order.brCodeBase64,
       ticketUrl: order.ticketUrl,
       expiresAt: new Date(Date.now() + QR_EXPIRES_MINUTES * 60_000).toISOString(),
+      // Default `test` quando o provedor não informa: na dúvida, a tela avisa
+      // que o código pode não ser pagável. Errar para o lado do aviso é barato;
+      // errar para o lado do silêncio é a pessoa achando que o banco quebrou.
+      environment: order.environment ?? "test",
     };
   } catch (err) {
     // Marca a cobrança como cancelada para ela não ficar pendente para sempre.

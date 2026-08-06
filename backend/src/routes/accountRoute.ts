@@ -58,12 +58,20 @@ router.delete(
       return res.json({
         excluida: true,
         ...resultado,
+        // A mensagem entrega o número da cobrança quando ele existe. Depois da
+        // anonimização, esse código é o ÚNICO jeito de localizar o pagamento —
+        // não há mais nenhuma busca por pessoa que chegue nele. Mandar "peça
+        // reembolso" sem o número seria mandar a pessoa a uma porta sem chave.
         mensagem: resultado.tinhaAssinaturaAtiva
           ? "Conta excluída. Você tinha acesso pago valendo — os registros de pagamento foram " +
-            "mantidos de forma anônima por obrigação fiscal, e continuam servindo de base para " +
-            "um pedido de reembolso pela Política de Reembolso."
+            "mantidos de forma anônima por obrigação fiscal. GUARDE o(s) código(s) de cobrança " +
+            `abaixo (${resultado.cobrancasParaReembolso.join(", ") || "nenhum"}): depois da ` +
+            "exclusão eles são a única forma de identificar o pagamento num pedido de reembolso."
           : "Conta excluída. Favoritos e alertas foram apagados; registros de pagamento, se " +
-            "houver, foram mantidos de forma anônima por obrigação fiscal (até 5 anos).",
+            "houver, foram mantidos de forma anônima por obrigação fiscal (até 5 anos). " +
+            (resultado.cobrancasParaReembolso.length
+              ? `Guarde o(s) código(s) de cobrança: ${resultado.cobrancasParaReembolso.join(", ")}.`
+              : ""),
       });
     } catch (err) {
       if (err instanceof AccountError) {

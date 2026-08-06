@@ -3,13 +3,21 @@
  *
  *   POST /api/billing/checkout        → cria a cobrança e devolve o QR Pix (autenticado)
  *   GET  /api/billing/charge/:id      → status da cobrança, para o polling da página
+ *   GET  /api/billing/refund/:id      → prévia do estorno pela política (admin)
+ *   POST /api/billing/refund          → executa o estorno (admin)
  *   POST /api/billing/webhook         → notificação do Mercado Pago (público, por natureza)
  *
  * O webhook é o único endpoint público daqui, e isso é inevitável: quem chama é
- * o provedor, que não tem como se autenticar com um token nosso. A proteção não
- * vem de bloquear a porta e sim de **não confiar no que entra por ela** — o
- * corpo da notificação é usado apenas para descobrir *qual* order consultar, e
- * a verdade vem de um GET autenticado na API do Mercado Pago.
+ * o provedor, que não tem como se autenticar com um token nosso. A proteção tem
+ * duas camadas, e a segunda é a que sustenta a primeira:
+ *
+ *  1. **Assinatura** (`x-signature`), quando `MERCADOPAGO_WEBHOOK_SECRET` está
+ *     configurada: barra a forjaria antes de qualquer consulta ao provedor.
+ *  2. **Não confiar no que entra**, sempre: o corpo da notificação é usado
+ *     apenas para descobrir *qual* order consultar, e a verdade vem de um GET
+ *     autenticado na API do Mercado Pago.
+ *
+ * A camada 2 é a que torna a 1 opcional — e não o contrário.
  */
 
 import { Router } from "express";
@@ -19,8 +27,9 @@ import { validate } from "../middleware/validate";
 import { sendError } from "../lib/httpError";
 import { logger } from "../lib/logger";
 import { createCheckoutSchema, refundChargeSchema, uuidParamSchema } from "../schemas/requestSchemas";
-import { isBillingEnabled } from "../config/mercadoPago";
+import { getMercadoPagoConfig, isBillingEnabled } from "../config/mercadoPago";
 import { requireAdmin } from "../middleware/requireAdmin";
+import { verifyWebhookSignature } from "../lib/webhookSignature";
 import {
   BillingError,
   confirmPaymentByOrderId,
@@ -192,9 +201,71 @@ function extractOrderId(body: unknown, query: unknown): string | null {
   return null;
 }
 
+/**
+ * Confere a assinatura da notificação — quando há segredo para conferir.
+ *
+ * **Opcional de propósito.** O segredo (`MERCADOPAGO_WEBHOOK_SECRET`) só existe
+ * depois de cadastrar a URL do webhook no painel do Mercado Pago, e o código
+ * precisou ser escrito antes disso. Sem o segredo, seguimos como antes: a
+ * confirmação continua vindo de um `GET` autenticado na API, então uma
+ * notificação forjada não libera acesso — ela só custa uma consulta.
+ *
+ * Com o segredo, a forjaria é barrada **antes** dessa consulta, que é o ganho
+ * real: ninguém queima nosso limite na API do provedor a partir de uma URL
+ * pública.
+ *
+ * O aviso de "sem segredo" sai **uma vez por processo**, não a cada
+ * notificação: um alerta repetido a cada requisição vira ruído e some junto
+ * com o resto do log.
+ */
+let avisouSemSegredo = false;
+
+function assinaturaOk(req: { headers: Record<string, unknown>; query: unknown }): boolean {
+  const secret = getMercadoPagoConfig()?.webhookSecret;
+
+  if (!secret) {
+    if (!avisouSemSegredo) {
+      avisouSemSegredo = true;
+      logger.warn(
+        "[Billing] MERCADOPAGO_WEBHOOK_SECRET ausente — notificações aceitas sem conferir a " +
+          "assinatura. A confirmação continua vindo da consulta autenticada à API, mas a URL " +
+          "fica aberta a chamadas forjadas que custam requisições ao provedor."
+      );
+    }
+    return true;
+  }
+
+  const header = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const q = (req.query ?? {}) as Record<string, unknown>;
+
+  const veredito = verifyWebhookSignature({
+    xSignature: header(req.headers["x-signature"]),
+    xRequestId: header(req.headers["x-request-id"]),
+    // O manifesto usa o `data.id` do QUERY STRING, não o do corpo — são o mesmo
+    // valor, mas a especificação é explícita quanto à origem.
+    dataId: header(q["data.id"]),
+    secret,
+  });
+
+  if (!veredito.valid) {
+    logger.warn({ motivo: veredito.reason }, "[Billing] Notificação com assinatura inválida — recusada");
+    return false;
+  }
+
+  return true;
+}
+
 router.post(
   "/webhook",
   asyncHandler(async (req, res) => {
+    // 401 antes de qualquer trabalho: notificação que não prova a origem não
+    // merece nem uma consulta ao provedor. É o único caso em que respondemos
+    // erro sem ter tentado processar — e o Mercado Pago não reenvia o que ele
+    // não assinou, porque ele assina tudo o que envia.
+    if (!assinaturaOk(req)) {
+      return sendError(res, 401, "INVALID_SIGNATURE", "Assinatura inválida.");
+    }
+
     // Responder 200 rápido é regra de webhook: qualquer coisa diferente disso
     // faz o provedor reenviar em backoff, e um erro nosso viraria uma enxurrada
     // de retentativas. Só devolvemos erro quando a culpa é claramente dele.

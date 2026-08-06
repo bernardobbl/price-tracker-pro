@@ -1,0 +1,127 @@
+fix(pagamentos+lgpd): o QR que "não levava a nada", o portão de go-live e a tela que faltava
+
+Começou com um relato de uso: "o QR Code e o código de pagamento não levam a
+nada — quando você copia o código ou lê o QR, não acontece nada."
+
+Não era bug. E, mesmo assim, era um defeito.
+
+── O DIAGNÓSTICO ────────────────────────────────────────────────────────────
+
+Um Pix de sandbox não é um Pix. Com MERCADOPAGO_ENV=test o `qr_code` devolvido
+não é reconhecido por banco nenhum: copiar ou ler o QR falha por desenho. Pior,
+o sandbox devolve `qr_code_base64: ""` — então o QR nem chegava a ser desenhado,
+e a caixa ficava com "QR Code aparece aqui" para sempre, parecendo carregamento
+travado. Os dois fatos juntos produzem exatamente o sintoma relatado.
+
+Tudo isso estava documentado — em `mercadoPagoClient.ts`, e um teste já provava
+o base64 vazio. Nada disso aparecia na tela. A única pista era a faixa dizendo
+"nenhuma cobrança é real", que se lê como "não vai te cobrar", não como "o seu
+banco vai recusar este código". São afirmações diferentes, e a segunda é a que
+a pessoa precisava.
+
+Comportamento documentado no código não é comportamento comunicado. O §7.6 do
+plan.md já tinha nos pegado assim com o SMTP. Quem está na tela de pagamento não
+lê o cliente do gateway.
+
+── 1. O AMBIENTE AGORA SOBE ATÉ A TELA ──────────────────────────────────────
+
+POST /api/billing/checkout devolve `environment: 'test'|'production'`, e o
+checkout mostra um aviso explícito no painel do Pix quando é sandbox.
+
+Vem do BACKEND, nunca do hostname: frontend publicado apontando para backend em
+modo teste é um caso real e a URL não denuncia. Campo ausente também aciona o
+aviso — mostrar "código de teste" num código real é constrangedor; esconder
+isso num código de teste custa uma reclamação.
+
+── 2. O QUE JÁ EXISTIA E NINGUÉM VIA ────────────────────────────────────────
+
+`ticketUrl` — a página hospedada do Mercado Pago, com o mesmo QR — era devolvida
+pela API e descartada pelo front. É a saída de quem não consegue ler o QR desta
+tela, e agora aparece. Sem o base64, a caixa passa a dizer que o QR não veio e
+aponta para o copia e cola, que continua válido.
+
+── 3. 503 NÃO PODE VIRAR "TENTE DE NOVO" ────────────────────────────────────
+
+É o estado de produção HOJE: as variáveis MERCADOPAGO_* não estão no Render, e
+/premium está no ar linkando este checkout. Quem clicasse em "Gerar pagamento"
+recebia um convite a repetir um caminho que nunca vai funcionar. O próprio
+proximos-passos.md previa isto. 429 também passou a ser distinguido.
+
+── 4. O CONTADOR MENTIA ──────────────────────────────────────────────────────
+
+O HTML abria em 15:00 com o QR valendo 30 min. Contador menor que o código faz a
+tela dizer "expirou" com o Pix ainda válido, e a pessoa desiste de um pagamento
+que teria funcionado. É a armadilha nº 7 do proximos-passos.md acontecendo.
+
+── 5. ASSINATURA DO WEBHOOK (a última dívida declarada) ─────────────────────
+
+`lib/webhookSignature.ts`: HMAC-SHA256 do manifesto documentado, e 401 para o
+que não bater. O bloqueio registrado ("precisa de URL pública") já não existia —
+a API está no ar desde o merge do PR #22.
+
+Opcional por desenho: sem MERCADOPAGO_WEBHOOK_SECRET a rota aceita como antes e
+avisa UMA vez no log (não a cada notificação — alerta repetido some no ruído). O
+sistema já era seguro sem isso, porque a confirmação vem de um GET autenticado
+na API e nunca do corpo; o ganho é barrar a forjaria antes de gastar a consulta.
+
+Duas armadilhas do manifesto, ambas presas por teste: `data.id` vai em minúsculas
+(os ids de order vêm sempre maiúsculos, então esquecer não falha "às vezes" —
+falha sempre, no primeiro pagamento real), e campo ausente sai da string em vez
+de virar vazio.
+
+Deliberado: NÃO recusamos por `ts` velho. O Mercado Pago reenvia a mesma
+notificação a cada 15 min carregando a assinatura original — tolerância curta
+transformaria a retentativa, que existe para não perder pagamento, em 401.
+
+── 6. EXCLUIR A CONTA DEIXAVA A PESSOA SEM COMO PEDIR REEMBOLSO ─────────────
+
+A resposta prometia que os registros "continuam servindo de base para um pedido
+de reembolso". Só que `user_id = null` torna a cobrança inalcançável por qualquer
+busca por pessoa, e o previewRefund só trabalha por chargeId. Promessa verdadeira
+no papel e inexequível na prática. Os ids agora vão na resposta.
+
+── 7. A TELA QUE FALTAVA PARA A POLÍTICA DE PRIVACIDADE ─────────────────────
+
+Novo `AccountPanel`, aberto pelo e-mail no header: baixa a cópia dos dados em
+JSON e exclui a conta com confirmação digitada.
+
+As duas rotas existiam, testadas, e NENHUMA TELA CHAMAVA — mesmo padrão do
+/entitlement, que passou um mês existindo "para a interface" sem interface.
+Endpoint sem tela é promessa sem porta: na prática a Política de Privacidade
+continuava sendo cumprida por e-mail e comando manual.
+
+Duas decisões que não são óbvias:
+
+O aviso de "você tem Premium valendo" aparece ANTES do clique, não depois. O
+backend devolve `tinhaAssinaturaAtiva`, mas resposta chega quando a conta já
+sumiu — tarde demais para desistir. Quem permite avisar a tempo é o entitlement
+que a tela já tem em mãos.
+
+E a tela NÃO desloga sozinha depois de excluir. Os códigos de cobrança ficam
+visíveis até a pessoa fechar, porque depois da anonimização eles são a única
+alça para um pedido de reembolso — sair automaticamente varreria para debaixo
+do tapete a informação mais importante da operação.
+
+── 8. O CHECKOUT NÃO TINHA COMPILADOR ───────────────────────────────────────
+
+`frontend/src/lib/checkoutPage.test.ts`: é a única página que move dinheiro e a
+única sem tsc olhando. O teste confere que todo $('id') do script existe no HTML
+— um id errado devolve null, a linha seguinte estoura e derruba junto o polling
+que confirma o pagamento — e que o contador bate com EXPIRES_SECONDS.
+
+── 9. O PORTÃO DE GO-LIVE VIROU PROCEDIMENTO ────────────────────────────────
+
+runbook §1 deixou de ser só uma checklist e ganhou os passos: revisão jurídica
+(§1.1), webhook no painel (§1.2), credenciais de produção (§1.3), a compra real
+(§1.4) e as conferências finais (§1.5) — nesta ordem, porque o que ainda pode
+ser corrigido de graça vem antes do irreversível.
+
+Uma correção de fato ali: o runbook mandava testar com "um pagamento real de
+R$ 0,01". Isso NÃO É POSSÍVEL — o preço vem de PLAN_PRICE_CENTS e o corpo do
+checkout nem tem campo de valor, que é a regra que impede alguém de comprar o
+anual por um centavo. Criar um plano de teste para furar isso seria abrir a
+porta que a regra existe para fechar. O procedimento certo é comprar o mensal
+de si mesmo e estornar: custa no pior caso R$ 0,17 de taxa e exercita o caminho
+inteiro, incluindo o estorno.
+
+351 testes (250 backend + 101 frontend), tsc e eslint limpos nos dois pacotes.

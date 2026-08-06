@@ -16,9 +16,18 @@
 
   CONTRATO DO BACKEND (implementado em backend/src/routes/billingRoute.ts):
     POST /api/billing/checkout    { plan: 'anual'|'mensal', legalVersion }
-      -> { chargeId, amountCents, brCode, brCodeBase64, ticketUrl, expiresAt }
+      -> { chargeId, amountCents, brCode, brCodeBase64, ticketUrl, expiresAt,
+           environment: 'test'|'production' }
     GET  /api/billing/charge/:id  -> { chargeId, status, plan, amountCents }
       status: pending | paid | expired | cancelled | refunded
+
+  ⚠️ CÓDIGO DE SANDBOX NÃO É PIX. Com `environment: 'test'` o brCode devolvido
+  não é reconhecido por banco nenhum — copiar ou ler o QR falha, e isso é o
+  comportamento esperado do ambiente de teste do Mercado Pago. A página avisa
+  isso na tela (`#sandboxNote`) porque, sem o aviso, o sintoma é
+  indistinguível de um bug: em 05/ago/2026 foi lido exatamente assim.
+  O ambiente vem do BACKEND, nunca do hostname — frontend publicado apontando
+  para um backend em modo teste é um caso real, e o hostname não denuncia.
 
   REGRAS DE OURO (não negocie com elas):
     • O PREÇO EXIBIDO AQUI É DECORATIVO. Quem decide o valor é o backend, a
@@ -188,6 +197,15 @@
   .qr-box img{ width:150px; height:150px; display:block; image-rendering:pixelated; }
   .qr-ph{ width:150px; height:150px; display:grid; place-items:center; text-align:center; color:var(--muted); font-size:11px; padding:8px; background:repeating-conic-gradient(var(--line) 0% 25%, var(--surface) 0% 50%) 0 0/12px 12px; border-radius:4px; }
   .qr-cap{ text-align:center; font-size:11.5px; color:var(--muted); margin-top:8px; }
+
+  /* Aviso de código de sandbox — dentro do painel do Pix, onde a pessoa está
+     olhando na hora em que o código falha. Cor de alerta, não de erro: nada
+     quebrou, o código só não é pagável. */
+  .sandbox-note{ background:var(--warn-soft); border:1px solid #e8d9b6; color:var(--warn-deep);
+                 border-radius:var(--radius); padding:12px 14px; font-size:13px; line-height:1.5;
+                 margin-bottom:16px; }
+  .sandbox-note strong{ display:block; margin-bottom:3px; }
+  .sandbox-note code{ font-size:12px; background:rgba(0,0,0,.05); padding:1px 4px; border-radius:3px; }
   .brcode{ width:100%; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--ink-soft); background:var(--surface-soft); border:1px solid var(--line); border-radius:var(--radius); padding:12px; resize:none; height:78px; word-break:break-all; }
   .copy-row{ display:flex; gap:8px; margin-top:9px; align-items:center; flex-wrap:wrap; }
   .copied{ color:var(--good-deep); font-size:12.5px; font-weight:700; opacity:0; transition:opacity .2s ease; }
@@ -370,6 +388,18 @@
           <p class="hint">Leia o QR Code ou cole o código no app do seu banco. A confirmação é automática.</p>
         </div>
         <div class="panel-body">
+          <!-- ⚠️ Aviso de código de SANDBOX. Fica escondido por padrão e só
+               aparece quando o backend responde `environment: "test"`.
+               Sem ele, um QR de teste é visualmente idêntico ao real: a pessoa
+               copia, o banco recusa, e a tela não explica nada. -->
+          <div class="sandbox-note" id="sandboxNote" hidden>
+            <strong>Este código é de teste — nenhum banco vai aceitá-lo.</strong>
+            O backend está usando as credenciais de <em>sandbox</em> do Mercado Pago
+            (<code>MERCADOPAGO_ENV=test</code>), e um Pix de sandbox não é um Pix válido:
+            copiar o código ou ler o QR no app do banco vai falhar, e isso é o esperado.
+            Para valer, troque as credenciais pelas de produção.
+          </div>
+
           <div class="pix-grid">
             <div>
               <div class="qr-box">
@@ -377,7 +407,13 @@
                 <img id="qrImg" alt="QR Code do Pix" style="display:none" />
                 <div class="qr-ph" id="qrPh">QR Code aparece aqui<br /><small>(gerado pelo gateway)</small></div>
               </div>
-              <div class="qr-cap">Válido por <span class="timer" id="timer">15:00</span></div>
+              <div class="qr-cap">Válido por <span class="timer" id="timer">30:00</span></div>
+              <!-- Página hospedada do próprio Mercado Pago, com o mesmo QR.
+                   Só aparece quando a API devolve `ticketUrl`. É a saída de quem
+                   não consegue ler o QR desta tela (ou quando ele não veio). -->
+              <p class="qr-cap" id="ticketWrap" hidden style="margin-top:6px">
+                <a id="ticketLink" href="#" target="_blank" rel="noopener">abrir no Mercado Pago ↗</a>
+              </p>
             </div>
             <div>
               <label class="lbl" for="brcode">Pix copia e cola</label>
@@ -714,8 +750,12 @@
       body: JSON.stringify({ plan: state.plan, legalVersion: LEGAL_VERSION })
     })
     .then(function(r){
-      if (r.status === 401){
-        var e = new Error('sessao_expirada'); e.code = 401; throw e;
+      // Cada código destes vira uma frase diferente porque cada um pede uma
+      // AÇÃO diferente de quem está na tela. Um "tente de novo em instantes"
+      // genérico é a pior resposta possível para 503 e 402: nos dois casos
+      // tentar de novo não muda nada, e a frase vira mentira.
+      if (r.status === 401 || r.status === 503 || r.status === 429){
+        var e = new Error('http ' + r.status); e.code = r.status; throw e;
       }
       if (!r.ok) throw new Error('http ' + r.status);
       return r.json();
@@ -725,6 +765,8 @@
         chargeId: d.chargeId,
         brCode: d.brCode,
         brCodeBase64: d.brCodeBase64,
+        ticketUrl: d.ticketUrl,
+        environment: d.environment,
         expiresIn: d.expiresAt ? Math.max(0, Math.round((new Date(d.expiresAt) - new Date())/1000)) : EXPIRES_SECONDS
       });
     })
@@ -733,9 +775,25 @@
       $('payBtn').disabled = false;
       setBtnLabel($('payBtn'), 'Gerar pagamento', false);
       $('pixPanel').classList.add('show');
-      setStatus('bad', err && err.code === 401
-        ? 'Sua sessão expirou. Entre de novo e volte para esta página.'
-        : 'Não conseguimos gerar a cobrança agora. Tente de novo em instantes.');
+
+      var code = err && err.code;
+      var msg;
+      if (code === 401){
+        msg = 'Sua sessão expirou. Entre de novo e volte para esta página.';
+      } else if (code === 503){
+        // BILLING_DISABLED: as credenciais do Mercado Pago não estão no
+        // servidor. Isso não se resolve tentando de novo — é configuração
+        // nossa, e dizer o contrário faz a pessoa insistir à toa.
+        msg = 'O pagamento ainda não está ligado neste ambiente. Não é problema seu '
+            + 'e tentar de novo não vai adiantar — escreva para nós e avisamos '
+            + 'assim que abrir.';
+      } else if (code === 429){
+        msg = 'Muitas tentativas seguidas. Espere alguns minutos antes de gerar '
+            + 'um novo código.';
+      } else {
+        msg = 'Não conseguimos gerar a cobrança agora. Tente de novo em instantes.';
+      }
+      setStatus('bad', msg);
     });
   }
 
@@ -747,11 +805,38 @@
     state.left = c.expiresIn || EXPIRES_SECONDS;
 
     $('brcode').value = c.brCode;
+
+    // ── Aviso de sandbox ───────────────────────────────────────────────────
+    // O ambiente vem do BACKEND, não do hostname: a página não vê o token nem
+    // a env, e deduzir pelo endereço já falhou antes (frontend publicado
+    // apontando para um backend em modo teste não mostrava aviso nenhum).
+    // Ausência do campo também avisa — servidor antigo é motivo para desconfiar.
+    if (!DEMO && c.environment !== 'production'){
+      $('sandboxNote').hidden = false;
+    }
+
+    // ── QR ─────────────────────────────────────────────────────────────────
     if (c.brCodeBase64){
       $('qrImg').src = 'data:image/png;base64,' + c.brCodeBase64;
       $('qrImg').style.display = 'block';
       $('qrPh').style.display = 'none';
+    } else {
+      // O gateway nem sempre devolve a imagem. Antes, o texto "QR Code aparece
+      // aqui (gerado pelo gateway)" ficava para sempre — parecia carregamento
+      // travado. O código copia e cola ao lado é válido de qualquer forma, e é
+      // isso que a caixa passa a dizer.
+      $('qrPh').innerHTML = c.ticketUrl
+        ? 'QR indisponível nesta tela<br /><small>use o link abaixo ou o código ao lado</small>'
+        : 'QR indisponível nesta tela<br /><small>use o código copia e cola ao lado</small>';
     }
+
+    // Página hospedada do Mercado Pago: alternativa real, e era simplesmente
+    // descartada — o backend já devolvia `ticketUrl` e ninguém lia.
+    if (c.ticketUrl){
+      $('ticketLink').href = c.ticketUrl;
+      $('ticketWrap').hidden = false;
+    }
+
     $('formCard').style.opacity = '.6';
     $('pixPanel').classList.add('show');
     $('simBtn').style.display = DEMO ? 'inline-flex' : 'none';

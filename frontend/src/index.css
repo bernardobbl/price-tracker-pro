@@ -220,6 +220,230 @@ body {
   border-radius: 999px;
 }
 
+/* O e-mail do header é um botão (abre a tela de conta), mas continua parecendo
+   a mesma pílula de antes: transformar em botão foi para dar uma porta aos
+   direitos do titular, não para pedir atenção. Só o cursor e a borda no hover
+   denunciam que é clicável. */
+.auth-email--button {
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-email--button:hover {
+  border-color: var(--camel);
+  color: var(--ink);
+}
+
+/* ── Tela de conta (LGPD art. 18) ──────────────────────────────────────────
+   Overlay, e não uma página: são ações raras e terminais — a pessoa vem, faz
+   uma coisa e volta. Uma rota própria pediria navegação, histórico e um
+   caminho de volta para algo que se resolve em dois cliques. */
+.account-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(32, 34, 46, 0.45);
+  overflow-y: auto;
+}
+
+.account-card {
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(36, 31, 26, 0.18);
+}
+
+.account-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.account-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.account-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+}
+
+.account-close {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.3rem;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.account-close:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.account-lead {
+  margin: 0.35rem 0 1.1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.account-section {
+  padding-top: 1.1rem;
+  margin-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+
+.account-section p {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.account-msg {
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.account-msg--ok {
+  color: var(--good-deep);
+  background: var(--good-soft);
+  border: 1px solid var(--good);
+}
+
+.account-msg--bad {
+  color: var(--bad-deep);
+  background: var(--bad-soft);
+  border: 1px solid var(--bad);
+}
+
+/* Tom de atenção, não de erro: nada deu errado — a pessoa está prestes a fazer
+   algo caro de desfazer, e o aviso existe para ser lido antes, não depois. */
+.account-danger {
+  margin: 0 0 0.9rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--warn);
+  background: var(--warn-soft);
+  border-radius: 10px;
+  color: var(--warn-deep);
+  font-size: 0.83rem;
+}
+
+.account-danger strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.account-danger p {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--warn-deep);
+}
+
+.account-danger a {
+  color: var(--warn-deep);
+  font-weight: 600;
+}
+
+/* Monoespaçado e selecionável: estes códigos existem para serem copiados para
+   um e-mail de suporte, e é a última vez que a pessoa os vê. */
+.account-codes {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+}
+
+.account-codes code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: all;
+}
+
+.account-confirm label {
+  display: block;
+  font-size: 0.83rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+
+.account-confirm input {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  margin-bottom: 0.7rem;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.btn-quiet-app,
+.btn-danger {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 0.95rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-quiet-app {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+}
+
+.btn-quiet-app:hover:not(:disabled) {
+  border-color: var(--camel);
+  color: var(--ink);
+}
+
+/* O único vermelho sólido do app, e é proposital: destrutivo e irreversível
+   merece um botão que não se parece com nenhum outro da interface. */
+.btn-danger {
+  border: 1px solid var(--bad);
+  background: var(--bad);
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--bad-deep);
+  border-color: var(--bad-deep);
+}
+
+.btn-quiet-app:disabled,
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.account-foot {
+  margin: 1.1rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 /* ── Aviso de cota do plano gratuito ───────────────────────────────────────
    Deliberadamente NÃO usa o vermelho de `.error`. Bater no limite do plano não
    é erro de quem digitou — é uma fronteira do produto. Pintar de vermelho

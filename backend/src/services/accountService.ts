@@ -95,6 +95,20 @@ export interface DeleteAccountResult {
   cobrancasAnonimizadas: number;
   /** `true` quando havia acesso pago valendo — vira aviso na resposta. */
   tinhaAssinaturaAtiva: boolean;
+  /**
+   * Ids das cobranças anonimizadas — **a única alça que sobra** para pedir
+   * reembolso depois.
+   *
+   * A resposta desta rota já dizia que os registros "continuam servindo de base
+   * para um pedido de reembolso", mas não entregava nada com que pedir: assim
+   * que `user_id` vira `null`, nenhuma busca por pessoa acha aquela linha, e o
+   * `previewRefund` só sabe trabalhar por `chargeId`. Sem devolver os ids aqui,
+   * a frase era verdadeira no papel e impossível na prática.
+   *
+   * São dados da própria pessoa, entregues a ela no único momento em que ainda
+   * dá para associá-los.
+   */
+  cobrancasParaReembolso: string[];
 }
 
 /**
@@ -176,5 +190,6 @@ export async function deleteAccount(userId: string): Promise<DeleteAccountResult
     assinaturasAnonimizadas: subs?.length ?? 0,
     cobrancasAnonimizadas: charges?.length ?? 0,
     tinhaAssinaturaAtiva,
+    cobrancasParaReembolso: (charges ?? []).map((c) => String((c as { id: unknown }).id)),
   };
 }

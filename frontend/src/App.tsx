@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, createFuelAlert } from "./api/client";
 import { Icon } from "./components/Icon";
+import { AccountPanel } from "./components/AccountPanel";
 import { AuthPage } from "./components/AuthPage";
 import { HeaderWire } from "./components/HeaderWire";
 import { PlanBadge } from "./components/PlanBadge";
@@ -47,6 +48,11 @@ function App() {
     if (auth.user) setShowAuth(false); // logou → volta ao dashboard
   }, [auth.user]);
   const requestLogin = () => setShowAuth(true);
+
+  // Tela de conta (exportar dados / excluir conta). Fica no App e não na
+  // AuthPage porque é para quem JÁ entrou — são os direitos do titular sobre
+  // dados que só existem depois de haver conta.
+  const [showAccount, setShowAccount] = useState(false);
 
   const { view } = fuel;
   const isFavorited = Boolean(view && favorites.tracked.some((t) => sameSeries(view, t)));
@@ -174,7 +180,16 @@ function App() {
         {canManage ? (
           <div className="auth-row auth-row--logged">
             <PlanBadge entitlement={entitlement} logged={canManage} />
-            <span className="auth-email"><Icon name="user" size={14} /> {auth.user!.email}</span>
+            {/* O email vira botão: é onde a pessoa já procura as opções da
+                própria conta, e evita mais um item competindo no header. */}
+            <button
+              type="button"
+              className="auth-email auth-email--button"
+              onClick={() => setShowAccount(true)}
+              title="Minha conta: baixar meus dados ou excluir a conta"
+            >
+              <Icon name="user" size={14} /> {auth.user!.email}
+            </button>
             <button type="button" className="btn-logout" onClick={auth.logout}>
               <Icon name="logout" size={14} /> Sair
             </button>
@@ -271,6 +286,21 @@ function App() {
           <a href="/reembolso.html">Reembolso</a>
         </nav>
       </footer>
+
+      {showAccount && canManage && (
+        <AccountPanel
+          email={auth.user?.email ?? null}
+          entitlement={entitlement}
+          onClose={() => setShowAccount(false)}
+          onDeleted={() => {
+            // A conta já não existe do lado do servidor; o `signOut` aqui é o
+            // que limpa a sessão desta aba. Sem ele, o app seguiria com um
+            // token válido para um usuário removido e cada chamada viraria 401.
+            setShowAccount(false);
+            void auth.logout();
+          }}
+        />
+      )}
 
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>

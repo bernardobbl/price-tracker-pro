@@ -135,3 +135,32 @@ describe("qr_code_base64 vazio (é o que o sandbox devolve)", () => {
     expect(order.brCode).toBe("000201...");
   });
 });
+
+/**
+ * O ambiente sobe junto com o QR.
+ *
+ * Consequência direta do teste acima: **em sandbox o QR nunca é desenhado** (o
+ * base64 vem vazio), e o copia e cola que sobra não é aceito por banco nenhum.
+ * Os dois fatos juntos produzem exatamente o relato de 05/ago/2026 — "o QR e o
+ * código não levam a nada" — e nada na tela explicava o porquê.
+ *
+ * O front não tem como descobrir isso sozinho: ele não vê o token nem a env, e
+ * o hostname não denuncia (frontend publicado pode apontar para backend em modo
+ * teste). Só o backend sabe, então é o backend que precisa contar.
+ */
+describe("environment na resposta — é o que permite a tela avisar", () => {
+  it("devolve `test` quando as credenciais são de sandbox", async () => {
+    process.env.MERCADOPAGO_ENV = "test";
+    const order = await createPixOrder(entrada);
+
+    expect(order.environment).toBe("test");
+  });
+
+  it("devolve `production` com credenciais reais — e aí a tela não avisa nada", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.MERCADOPAGO_ENV = "production";
+    const order = await createPixOrder(entrada);
+
+    expect(order.environment).toBe("production");
+  });
+});

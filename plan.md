@@ -40,10 +40,19 @@ semanal pelo GitHub Actions, alertas de preço por email, checkout Pix ligado co
 teste**. Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22
 (`1b4d02f`, 05/ago/2026).
 
-**Testes:** 235 no backend · 83 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 250 no backend · 101 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
 
 **Nenhum dinheiro circula ainda** — `MERCADOPAGO_ENV=test`. O portão de go-live está no
 `docs/runbook-operacao.md` §1.
+
+> ⚠️ **Consequência prática do modo teste, e ela chegou como reclamação:** o código Pix gerado em
+> sandbox **não é pagável** — nenhum banco o reconhece. Desde 05/ago/2026 o checkout diz isso na
+> tela (o `POST /checkout` devolve `environment`). Antes disso o sintoma era indistinguível de um
+> bug, e foi assim que foi relatado. Detalhe em `docs/proximos-passos.md` §0.3.
+>
+> E em **produção** o checkout responde 503: as variáveis `MERCADOPAGO_*` não estão no Render de
+> propósito (`NODE_ENV=production` + `MERCADOPAGO_ENV=test` é recusado no boot). A tela agora
+> explica isso em vez de mandar "tentar de novo em instantes".
 
 ### Corrigido em 05/ago/2026 (a sessão de varredura)
 
@@ -58,6 +67,12 @@ teste**. Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `mai
 | Checkout prometia "renova todo mês" | `checkout.html` | Única linha do produto a prometer débito automático, ao lado do preço |
 | `render.yaml` sem as variáveis `MERCADOPAGO_*` | `render.yaml` | Blueprint escondia a dependência |
 | Links internos apontando para a URL bonita | `premium.html`, `checkout.html`, `PlanBadge`, rodapé | Ver abaixo — errado **três vezes seguidas**, agora travado por teste |
+| Checkout não avisava que o código Pix era de **sandbox** | `mercadoPagoClient.ts` → `checkout.html` | Comportamento documentado no código ≠ comportamento comunicado na tela. Chegou como "o QR não leva a nada". §0.3 do `proximos-passos.md` |
+| `ticketUrl` devolvido pela API e **descartado** pelo front | `checkout.html` | A página do Mercado Pago com o mesmo QR existia e ninguém via |
+| 503 (cobrança desligada) virava "tente de novo em instantes" | `checkout.html` | É o estado de produção hoje, e a frase mandava repetir um caminho que nunca funcionaria |
+| Contador do QR: HTML dizia 15:00, código valia 30 min | `checkout.html` | Contador curto faz a tela dizer "expirou" com o Pix válido |
+| Validação `x-signature` do webhook | `lib/webhookSignature.ts` (novo) | Última dívida técnica declarada. O bloqueio ("precisa de URL pública") já não existia desde o merge |
+| Exclusão de conta sem alça para reembolso | `accountService.ts` | Anonimizar torna a cobrança inalcançável por pessoa; sem devolver os `chargeId`, a promessa de reembolso era inexequível |
 
 ### 🔗 A armadilha dos links internos (errada 3× em 05/ago/2026)
 

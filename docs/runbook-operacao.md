@@ -27,20 +27,233 @@ burocracia: cada item corresponde a uma promessa já publicada por escrito.
 > deixa de ser lida.
 
 - [ ] Chave Pix cadastrada na conta do Mercado Pago
-- [ ] Credenciais de **produção** no `.env` do backend (nunca no repositório, nunca no front)
+- [ ] Revisão jurídica dos 3 documentos concluída → **§1.1**
+- [ ] Webhook cadastrado no painel + `MERCADOPAGO_WEBHOOK_SECRET` no Render → **§1.2**
+- [ ] Credenciais de **produção** no Render, nunca no repositório e nunca no front → **§1.3**
 - [ ] `MERCADOPAGO_ENV=production` **e** `NODE_ENV=production` no Render — o config recusa a
-      cobrança se as duas não combinarem, e o log do boot é onde isso aparece
-- [ ] Webhook apontando para a URL de produção e **testado** com um pagamento real de R$ 0,01 seu
+      cobrança se as duas não combinarem, e o log do boot é onde isso aparece → **§1.3**
+- [ ] Compra real de ponta a ponta, feita por você, **e depois estornada** → **§1.4**
 - [ ] Tabela `subscriptions` criada, com o índice único por `charge_id`
 - [ ] Os 10 testes de `vigencia-do-acesso.md` §5 passando
 - [ ] **Este runbook lido uma vez** e os comandos da §3 testados no Supabase com dado falso
 - [ ] Uma **planilha ou consulta salva** com todas as assinaturas ativas e vencimentos (§2)
 - [ ] Lembrete recorrente semanal no seu calendário: *"rodar a checagem de vencimento"*
-- [ ] Revisão jurídica dos 3 documentos concluída
-- [ ] `LEGAL_VERSION` no `checkout.html` conferido contra a versão publicada nos documentos
+- [ ] `LEGAL_VERSION` no `checkout.html` conferido contra a versão publicada nos documentos → **§1.5**
 
 > **Se você só puder fazer uma coisa desta lista:** o lembrete no calendário. É o único item que
 > protege um cliente pagante de perder acesso sem aviso — e é grátis.
+
+### A ordem importa, e não é a da lista
+
+A lista acima é uma checagem; **isto** é a sequência de execução. Ela foi montada por um critério
+só: **o que ainda pode ser corrigido de graça vem antes do que é irreversível.**
+
+```
+§1.1 revisão jurídica        ─┐
+                              ├─ podem correr em paralelo, nada quebra
+§1.2 webhook + segredo       ─┘   (ambos funcionam com credencial de teste)
+        │
+        ▼
+§1.3 credenciais de produção     ← a partir daqui o dinheiro é real
+        │
+        ▼
+§1.4 compra real + estorno       ← o único teste que prova o caminho inteiro
+        │
+        ▼
+§1.5 conferências finais
+```
+
+Trocar a credencial primeiro e testar o webhook depois inverte isso: você descobre um erro de
+configuração com dinheiro de cliente em vez de com o seu.
+
+---
+
+### §1.1 Revisão jurídica dos 3 documentos
+
+**O que revisar:** `frontend/public/termos.html`, `privacidade.html` e `reembolso.html`. São
+rascunhos escritos a partir do que o produto realmente faz — o que já é mais do que um modelo
+genérico entrega —, mas **ninguém com OAB olhou**.
+
+1. **Exporte os três em PDF** (abrir no navegador → Imprimir → Salvar como PDF). Advogado não
+   deve receber HTML nem link para localhost.
+2. **Mande junto o contexto que o texto não tem.** Sem isto o parecer sai genérico:
+   - pessoa física sem CNPJ, recebendo por Mercado Pago (instituição de pagamento regulada);
+   - **compra avulsa, sem renovação automática** — a razão é regulatória, não de produto: Pix
+     Automático exige CNPJ por regra do Banco Central (`docs/recebimento-sem-cnpj.md`);
+   - preços: R$ 16,90 (1 mês) e R$ 59,90 (12 meses), vigência em **mês de calendário**;
+   - a política de reembolso já está implementada em código exatamente como escrita: integral em
+     7 dias (art. 49 do CDC, inclusive no mensal e mesmo tendo usado), proporcional por meses
+     inteiros no anual, nada no mensal fora do prazo;
+   - dados pessoais guardados: e-mail, favoritos, alertas e registros de pagamento. Registro de
+     pagamento é **anonimizado, não apagado**, na exclusão de conta — obrigação fiscal de 5 anos.
+3. **Peça três coisas específicas**, não "dá uma olhada": (a) o que está prometido a mais do que a
+   lei exige e pode ser reduzido; (b) o que a lei exige e não está lá; (c) o texto do art. 49 está
+   aplicado corretamente para serviço digital contratado à distância?
+4. **Se o texto mudar**, siga a §1.5 — versão de documento é prova, e mexer nela tem ordem própria.
+
+> **Por que trava o dinheiro e não o código:** um documento errado publicado com cliente pagante
+> vira disputa. Publicado sem cliente nenhum, vira um `git commit`.
+
+---
+
+### §1.2 Webhook: cadastrar a URL e ligar a conferência de assinatura
+
+O código já existe (`backend/src/lib/webhookSignature.ts`) e está **desligado** enquanto
+`MERCADOPAGO_WEBHOOK_SECRET` não estiver no ambiente. Ligar é configuração, não programação.
+
+> **Pode ser feito agora, com credencial de teste.** O painel tem abas separadas para modo teste e
+> modo produtivo — e **cada aba gera um segredo diferente**. Fazer no teste primeiro é ensaio de
+> graça; só não esqueça de repetir na aba de produção quando trocar as credenciais (§1.3), porque o
+> segredo do teste não valida notificação de produção e o sintoma será 401 em tudo.
+
+**Passo 1 — cadastrar a URL.** Em [Suas integrações](https://www.mercadopago.com.br/developers/panel/app)
+→ sua aplicação → menu esquerdo **Webhooks → Configurar notificações**:
+
+```
+https://price-tracker-pro-api.onrender.com/api/billing/webhook
+```
+
+**Passo 2 — marcar o evento certo.** Selecione **"Order (Mercado Pago)"**. É o único que interessa:
+a integração é a API de Orders, e assinar tópicos de `payment` traria notificações que o
+`extractOrderId` não sabe resolver — elas cairiam no caminho de "ignorado" e poluiriam o log sem
+nunca liberar nada.
+
+**Passo 3 — salvar e revelar o segredo.** Salvar é o que **gera** a chave. Clique em revelar e
+copie. Ela não expira; o botão *Reset* troca (e invalida a anterior na hora).
+
+**Passo 4 — colar no Render.** Painel do Render → serviço `price-tracker-pro-api` → **Environment**
+→ `MERCADOPAGO_WEBHOOK_SECRET` = a chave. Salvar reinicia o serviço.
+
+**Passo 5 — conferir que ligou.** Render → serviço `price-tracker-pro-api` → aba **Logs**. Logo
+depois de `Backend rodando na porta`, a linha `[MercadoPago] Configurado` traz:
+
+```
+validacaoDeAssinaturaDoWebhook: "ATIVA"
+```
+
+Se vier `"DESLIGADA (sem segredo)"`, a variável não chegou — confira se salvou no serviço certo e
+se o deploy terminou.
+
+**Passo 6 — simular.** No painel, **Simular notificação**: escolha a URL, o evento *Order* e um
+`Data ID` qualquer. Esperado: **200** com `{"received":true,"ignored":true}` — a assinatura bateu
+(senão seria 401) e a order simulada não é nossa (por isso `ignored`). Os dois juntos provam o
+caminho inteiro.
+
+⚠️ **Se der 401 na simulação**, a causa quase certa é o segredo da aba errada (teste × produção).
+As duas outras causas conhecidas estão presas por teste em `test/webhookSignature.test.ts`: o
+`data.id` vai em **minúsculas** no manifesto, e campo ausente **sai** da string em vez de virar
+vazio.
+
+⚠️ **Um 502/504 na primeira simulação não é erro seu:** o Render Free hiberna após 15 min e o
+cold start leva de 30 a 60 s. Simule de novo. Em produção isso não perde pagamento — o Mercado
+Pago reenvia a cada 15 min até receber 200, e o processamento é idempotente.
+
+---
+
+### §1.3 Credenciais de produção — o ponto de não retorno
+
+**A partir daqui o dinheiro é real.** Não faça este passo no mesmo dia em que fizer os anteriores:
+durma sobre a §1.1 e a §1.2 primeiro.
+
+**Passo 1 — pegar as credenciais.** [Suas integrações](https://www.mercadopago.com.br/developers/panel/app)
+→ sua aplicação → **Credenciais de produção**. ⚠️ **Os tokens de teste e de produção começam ambos
+com `APP_USR` e são indistinguíveis a olho nu** — é exatamente por isso que `MERCADOPAGO_ENV`
+existe. Copie um de cada vez e confira a aba de onde veio.
+
+**Passo 2 — no Render** (`price-tracker-pro-api` → Environment), quatro variáveis:
+
+| Variável | Valor |
+|---|---|
+| `MERCADOPAGO_ACCESS_TOKEN` | token de **produção** |
+| `MERCADOPAGO_PUBLIC_KEY` | public key de **produção** |
+| `MERCADOPAGO_ENV` | `production` |
+| `MERCADOPAGO_WEBHOOK_SECRET` | segredo da aba **produtiva** do painel (§1.2) |
+
+`NODE_ENV=production` já vem do `render.yaml`. **Nada disso vai para o `.env` do repositório nem
+para o frontend** — o front nunca vê token de pagamento, e o `checkout.html` não precisa de
+nenhuma alteração: ele já lê o ambiente da resposta do backend.
+
+**Passo 3 — conferir o boot.** Render → `price-tracker-pro-api` → aba **Logs**, logo após
+`Backend rodando na porta`:
+
+```
+[MercadoPago] Configurado  env: "production"  validacaoDeAssinaturaDoWebhook: "ATIVA"
+```
+
+Se aparecer qualquer coisa dizendo que a cobrança foi **desligada**, leia a mensagem inteira: o
+config recusa `NODE_ENV=production` + `MERCADOPAGO_ENV=test` de propósito, e é a proteção
+funcionando, não um bug.
+
+**Passo 4 — sinal de que deu certo, do lado do usuário.** Abra `/premium/checkout` logado e gere
+um pagamento. **O aviso amarelo de "código de teste" tem de sumir.** Se ele continuar aparecendo,
+o backend ainda está em sandbox — não pague nada até resolver.
+
+---
+
+### §1.4 A compra real — o único teste que prova o caminho inteiro
+
+> ⚠️ **Esqueça o "pagamento de R$ 0,01" que este runbook pedia antes: ele não é possível.** O preço
+> vem de `PLAN_PRICE_CENTS` no backend, e o corpo do checkout nem tem campo de valor — que é a
+> regra que impede alguém de comprar o anual por um centavo. Criar um plano de teste para furar
+> isso seria abrir a porta que a regra existe para fechar.
+>
+> **Compre o mensal de verdade, de você mesmo, e estorne depois.** Custa, no pior caso, a taxa de
+> 0,99% (R$ 0,17) — e, diferente do centavo, exercita o fluxo que os clientes vão percorrer:
+> checkout → Pix pago no app do seu banco → webhook assinado → assinatura criada → gate liberado →
+> estorno → acesso encerrado. É o único teste que toca as duas pontas que mais doem se falharem.
+
+**Passo 1 — comprar.** Logado, `/premium/checkout?plan=mensal` → aceitar os documentos → **Gerar
+pagamento** → pagar o Pix no app do seu banco. Cronometre: a tela deve virar "Pagamento
+confirmado" sozinha em segundos (o polling é 3s no primeiro minuto).
+
+**Passo 2 — conferir os quatro lugares**, nesta ordem:
+
+```sql
+-- 1. a cobrança fechou
+select id, status, amount_cents, paid_at, provider_order_id
+  from billing_charges order by created_at desc limit 1;
+
+-- 2. a assinatura nasceu com a vigência certa (1 mês de CALENDÁRIO, não 30 dias)
+select plan, status, starts_at, expires_at, charge_id, legal_version, accepted_at
+  from subscriptions order by starts_at desc limit 1;
+```
+
+3. **No app:** o selo `Premium até DD/MM` no header.
+4. **No log do Render:** `[Billing] Webhook processado` — se só aparecer a reconciliação do
+   polling e nunca o webhook, ele não está chegando; volte à §1.2.
+
+**Passo 3 — estornar**, seguindo a §3.1. Confira o preview antes: dentro de 7 dias a regra tem de
+ser `cdc-7-dias` com devolução **integral**.
+
+**Passo 4 — conferir que o acesso caiu.** O selo do header volta a "Plano gratuito", e:
+
+```sql
+select status, expires_at from subscriptions order by starts_at desc limit 1;
+-- esperado: status = 'refunded', expires_at ≈ o instante do estorno
+```
+
+> **Se este passo falhar**, o problema é grave e é o que o runbook avisava desde o começo: dinheiro
+> devolvido com acesso ainda ativo. O `logger.error` de `expireSubscriptionForCharge` grita quando
+> isso acontece.
+
+---
+
+### §1.5 Conferências finais
+
+**`LEGAL_VERSION`.** Se a revisão jurídica (§1.1) mudou qualquer um dos três documentos, a versão
+precisa subir — e **a ordem é uma só**:
+
+1. acrescente a versão nova em `backend/src/lib/legalVersions.ts` (**sem remover as antigas**:
+   cobranças passadas apontam para elas);
+2. só depois atualize `LEGAL_VERSION` no `frontend/public/checkout.html`;
+3. faça o deploy do **backend antes** do frontend.
+
+Invertido, o checkout responde **400 para todo mundo** até o backend subir — o front estaria
+mandando uma versão que a lista branca ainda não conhece.
+
+**O que NÃO precisa mudar no go-live:** `DEMO` já é `false`, os links já apontam para os arquivos
+reais, e o `checkout.html` lê o ambiente do backend. Se você se pegar editando o front para subir
+em produção, pare e confira o que está fazendo.
 
 ---
 
