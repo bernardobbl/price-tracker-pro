@@ -8,7 +8,7 @@
 
 ---
 
-## 📍 ESTADO ATUAL — 05/ago/2026 (leia esta seção primeiro)
+## 📍 ESTADO ATUAL — 06/ago/2026 (leia esta seção primeiro)
 
 > Esta seção existe porque o projeto passou a ter **seis documentos** e eles começaram a se
 > contradizer. Em 05/ago/2026 essa contradição custou caro: a §7.6 aqui afirmava que os secrets de
@@ -62,9 +62,16 @@
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
 
-**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ **feitos em 06/ago** → 14 → 15 → 8 (confirmar)
-→ 16 → 17. O passo a passo detalhado de cada um está em **`docs/runbook-operacao.md` §1**, que é a
-fonte da verdade do procedimento — aqui fica só o estado.
+**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ ~~14~~ ~~15~~ ~~8~~ **todos feitos em 06/ago**
+→ restam **16** e **17**. O passo a passo detalhado de cada um está em
+**`docs/runbook-operacao.md` §1**, que é a fonte da verdade do procedimento — aqui fica só o estado.
+
+> **Os dois itens que faltam são os dois únicos que dependem de você, não de código.** O 16 é a
+> compra real de ponta a ponta (a única coisa que prova o caminho inteiro com dinheiro de verdade),
+> e o 17 é o lembrete semanal no calendário. Vale notar o desconforto: o 15 já aconteceu, então o
+> checkout **já cobra** de quem chegar nele, e o 16 — a verificação de que esse caminho funciona —
+> ainda não foi feito. A ordem certa teria sido 16 antes de abrir a porta; ela ficou invertida e o
+> jeito de reduzir o risco agora é fazer o 16 logo, não deixá-lo envelhecer.
 
 ### 🧪 Como o item 10 foi provado, e por que "o erro sumiu do log" não bastava
 
@@ -110,36 +117,41 @@ para trás. Fica o registro, já que o dado se foi.
 > outro evento — a limpeza do banco de **produção**, feita em 06/ago. Quem quiser saber o estado
 > do banco hoje lê esta tabela, não aquele registro.
 
-> ⚠️ **`✅` na coluna de código significa "escrito e testado", não "no ar".** Os itens 5 e 6 estão
-> prontos no repositório e **não estão em produção** — daí o item 13 existir separado. Confundir as
-> duas coisas foi o que fez o `MERCADOPAGO_WEBHOOK_SECRET` ser colado num backend que ainda não
-> sabia o que fazer com ele.
+> ⚠️ **`✅` na coluna de código significa "escrito e testado", não "no ar".** A distinção é o motivo
+> de o item 13 (deploy) existir separado dos itens 5 e 6 (código). Confundir as duas coisas foi o
+> que fez o `MERCADOPAGO_WEBHOOK_SECRET` ser colado num backend que ainda não sabia o que fazer com
+> ele. Hoje o 13 está fechado — os dois estão no ar —, mas a regra continua valendo para o próximo
+> item de código que aparecer nesta tabela.
 
-> ### ⚠️ A armadilha do item 8, e ela custou uma sessão inteira
+> ### ✅ A armadilha do item 8 — resolvida, e vale guardar o mecanismo
 >
-> O `MERCADOPAGO_WEBHOOK_SECRET` já está no Render e **mesmo assim a conferência de assinatura
-> está desligada**. O motivo: o segredo mora *dentro* de `getMercadoPagoConfig()`, que devolve
-> `null` na primeira linha quando falta `MERCADOPAGO_ACCESS_TOKEN`. Sem token, o segredo é
-> inalcançável.
+> Por um tempo o `MERCADOPAGO_WEBHOOK_SECRET` esteve no Render **com a conferência de assinatura
+> desligada**, e a causa não era o segredo: ele mora *dentro* de `getMercadoPagoConfig()`, que
+> devolve `null` na primeira linha quando falta `MERCADOPAGO_ACCESS_TOKEN`. Sem token, o segredo
+> era inalcançável.
 >
-> E não adianta pôr o token de **teste** no Render para destravar: o `render.yaml` define
+> E não adiantava pôr o token de **teste** no Render para destravar: o `render.yaml` define
 > `NODE_ENV=production`, e o config **recusa o boot** com `NODE_ENV=production` +
 > `MERCADOPAGO_ENV=test` — a proteção que impede um cliente de pagar um QR de sandbox.
 >
-> **Consequência:** o item 8 só pode ser *verificado* depois do item 13. Simular a notificação
-> antes disso devolve 200, mas por causa da cobrança desligada, não porque a assinatura bateu —
-> um verde que não prova nada é pior que nenhum. A ordem "webhook primeiro, credenciais depois"
-> parecia óbvia e estava errada para este projeto.
+> **Consequência que ficou de lição:** o item 8 só podia ser *verificado* depois do 13 e do 15.
+> Simular a notificação antes disso devolvia 200, mas por causa da cobrança desligada, não porque a
+> assinatura bateu — um verde que não prova nada é pior que nenhum. A ordem "webhook primeiro,
+> credenciais depois" parecia óbvia e estava errada para este projeto.
+>
+> Destravou em 06/ago junto com o 15, exatamente como previsto: o boot passou a mostrar
+> `validacaoDeAssinaturaDoWebhook: "ATIVA"`.
 
-**Como saber que o item 13 pegou:** no log do Render (aba **Logs**, busque `MercadoPago`), logo
-depois de `Backend rodando na porta`:
+**Como confirmar que o backend está no modo certo** — vale para qualquer sessão futura, não só
+para o item 13. No log do Render (aba **Logs**, busque `MercadoPago`), logo depois de
+`Backend rodando na porta`:
 
 ```json
 {"env":"production","validacaoDeAssinaturaDoWebhook":"ATIVA","msg":"[MercadoPago] Configurado"}
 ```
 
-E, do lado do usuário: **o aviso amarelo de "código de teste" some do checkout.** Se ele continuar
-aparecendo, o backend ainda está em sandbox — não pague nada.
+E, do lado do usuário: **o aviso amarelo de "código de teste" não aparece no checkout.** Se ele
+reaparecer, o backend voltou para sandbox — não pague nada.
 
 ---
 
@@ -150,7 +162,7 @@ semanal pelo GitHub Actions, alertas de preço por email, e o **checkout Pix cob
 Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22 (`1b4d02f`) e
 pelo #24 (`1e281c9`), em 05/ago/2026.
 
-**Testes:** 271 no backend · 102 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 287 no backend · 111 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
 
 ### 🔴 O dinheiro é real desde 06/ago/2026, 12:44
 
@@ -169,6 +181,62 @@ O que muda na prática, e vale ler antes de mexer em qualquer coisa:
 > até as 12:44 de 06/ago e falsa às 12:45. Ficou nesta posição, no topo, porque foi exatamente uma
 > afirmação desatualizada aqui que custou semanas de alerta semanal sem envio — o caso que originou
 > a regra "um fato mora num lugar só".
+
+### 🔧 Corrigido em 06/ago/2026 na branch `fix/pontas-soltas` (fora da main)
+
+> **Por que numa branch.** A main dispara deploy no Render e na Vercel a cada push, e o produto
+> agora cobra dinheiro real. Correção de pontas soltas é justamente o tipo de trabalho que produz
+> muitos commits pequenos e alguma tentativa e erro — o lugar errado para isso é uma branch que
+> publica sozinha. A branch acumula, a main recebe uma vez.
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| **Alerta continuava sendo enviado depois da assinatura vencer** | `fuelAlertService.ts`, `alertQuota.ts`, `subscriptionService.ts` | O gate do `POST /alerts` protege a **criação**; a varredura semanal nunca consultou assinatura. Quem criou 6 alertas como assinante e deixou vencer continuava recebendo os 6, para sempre — o produto entregando de graça a única coisa que cobra. Excedentes agora ficam **dormentes, não apagados**. +16 testes |
+| `evaluateAllFuelAlerts` **sem nenhum teste** | `test/alertSweepQuota.test.ts` (novo) | É a função que decide quem recebe e-mail toda semana. A única cobertura era a do caminho de um alerta só; o caminho de produção — vários donos, vários planos — nunca tinha sido exercitado, e foi ali que o vazamento morava |
+| Landing: "Estamos medindo o interesse antes de lançar" | `premium.html` (rodapé) | Frase da fase de porta falsa, a um clique de um débito de R$ 59,90. Mesma classe do formulário de e-mail removido horas antes |
+| Checkout: "experimento da Fase 10" | `checkout.html` (rodapé) | Idem, na página que emite a cobrança |
+| "Posso cancelar? Sim, **em um clique**" | `premium.html` (FAQ) | O clique nunca existiu — e não precisa: a compra é avulsa, sem recorrência. A correção foi dizer a verdade, não construir o botão |
+| "seu celular avisa" | `premium.html` (card) | Promete push; `createFuelAlertSchema` aceita `channel: z.literal("email")` e nada mais |
+| "12 meses de histórico" vendido como benefício **pago** | `premium.html` + `checkout.html` (resumo) | O histórico é público e sem login. O FAQ da mesma landing promete o mesmo de graça "para sempre" — duas afirmações opostas na mesma página |
+| "Preço de fundador **travado** enquanto você for assinante" | `premium.html` | Não há mecanismo de preço por pessoa: `PLAN_PRICE_CENTS` é constante única e cada renovação é compra nova pelo preço vigente. Congelamento de preço prometido em contrato de consumo sem código que o cumpra |
+| Botão "Simular pagamento" **renderizado em produção** | `checkout.html` | O comentário afirmava que não era. Vinha no HTML sempre, listener ligado, escondido só por `display:none`. `simBtn.click()` no console pintava "Pagamento confirmado" numa página de cobrança real — sem liberar acesso (o gate é o backend), mas com captura de tela de confirmação falsa. Agora é injetado por JS dentro de `if (DEMO)` |
+| Cabeçalhos das duas páginas descrevendo sandbox/porta falsa | `premium.html`, `checkout.html` | O do checkout dizia "credenciais de TESTE — nenhum dinheiro real circula". É a primeira coisa que se lê antes de mexer no que cobra, e estava autorizando experimentos que hoje custam dinheiro de outra pessoa |
+| `URL.revokeObjectURL` na linha seguinte ao `click()` | `api/client.ts` | Pode cancelar o download sem erro e sem log. Aconteceria em "baixar meus dados" — direito da LGPD que a Política de Privacidade promete por escrito. A tela diria que deu certo e nenhum arquivo apareceria |
+| `checkoutPage.test.ts` acusava os próprios comentários | `checkoutPage.test.ts` | O teste varria o arquivo cru; este repositório documenta defeitos **citando** o código que os causava, então a documentação da correção reprovava a correção. Passou a ignorar comentários — com o `//` removido só quando abre a linha, para não engolir metade de um `https://` e afrouxar o teste sem ninguém notar |
+| Contradições dentro da própria §ESTADO ATUAL | `plan.md` | O cabeçalho dizia 05/ago com conteúdo de 06/ago; uma nota afirmava que os itens 5 e 6 "não estão em produção" ao lado do item 13 ✅ que é o deploy deles; o bloco da "armadilha do item 8" descrevia a assinatura como desligada ao lado do item 8 ✅ `ATIVA`; e a ordem de execução ainda mandava fazer 14, 15 e 8 |
+
+**Novo teste-guarda: `staticPromises.test.ts`.** Irmão do `staticLinks.test.ts`, e pela mesma razão:
+o padrão já se repetiu quatro vezes e o trabalho de achá-lo é manual, lento e ninguém repete a cada
+commit. Ele trava as seis frases derrubadas acima contra o retorno, e afirma o inverso — que "sem
+cobrança automática", os 7 dias do CDC e o nome do processador de pagamento continuem na tela.
+
+**O que ele deliberadamente NÃO faz:** julgar se uma promessa *nova* é cumprida. Isso exige ler o
+código e decidir, e um teste que tentasse fazê-lo daria falso verde. Ele impede que as promessas
+**já derrubadas** voltem — que é o jeito mais provável de elas voltarem: alguém "restaurando a
+funcionalidade" sem ler o porquê.
+
+#### Dependências: uma corrigida, uma deixada de propósito
+
+O `npm audit` acusava vulnerabilidade alta nos dois pacotes. **Só uma delas importa**, e a
+diferença é a que separa "tem CVE" de "está exposto":
+
+| Onde | Achado | O que foi feito |
+|---|---|---|
+| **backend** (produção) | `ip-address ≤ 10.3.0`, puxada por `express-rate-limit@8.6.0`. Três avisos de má classificação de IP (octetos com zero à esquerda, sufixo CIDR, IPv6 mapeado) | **Corrigido.** `express-rate-limit ^8.6.2` + `ip-address` para 10.4.0. `npm audit --omit=dev` agora dá **0 vulnerabilidades** |
+| **frontend** (só teste) | `undici`, puxada por `jsdom` — que é `devDependency` | **Deixado.** `npm audit --omit=dev` já dava **0**: a `undici` não entra no bundle e só existe no ambiente que roda os testes. Corrigir exigiria subir o `jsdom` de major (29 → 30) para trocar uma dependência que nenhum usuário executa |
+
+**Por que a do backend não era teórica.** O que o `express-rate-limit` faz com a `ip-address` é
+decidir *qual chave* conta a requisição — e esta API roda atrás de proxy, com `trust proxy: 1`, o
+que significa que a chave sai de um cabeçalho que o cliente controla. IP mal classificado ali não
+vira SSRF (o Express não busca URL nenhuma que o usuário mande), vira **evasão do rate-limit**: uma
+única origem contando como várias, num endpoint público. Modesto, e do tipo que não deixa rastro.
+
+**Majors não foram tocados** (React 18→19, Express 4→5, Vite 6→8, TypeScript 5→7, ESLint 9→10).
+Cada um é uma migração com risco próprio, e nenhum deles resolve um problema que exista hoje —
+misturá-los com correções de comportamento numa branch só tornaria impossível dizer o que quebrou
+o quê. Ficam para uma sessão que tenha isso como único assunto.
+
+---
 
 ### Corrigido em 05/ago/2026 (a sessão de varredura)
 
@@ -309,10 +377,14 @@ pessoa ainda pode fazer (trocar a série do alerta que já tem, de graça) em ve
 > em cima, é a única lista de pendências deste documento.** Aqui fica só o que ela não cobre.
 
 1. **Item 16 do milestone** — a compra real de ponta a ponta, feita por você e estornada.
-2. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
-3. **Fase 8** — faltam screenshots/GIF no README e o post de LinkedIn.
-4. **Validar a hipótese de mercado** — o experimento da Fase 10 nunca rodou. Não bloqueia nada
-   técnico; bloqueia saber se o produto tem cliente.
+2. **Item 17 do milestone** — o lembrete semanal no calendário.
+3. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
+4. **Fase 8** — faltam screenshots/GIF no README e o post de LinkedIn.
+5. **Validar a hipótese de mercado** — a landing está no ar e cobrando, mas **ninguém pagou ainda**
+   e não há analytics instalado (o `trackEvent` do `premium.html` só faz `console.log`; é o único
+   `TODO` que sobrou naquele arquivo). Sem visitantes → cliques → pagamentos medidos, "o produto
+   tem cliente?" continua sem resposta — e a resposta não vem sozinha por o checkout estar ligado.
+   Não bloqueia nada técnico.
 
 ### O fio que puxou esta sessão inteira
 

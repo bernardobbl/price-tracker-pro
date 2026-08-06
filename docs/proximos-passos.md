@@ -330,7 +330,22 @@ Revisão independente de tudo o que a branch traz, registrada em
 - **Provedor: Mercado Pago.** Taxa percentual (~0,99%) vence a taxa fixa do Asaas (R$ 1,99) com folga em ticket baixo.
 - **Planos:** mensal R$ 16,90 (1 mês exato) e anual R$ 59,90 (12 meses exatos).
 - **Sem renovação automática.** Não é escolha: o Banco Central exige CNPJ ativo para ser recebedor de Pix Automático.
-- **`DEMO = false` com credenciais de TESTE** (`MERCADOPAGO_ENV=test`). O fluxo é real de ponta a ponta, mas nenhum dinheiro circula até as credenciais de produção entrarem.
+- ~~**`DEMO = false` com credenciais de TESTE** (`MERCADOPAGO_ENV=test`). O fluxo é real de ponta a
+  ponta, mas nenhum dinheiro circula até as credenciais de produção entrarem.~~
+  🔴 **SUPERADO EM 06/ago/2026, 12:44 — `DEMO = false` com credenciais de PRODUÇÃO**
+  (`MERCADOPAGO_ENV=production`). Um Pix gerado no checkout é pagável por qualquer banco e o valor
+  cai numa conta real.
+
+  > Esta linha ficou riscada em vez de reescrita de propósito. Ela era a afirmação mais perigosa
+  > deste arquivo — "nenhum dinheiro circula" é exatamente a permissão que alguém procura antes de
+  > testar algo no checkout —, e este documento é o que o `plan.md` aponta como fonte da verdade
+  > para quem retoma a frente de pagamentos. Um leitor que chegasse aqui em busca de "onde
+  > paramos" leria, com toda a confiança de uma seção chamada *decisões travadas*, o oposto do
+  > estado atual. É o mesmo mecanismo que fez o alerta semanal passar semanas sem enviar e-mail:
+  > afirmação desatualizada ao lado de fatos corretos herda a credibilidade deles.
+  >
+  > **O estado do pagamento mora na tabela do milestone, no `plan.md`.** Aqui ficam as armadilhas e
+  > o como-rodar-local.
 
 ---
 
