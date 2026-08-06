@@ -51,14 +51,14 @@
 | 5 | **Comprovante de pagamento por e-mail** | código | ✅ | 06/ago — os Termos prometiam e não existia |
 | 6 | **Timeout e aviso de cold start no checkout** | código | ✅ | 06/ago — 50 s de botão mudo numa tela de pagamento |
 | 7 | URL do webhook cadastrada no painel do MP | painel | ✅ | evento **Order**, aba de teste |
-| 8 | `MERCADOPAGO_WEBHOOK_SECRET` no Render | painel | ⚠️ | **colada, mas inerte** — ver a armadilha abaixo |
+| 8 | `MERCADOPAGO_WEBHOOK_SECRET` no Render | painel | ✅ | 06/ago — `validacaoDeAssinaturaDoWebhook: "ATIVA"` no boot, com o segredo da **aba produtiva**. Destravou junto com o 15, como previsto |
 | 9 | Chave Pix cadastrada na conta do MP | **você** | ✅ | 06/ago — chave **aleatória** já existia na conta real (painel → **Pix**). Teste de fumaça devolveu `action_required` + `qr_code` |
 | 10 | `ADMIN_EMAILS` no Render | painel | ✅ | 06/ago — provado com `GET /refund/<uuid-falso>` devolvendo **`CHARGE_NOT_FOUND`**, não `ADMIN_UNAVAILABLE` nem `NOT_FOUND`. Ver a nota abaixo |
 | 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
 | 12 | **Limpar o dado de teste do banco** | banco | ✅ | 06/ago — `billing_charges` e `subscriptions` a **0 linhas**, conferido no SQL Editor depois do `delete`. A 1ª linha que aparecer é venda real |
 | 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ✅ | `5795602` na `main`, 06/ago — Render e Vercel sobem sozinhos |
-| 14 | Revisão jurídica dos 3 documentos | **você** | ⛔ | último item que trava as credenciais |
-| 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ⛔ | **irreversível** — a partir daqui o dinheiro é real |
+| 14 | Revisão jurídica dos 3 documentos | **você** | ✅ | 06/ago — **nenhum texto mudou**, então `LEGAL_VERSION` segue `1.0` e a §1.5 não se aplica |
+| 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ✅ | **06/ago, 12:44 — o dinheiro é real a partir daqui.** Boot com `env: "production"` e `temPublicKey: true` |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
 
@@ -146,23 +146,29 @@ aparecendo, o backend ainda está em sandbox — não pague nada.
 ### Onde o produto está
 
 **No ar e funcionando:** app público em `precos-combustivel-br.vercel.app`, API no Render, ingestão
-semanal pelo GitHub Actions, alertas de preço por email, checkout Pix ligado com **credenciais de
-teste**. Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22
-(`1b4d02f`) e pelo #24 (`1e281c9`), em 05/ago/2026.
+semanal pelo GitHub Actions, alertas de preço por email, e o **checkout Pix cobrando de verdade**.
+Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22 (`1b4d02f`) e
+pelo #24 (`1e281c9`), em 05/ago/2026.
 
 **Testes:** 271 no backend · 102 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
 
-**Nenhum dinheiro circula ainda** — `MERCADOPAGO_ENV=test`. O portão de go-live está no
-`docs/runbook-operacao.md` §1.
+### 🔴 O dinheiro é real desde 06/ago/2026, 12:44
 
-> ⚠️ **Consequência prática do modo teste, e ela chegou como reclamação:** o código Pix gerado em
-> sandbox **não é pagável** — nenhum banco o reconhece. Desde 05/ago/2026 o checkout diz isso na
-> tela (o `POST /checkout` devolve `environment`). Antes disso o sintoma era indistinguível de um
-> bug, e foi assim que foi relatado. Detalhe em `docs/proximos-passos.md` §0.3.
->
-> E em **produção** o checkout responde 503: as variáveis `MERCADOPAGO_*` não estão no Render de
-> propósito (`NODE_ENV=production` + `MERCADOPAGO_ENV=test` é recusado no boot). A tela agora
-> explica isso em vez de mandar "tentar de novo em instantes".
+`MERCADOPAGO_ENV=production` no Render, credenciais de produção, `validacaoDeAssinaturaDoWebhook:
+"ATIVA"`. Um Pix gerado no checkout agora é pagável por qualquer banco e o valor cai na conta.
+
+O que muda na prática, e vale ler antes de mexer em qualquer coisa:
+
+- **Toda promessa dos documentos legais passou a ter prazo correndo.** Estorno em 7 dias, reembolso
+  proporcional, exclusão de dados: `docs/runbook-operacao.md` §3.
+- **Um erro no checkout agora custa dinheiro de outra pessoa**, não mais um `git commit`.
+- **O aviso amarelo de "código de teste" some da tela.** Se ele reaparecer, o backend voltou para
+  sandbox — e aí nenhum Pix gerado é pagável.
+
+> **Este bloco substituiu um que dizia "nenhum dinheiro circula ainda".** A frase era verdadeira
+> até as 12:44 de 06/ago e falsa às 12:45. Ficou nesta posição, no topo, porque foi exatamente uma
+> afirmação desatualizada aqui que custou semanas de alerta semanal sem envio — o caso que originou
+> a regra "um fato mora num lugar só".
 
 ### Corrigido em 05/ago/2026 (a sessão de varredura)
 

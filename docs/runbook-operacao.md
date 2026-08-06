@@ -8,9 +8,13 @@
 > para nada ser esquecido. Promessa cumprida por humano continua sendo promessa cumprida. O que
 > mata é promessa que ninguém sabe como cumprir às 23h de um sábado.
 >
-> Hoje o risco real ainda é **zero**: o checkout está ligado ao backend (`DEMO = false`), mas com
-> as **credenciais de teste** do Mercado Pago (`MERCADOPAGO_ENV=test`) — nenhum dinheiro circula.
-> O risco começa quando as credenciais de produção entrarem — e é por isso que a §1 existe.
+> 🔴 **Desde 06/ago/2026, 12:44, o dinheiro é real.** As credenciais de produção entraram no Render
+> e o boot confirma `env: "production"`. Este parágrafo dizia "o risco real ainda é zero" e ficou
+> falso no instante em que o serviço reiniciou — corrigido na mesma sessão, porque um runbook que
+> tranquiliza quando não devia é pior do que nenhum.
+>
+> A partir daqui, cada procedimento da §3 pode ser acionado por uma pessoa que pagou. O portão da
+> §1 abaixo continua servindo de registro do que foi conferido antes da virada.
 
 ---
 
@@ -28,11 +32,13 @@ burocracia: cada item corresponde a uma promessa já publicada por escrito.
 
 - [x] Chave Pix cadastrada na conta do Mercado Pago — chave **aleatória**, conferida em 06/ago no
       painel (menu **Pix**) e provada pelo teste de fumaça
-- [ ] Revisão jurídica dos 3 documentos concluída → **§1.1**
-- [ ] Webhook cadastrado no painel + `MERCADOPAGO_WEBHOOK_SECRET` no Render → **§1.2**
-- [ ] Credenciais de **produção** no Render, nunca no repositório e nunca no front → **§1.3**
-- [ ] `MERCADOPAGO_ENV=production` **e** `NODE_ENV=production` no Render — o config recusa a
-      cobrança se as duas não combinarem, e o log do boot é onde isso aparece → **§1.3**
+- [x] Revisão jurídica dos 3 documentos concluída — 06/ago, **sem mudança de texto**; por isso a
+      §1.5 não se aplica e `LEGAL_VERSION` segue `1.0` → **§1.1**
+- [x] Webhook cadastrado no painel + `MERCADOPAGO_WEBHOOK_SECRET` no Render — 06/ago, **aba
+      produtiva** (o segredo da aba de teste não valida notificação de produção) → **§1.2**
+- [x] Credenciais de **produção** no Render, nunca no repositório e nunca no front — 06/ago → **§1.3**
+- [x] `MERCADOPAGO_ENV=production` **e** `NODE_ENV=production` no Render — conferido no boot de
+      06/ago 12:44: `env: "production"`, `validacaoDeAssinaturaDoWebhook: "ATIVA"` → **§1.3**
 - [x] `ADMIN_EMAILS` no Render **e uma conta no Supabase com esse e-mail** — 06/ago, provado por
       `GET /api/billing/refund/<uuid-falso>` devolver `CHARGE_NOT_FOUND` → **§1.6**
 - [ ] Compra real de ponta a ponta, feita por você, **e depois estornada** → **§1.4**
