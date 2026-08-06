@@ -13,9 +13,11 @@
 import { supabase } from "../config/supabaseClient";
 import { logger } from "../lib/logger";
 import { decideAlertAction } from "../lib/alertDecision";
+import { splitAlertsByQuota } from "../lib/alertQuota";
 import { getUserEmail } from "./userEmailService";
 import { sendPriceAlertEmail } from "./emailService";
 import { getSnapshot } from "./fuelQueryService";
+import { listActiveSubscriberIds } from "./subscriptionService";
 
 export interface CreateFuelAlertInput {
   userId: string;
@@ -210,6 +212,7 @@ export async function evaluateFuelAlertImmediately(params: {
 interface AlertWithSeries {
   id: string;
   user_id: string;
+  created_at: string | null;
   threshold_price: number | string;
   currency: string | null;
   triggered: boolean;
@@ -220,21 +223,50 @@ interface AlertWithSeries {
  * Avalia TODOS os alertas ativos contra o levantamento mais recente. Chamado pelo
  * job semanal após uma ingestão bem-sucedida. Agrupa por série para calcular a
  * média do município uma vez só (evita N consultas repetidas).
+ *
+ * ⚠️ **A cota do plano é aplicada aqui também, e não só na criação.** O gate do
+ * `POST /alerts` protege quem tenta criar o segundo alerta hoje; ele não diz
+ * nada sobre alguém que criou seis enquanto era assinante e deixou a assinatura
+ * vencer. Sem o corte desta função, esses seis continuariam sendo enviados toda
+ * semana, de graça, para sempre — entregando justamente o que o Premium cobra.
+ * O raciocínio completo e a escolha de *quais* alertas sobrevivem estão no
+ * `lib/alertQuota.ts`.
  */
-export async function evaluateAllFuelAlerts(): Promise<{ evaluated: number; notified: number }> {
-  if (!supabase) return { evaluated: 0, notified: 0 };
+export async function evaluateAllFuelAlerts(
+  now: Date = new Date()
+): Promise<{ evaluated: number; notified: number; skippedByQuota: number }> {
+  if (!supabase) return { evaluated: 0, notified: 0, skippedByQuota: 0 };
 
   const { data, error } = await supabase
     .from("alerts")
-    .select("id, user_id, threshold_price, currency, triggered, tracked_series(product, state, municipality, brand, label)")
+    .select("id, user_id, created_at, threshold_price, currency, triggered, tracked_series(product, state, municipality, brand, label)")
     .eq("enabled", true);
 
   if (error) {
     logger.error({ err: error.message }, "[fuelAlerts] Erro ao carregar alertas para avaliação");
-    return { evaluated: 0, notified: 0 };
+    return { evaluated: 0, notified: 0, skippedByQuota: 0 };
   }
 
-  const alerts = (data ?? []) as unknown as AlertWithSeries[];
+  const todos = (data ?? []) as unknown as AlertWithSeries[];
+
+  // Quem ainda tem plano pago — uma consulta para todos os donos de alerta.
+  const assinantes = await listActiveSubscriberIds(
+    todos.map((a) => a.user_id),
+    now
+  );
+  const { kept: alerts, skipped } = splitAlertsByQuota(todos, assinantes);
+
+  if (skipped.length > 0) {
+    // `info`, não `warn`: alerta dormente por falta de plano é o produto
+    // funcionando como vendido, não uma falha. Mas precisa aparecer no log —
+    // "por que parei de receber e-mail?" é uma pergunta que chega ao suporte, e
+    // ela tem de ser respondível sem abrir o banco.
+    logger.info(
+      { dormentes: skipped.length, donos: new Set(skipped.map((a) => a.user_id)).size },
+      "[fuelAlerts] Alertas além da cota do plano gratuito — não avaliados nesta rodada"
+    );
+  }
+
   // Cache de média por série (chave: product|state|municipality|brand).
   const avgCache = new Map<string, number | null>();
   let notified = 0;
@@ -273,6 +305,9 @@ export async function evaluateAllFuelAlerts(): Promise<{ evaluated: number; noti
     }
   }
 
-  logger.info({ evaluated: alerts.length, notified }, "[fuelAlerts] Avaliação de alertas concluída");
-  return { evaluated: alerts.length, notified };
+  logger.info(
+    { evaluated: alerts.length, notified, skippedByQuota: skipped.length },
+    "[fuelAlerts] Avaliação de alertas concluída"
+  );
+  return { evaluated: alerts.length, notified, skippedByQuota: skipped.length };
 }

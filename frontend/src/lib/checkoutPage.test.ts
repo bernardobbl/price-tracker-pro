@@ -36,7 +36,19 @@ describe("checkout.html", () => {
   // de execução — derrubando o resto do script inteiro, inclusive o polling
   // que confirma o pagamento. Sem este teste, nada avisa antes do usuário.
   it("não referencia nenhum id que não existe no HTML", () => {
-    const html = checkout as string;
+    // Comentários fora antes de varrer. Este repositório documenta os defeitos
+    // corrigidos citando o código que os causava — um comentário que explica
+    // "`$('simBtn')` devolvia null aqui" não é uma chamada, é a lição. Sem esta
+    // linha, a documentação da correção reprova a própria correção. (Código
+    // comentado também sai, e deve mesmo: código comentado não executa.)
+    //
+    // O `//` só é removido quando ABRE a linha. Um `/\/\/.*/` solto engoliria
+    // metade de qualquer `https://...` e, com ela, qualquer `$('id')` escrito
+    // depois na mesma linha — o teste ficaria mais frouxo sem ninguém notar,
+    // que é o pior resultado possível para um teste-guarda.
+    const html = (checkout as string)
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/^[ \t]*\/\/[^\n]*/gm, " ");
 
     const idsUsados = [...html.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]);
     const idsExistentes = new Set(

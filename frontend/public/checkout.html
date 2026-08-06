@@ -2,12 +2,23 @@
   ============================================================================
   PRICE TRACKER PRO — CHECKOUT (/premium/checkout)
   ----------------------------------------------------------------------------
-  Branch `feat/checkout-pix`. Planos e vigência: docs/vigencia-do-acesso.md.
+  Planos e vigência: docs/vigencia-do-acesso.md.
   Provedor e taxas: docs/recebimento-sem-cnpj.md.
 
-  ESTADO: ligado ao backend (DEMO = false). As credenciais em uso são as de
-  TESTE do Mercado Pago (MERCADOPAGO_ENV=test no backend) — nenhum dinheiro
-  real circula até você trocar as credenciais e a bandeira de ambiente.
+  🔴 ESTADO: COBRANDO DE VERDADE desde 06/ago/2026, 12:44.
+  `MERCADOPAGO_ENV=production` no Render, credenciais de produção, validação de
+  assinatura do webhook ATIVA. Um Pix gerado nesta página é pagável por qualquer
+  banco e o valor cai numa conta real.
+
+  O texto anterior aqui dizia o contrário ("credenciais de TESTE — nenhum
+  dinheiro real circula"), e era verdade até aquele minuto. Um comentário de
+  cabeçalho desatualizado num arquivo de checkout não é detalhe de documentação:
+  é a primeira coisa que alguém lê antes de mexer no que cobra, e ele estava
+  autorizando experimentos que agora custam dinheiro de outra pessoa.
+
+  Como saber em qual modo o backend está, sem confiar neste comentário: gere uma
+  cobrança e olhe o campo `environment` da resposta. `production` = real. A
+  própria página faz isso e pinta o aviso amarelo (`#sandboxNote`) quando não é.
 
   EXIGE LOGIN. A assinatura é amarrada a um usuário (alertas e favoritos vivem
   numa conta), então esta página lê o token do Supabase no localStorage — que
@@ -436,8 +447,24 @@
           </div>
 
           <div class="copy-row" style="margin-top:14px">
-            <!-- Este botão só existe em DEMO/devMode. Em produção ele não é renderizado. -->
-            <button class="btn btn-quiet" id="simBtn">Simular pagamento (devMode)</button>
+            <!--
+              O botão "Simular pagamento (devMode)" MORAVA AQUI, com um comentário
+              afirmando "em produção ele não é renderizado". Não era verdade: ele
+              vinha no HTML sempre, com o listener sempre ligado, e a única coisa
+              que o segurava era um `style.display = 'none'` aplicado depois, em
+              JavaScript, dentro do `showPix`.
+
+              Consequência: numa página de pagamento em produção, `simBtn.click()`
+              no console — ou dois cliques no inspetor para reexibi-lo — pintava a
+              tela verde de "Pagamento confirmado" sem um centavo ter saído. Não
+              libera acesso nenhum (o gate é o backend, que reconsulta a API do
+              provedor), mas produz uma captura de tela de confirmação falsa numa
+              página de cobrança real. Isso basta para virar disputa.
+
+              Agora ele é INJETADO por JavaScript, e só quando `DEMO === true`.
+              Em produção o elemento não chega a existir — que é o que o
+              comentário antigo prometia.
+            -->
             <button class="btn btn-quiet" id="againBtn" style="display:none">Gerar novo código</button>
           </div>
         </div>
@@ -463,9 +490,23 @@
           <span class="v" id="sumTotal">R$ 59,90</span>
         </div>
 
+        <!--
+          ⚠️ ESTA LISTA É O QUE A PESSOA ESTÁ COMPRANDO, lida no segundo em que ela
+          decide pagar. Cada item precisa ser algo que o gate realmente entrega
+          só a quem paga — não uma qualidade geral do produto.
+
+          "12 meses de histórico da ANP" foi removido em 06/ago/2026: o histórico
+          é público, sem login (`GET /api/fuel/*`), e a janela de 12 meses vale
+          para todo mundo (`retentionService.ts`). Cobrar por ele na tela de
+          pagamento, enquanto a landing promete o mesmo de graça "para sempre",
+          é vender o que já é do cliente.
+
+          A mesma checagem vale para qualquer linha nova aqui: se o visitante
+          anônimo já tem, não entra.
+        -->
         <ul class="sum-what">
-          <li>Alertas de queda nas séries que você seguir</li>
-          <li>12 meses de histórico da ANP</li>
+          <li>Alertas de queda em quantas séries você quiser</li>
+          <li>Comparar gasolina e etanol, ou duas cidades, ao mesmo tempo</li>
           <li>Aviso por email assim que o preço cai</li>
           <li>Sem cobrança automática — nada é debitado sem você agir</li>
         </ul>
@@ -482,7 +523,11 @@
 
 <footer>
   <div class="wrap">
-    <span>Price Tracker Pro · experimento da Fase 10</span>
+    <!-- Dizia "experimento da Fase 10". Chamar de experimento a página que emite
+         a cobrança, no rodapé dela, depois que o dinheiro passou a ser real, é o
+         mesmo erro do "estamos medindo o interesse antes de lançar" que estava no
+         rodapé da premium.html. Quem lê é o cliente, não o desenvolvedor. -->
+    <span>Price Tracker Pro · pagamento processado pelo Mercado Pago</span>
     <span><a href="/premium.html">← voltar</a></span>
   </div>
 </footer>
@@ -894,7 +939,7 @@
 
     $('formCard').style.opacity = '.6';
     $('pixPanel').classList.add('show');
-    $('simBtn').style.display = DEMO ? 'inline-flex' : 'none';
+    // (o botão de simular não é mais escondido aqui — em produção ele nem existe)
     markSteps(3);
     setStatus('wait', 'Aguardando o pagamento… você pode deixar esta página aberta.', true);
     $('pixPanel').scrollIntoView({ behavior:'smooth', block:'center' });
@@ -929,7 +974,12 @@
         $('timer').textContent = '00:00';
         setStatus('bad', 'O código expirou. Gere um novo para pagar.');
         $('againBtn').style.display = 'inline-flex';
-        $('simBtn').style.display = 'none';
+        // `simBtn` só existe em DEMO — em produção ele nem é criado. Sem esta
+        // guarda, `$('simBtn')` devolve null aqui e a linha seguinte derruba o
+        // callback do timer na tela de pagamento. O `checkoutPage.test.ts` pegou
+        // exatamente isso quando o botão deixou de vir no HTML estático.
+        var sim = document.getElementById('simBtn');
+        if (sim) sim.style.display = 'none';
         return;
       }
       render();
@@ -1090,12 +1140,23 @@
   });
 
   // ── botões de teste / recomeçar ────────────────────────────────────────────
-  $('simBtn').addEventListener('click', function(){
-    // Em produção este botão não aparece (DEMO=false). Em devMode, o equivalente
-    // real é pagar o QR de teste no ambiente sandbox do Mercado Pago.
-    setStatus('wait', 'Pagamento simulado recebido, confirmando…', true);
-    setTimeout(onPaid, 1200);
-  });
+  //
+  // O "Simular pagamento" só passa a EXISTIR quando DEMO é true. Antes ele vinha
+  // no HTML e era escondido com `display:none` — o que é enfeite, não proteção:
+  // o elemento estava no DOM de produção e o listener, ligado. Criar o botão
+  // aqui dentro do `if` é a diferença entre "escondido" e "não existe".
+  if (DEMO){
+    var simBtn = document.createElement('button');
+    simBtn.className = 'btn btn-quiet';
+    simBtn.id = 'simBtn';
+    simBtn.type = 'button';
+    simBtn.textContent = 'Simular pagamento (devMode)';
+    simBtn.addEventListener('click', function(){
+      setStatus('wait', 'Pagamento simulado recebido, confirmando…', true);
+      setTimeout(onPaid, 1200);
+    });
+    $('againBtn').parentNode.insertBefore(simBtn, $('againBtn'));
+  }
   $('againBtn').addEventListener('click', function(){ location.reload(); });
 
   // ══════════════════════════════════════════════════════════════════════════
