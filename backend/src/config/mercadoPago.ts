@@ -21,23 +21,23 @@ export interface MercadoPagoConfig {
   publicKey: string | null;
   env: MercadoPagoEnv;
   /**
-   * Segredo do webhook (painel → Webhooks).
+   * Segredo do webhook (painel → Webhooks → Configurar notificações).
    *
-   * ⚠️ **AINDA NÃO É USADO.** A validação de assinatura (`x-signature`) não está
-   * implementada — está anotada como pendência em `docs/proximos-passos.md`.
+   * **Usado quando presente**, em `lib/webhookSignature.ts`: com ele, a rota
+   * `POST /api/billing/webhook` confere a assinatura `x-signature` e recusa
+   * com 401 o que não bater. Sem ele, a rota segue aceitando — e avisa uma vez
+   * no log.
    *
-   * Por que o sistema é seguro mesmo assim: a confirmação de um pagamento vem
-   * de um GET **autenticado** na API do Mercado Pago, nunca do corpo da
-   * notificação. Uma requisição forjada no webhook não libera acesso; ela só
-   * faz o backend consultar uma order que não existe ou não está paga.
+   * Opcional porque o segredo só nasce depois de cadastrar a URL do webhook no
+   * painel, e a URL só existe depois do deploy. Fazer disso um requisito
+   * travaria o boot do backend por causa de um passo que é de configuração.
    *
-   * O que a assinatura acrescentaria: barrar a forjaria **antes** da consulta,
-   * evitando que alguém queime nosso limite de requisições na API do provedor.
-   * É defesa em profundidade, não a diferença entre seguro e inseguro.
-   *
-   * Só dá para obter esse segredo depois de cadastrar a URL do webhook no
-   * painel — o que exige URL pública. Por isso a ordem natural é: URL pública
-   * → segredo → validação.
+   * Por que o sistema não depende dele para ser seguro: a confirmação de um
+   * pagamento vem de um GET **autenticado** na API do Mercado Pago, nunca do
+   * corpo da notificação. Uma requisição forjada não libera acesso; ela só faz
+   * o backend consultar uma order que não existe ou não está paga. A
+   * assinatura barra essa forjaria **antes** da consulta, poupando o nosso
+   * limite de requisições no provedor — defesa em profundidade.
    */
   webhookSecret: string | null;
 }
@@ -105,10 +105,10 @@ export function getMercadoPagoConfig(): MercadoPagoConfig | null {
     {
       env: cached.env,
       temPublicKey: Boolean(publicKey),
-      // Deliberadamente NÃO logamos "temWebhookSecret: true": o segredo é lido
-      // mas ainda não valida nada, e anunciar isso sugeriria uma proteção que
-      // não existe. O aviso abaixo é a informação honesta.
-      validacaoDeAssinaturaDoWebhook: "NÃO IMPLEMENTADA",
+      // Diz o estado real, não a intenção: com segredo, o webhook confere a
+      // assinatura; sem, ele aceita e a rota avisa uma vez. Anunciar proteção
+      // que não está ligada foi um erro cometido aqui antes.
+      validacaoDeAssinaturaDoWebhook: webhookSecret ? "ATIVA" : "DESLIGADA (sem segredo)",
     },
     "[MercadoPago] Configurado"
   );

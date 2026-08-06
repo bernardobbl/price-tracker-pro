@@ -90,3 +90,10 @@ services:
       # é lida e não valida nada — a validação x-signature é pendência aberta.
       - key: MERCADOPAGO_WEBHOOK_SECRET
         sync: false
+
+      # E-mails autorizados nas rotas de estorno (lista separada por vírgula).
+      # Sem ela ninguém é admin e as rotas respondem 503 — fail-closed de
+      # propósito: env incompleta não pode virar rota pública que devolve
+      # dinheiro. Ver backend/src/middleware/requireAdmin.ts.
+      - key: ADMIN_EMAILS
+        sync: false

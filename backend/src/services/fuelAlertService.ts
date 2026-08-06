@@ -69,6 +69,37 @@ export async function listFuelAlerts(userId?: string | null) {
   return data ?? [];
 }
 
+/**
+ * Quantos alertas o usuário tem — ou `null` quando **não deu para saber**.
+ *
+ * ## Por que não reaproveitar o `listFuelAlerts`
+ *
+ * Aquele devolve `[]` tanto para "não tem alerta nenhum" quanto para "o banco
+ * não respondeu". Enquanto a cota do plano gratuito era `Infinity` isso era
+ * inofensivo. No instante em que o limite virou finito, passou a ser **falha
+ * aberta**: banco fora → lista vazia → contagem 0 → cota liberada para todo
+ * mundo, exatamente quando o sistema está menos confiável.
+ *
+ * O aviso estava escrito no `alertQuota.ts` desde 04/ago/2026, prevendo este
+ * dia. Esta função existe para que quem decide a cota consiga distinguir zero
+ * de "não sei" — e, diante do "não sei", recusar.
+ */
+export async function countFuelAlerts(userId?: string | null): Promise<number | null> {
+  if (!supabase || !userId) return null;
+
+  const { count, error } = await supabase
+    .from("alerts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (error) {
+    logger.error({ err: error.message }, "[fuelAlerts] Erro ao contar alertas para a cota");
+    return null;
+  }
+
+  return count ?? null;
+}
+
 export async function deleteFuelAlert(alertId: string, userId?: string | null): Promise<void> {
   if (!supabase || !userId) return;
   const { error } = await supabase
@@ -117,7 +148,7 @@ async function notifyAndMark(params: {
   }
 
   try {
-    await sendPriceAlertEmail({
+    const enviado = await sendPriceAlertEmail({
       to: email,
       series: params.series,
       thresholdPrice: params.thresholdPrice,
@@ -125,6 +156,18 @@ async function notifyAndMark(params: {
       currency: params.currency,
       collectedAt: params.collectedAt,
     });
+
+    // Sem envio, não marca. `triggered: true` é uma porta de mão única: o alerta
+    // só volta a disparar se o preço subir acima do alvo e a avaliação seguinte
+    // o resetar. Marcar sem ter enviado queima o alerta em silêncio — foi o que
+    // aconteceu enquanto o GitHub Actions rodou sem os secrets de SMTP.
+    if (!enviado) {
+      logger.warn(
+        { alertId: params.alertId },
+        "[fuelAlerts] Email não enviado (SMTP indisponível) — alerta NÃO marcado, tentará de novo"
+      );
+      return false;
+    }
 
     const { error } = await supabase
       .from("alerts")

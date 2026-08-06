@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../supabaseClient";
 import { traduzirErroAuth } from "../lib/authErrors";
+import { checkSignupEmail } from "../lib/emailValidation";
 
 export type AuthMode = "login" | "signup";
 
@@ -50,6 +51,18 @@ export function useAuth() {
       e.preventDefault();
       if (!supabase) return;
       setError(null);
+
+      // Só no cadastro, e de propósito: quem já tem conta com endereço torto
+      // precisa continuar conseguindo entrar para pedir a correção. Barrar o
+      // login puniria a pessoa por um defeito que era nosso.
+      if (mode === "signup") {
+        const check = checkSignupEmail(email);
+        if (!check.valid) {
+          setError(check.message);
+          return;
+        }
+      }
+
       setSubmitting(true);
       try {
         if (mode === "login") {

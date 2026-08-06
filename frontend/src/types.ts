@@ -85,3 +85,30 @@ export interface FuelAlert {
     label: string;
   } | null;
 }
+
+/**
+ * Situação da assinatura, vinda de `GET /api/fuel/entitlement`.
+ *
+ * ⚠️ Isto é **para a interface**, não é o portão. O gate de verdade roda no
+ * backend, no `POST /api/fuel/alerts` — esconder um botão nunca foi controle de
+ * acesso. Aqui serve só para a pessoa saber o que ela tem.
+ */
+export interface Entitlement {
+  active: boolean;
+  plan: "mensal" | "anual" | null;
+  expiresAt: string | null;
+  daysLeft: number | null;
+}
+
+/**
+ * Palavra exigida para confirmar a exclusão da conta.
+ *
+ * Mora aqui, e não no componente, porque o **backend** valida contra este texto
+ * exato (`deleteAccountSchema`, com `z.literal`). São duas cópias da mesma
+ * verdade em pacotes diferentes, e não há como o compilador ligar uma na outra
+ * — o mínimo é que do lado do front exista **uma** cópia, referenciada tanto
+ * pela tela que pede quanto pelo teste que confere.
+ *
+ * ⚠️ Ao mudar aqui, mude junto em `backend/src/schemas/requestSchemas.ts`.
+ */
+export const CONFIRMACAO_EXCLUSAO = "EXCLUIR MINHA CONTA";

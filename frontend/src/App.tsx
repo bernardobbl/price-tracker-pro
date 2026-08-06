@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { createFuelAlert } from "./api/client";
+import { ApiError, createFuelAlert } from "./api/client";
 import { Icon } from "./components/Icon";
+import { AccountPanel } from "./components/AccountPanel";
 import { AuthPage } from "./components/AuthPage";
 import { HeaderWire } from "./components/HeaderWire";
+import { PlanBadge } from "./components/PlanBadge";
 import { Sidebar } from "./components/Sidebar";
 import { DetailPanel } from "./components/DetailPanel";
 import { ToastContainer } from "./components/Toast";
@@ -12,6 +14,7 @@ import { useFavorites } from "./hooks/useFavorites";
 import { useAlerts } from "./hooks/useAlerts";
 import { useToasts } from "./hooks/useToasts";
 import { useApiWaking } from "./hooks/useApiWaking";
+import { useEntitlement } from "./hooks/useEntitlement";
 import { sameSeries } from "./lib/format";
 import { supabase } from "./supabaseClient";
 import type { TrackedSeries } from "./types";
@@ -28,12 +31,14 @@ function App() {
   const fuel = useFuelSeries();
   const favorites = useFavorites(canManage);
   const { alerts, reload: reloadAlerts, remove: removeAlert } = useAlerts(canManage);
+  const { entitlement } = useEntitlement(auth.user?.id);
   const { toasts, push, remove: removeToast } = useToasts();
   const apiWaking = useApiWaking();
 
   const [alertThreshold, setAlertThreshold] = useState("");
   const [alertSaving, setAlertSaving] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
+  const [alertQuotaHit, setAlertQuotaHit] = useState(false);
 
   // Login é OPT-IN (padrão Keepa/CamelCamelCamel): o dashboard de consulta é
   // público — a tela de auth só aparece quando o usuário pede (ou quando uma
@@ -43,6 +48,11 @@ function App() {
     if (auth.user) setShowAuth(false); // logou → volta ao dashboard
   }, [auth.user]);
   const requestLogin = () => setShowAuth(true);
+
+  // Tela de conta (exportar dados / excluir conta). Fica no App e não na
+  // AuthPage porque é para quem JÁ entrou — são os direitos do titular sobre
+  // dados que só existem depois de haver conta.
+  const [showAccount, setShowAccount] = useState(false);
 
   const { view } = fuel;
   const isFavorited = Boolean(view && favorites.tracked.some((t) => sameSeries(view, t)));
@@ -75,6 +85,7 @@ function App() {
   const handleCreateAlert = async (e: React.FormEvent) => {
     e.preventDefault();
     setAlertError(null);
+    setAlertQuotaHit(false);
 
     if (!canManage) {
       requestLogin();
@@ -105,6 +116,11 @@ function App() {
       push("success", "Alerta salvo! Você será avisado por email.");
     } catch (err: unknown) {
       setAlertError(err instanceof Error ? err.message : "Erro ao salvar alerta");
+      // Bater no limite do plano gratuito não é erro da pessoa — é o momento em
+      // que faz sentido mostrar o caminho para o Premium. Guardamos o código
+      // para a tela decidir; procurar palavras dentro da mensagem quebraria na
+      // primeira vez que alguém melhorasse a redação.
+      setAlertQuotaHit(err instanceof ApiError && err.code === "ALERT_QUOTA_EXCEEDED");
     } finally {
       setAlertSaving(false);
     }
@@ -163,7 +179,17 @@ function App() {
         </div>
         {canManage ? (
           <div className="auth-row auth-row--logged">
-            <span className="auth-email"><Icon name="user" size={14} /> {auth.user!.email}</span>
+            <PlanBadge entitlement={entitlement} logged={canManage} />
+            {/* O email vira botão: é onde a pessoa já procura as opções da
+                própria conta, e evita mais um item competindo no header. */}
+            <button
+              type="button"
+              className="auth-email auth-email--button"
+              onClick={() => setShowAccount(true)}
+              title="Minha conta: baixar meus dados ou excluir a conta"
+            >
+              <Icon name="user" size={14} /> {auth.user!.email}
+            </button>
             <button type="button" className="btn-logout" onClick={auth.logout}>
               <Icon name="logout" size={14} /> Sair
             </button>
@@ -236,6 +262,7 @@ function App() {
           onAlertThresholdChange={setAlertThreshold}
           alertSaving={alertSaving}
           alertError={alertError}
+          alertQuotaHit={alertQuotaHit}
           onCreateAlert={handleCreateAlert}
         />
       </main>
@@ -253,11 +280,27 @@ function App() {
           {" "}— dados abertos. Não são o preço da bomba neste instante.
         </p>
         <nav className="site-footer-links" aria-label="Documentos legais">
+          <a href="/premium.html">Premium</a>
           <a href="/termos.html">Termos de Uso</a>
           <a href="/privacidade.html">Privacidade</a>
           <a href="/reembolso.html">Reembolso</a>
         </nav>
       </footer>
+
+      {showAccount && canManage && (
+        <AccountPanel
+          email={auth.user?.email ?? null}
+          entitlement={entitlement}
+          onClose={() => setShowAccount(false)}
+          onDeleted={() => {
+            // A conta já não existe do lado do servidor; o `signOut` aqui é o
+            // que limpa a sessão desta aba. Sem ele, o app seguiria com um
+            // token válido para um usuário removido e cada chamada viraria 401.
+            setShowAccount(false);
+            void auth.logout();
+          }}
+        />
+      )}
 
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>

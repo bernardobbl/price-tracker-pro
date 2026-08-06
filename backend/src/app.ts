@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import fuelRouter from "./routes/fuelRoute";
 import fuelUserRouter from "./routes/fuelUserRoute";
 import billingRouter from "./routes/billingRoute";
+import accountRouter from "./routes/accountRoute";
 import { errorHandler } from "./middleware/errorHandler";
 import { sendError } from "./lib/httpError";
 import { isOriginAllowed, parseAllowedOrigins } from "./lib/corsOrigins";
@@ -64,6 +65,10 @@ app.use("/api/fuel", fuelUserRouter);
 // Cobrança e assinatura. O /webhook aqui dentro é público por natureza (quem
 // chama é o Mercado Pago) — a proteção está em não confiar no corpo recebido.
 app.use("/api/billing", billingRouter);
+
+// Direitos do titular (LGPD art. 18): exportar os próprios dados e excluir a
+// conta. Sempre sobre o usuário do token — não existe id de terceiro aqui.
+app.use("/api/account", accountRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

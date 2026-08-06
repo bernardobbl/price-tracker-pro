@@ -163,9 +163,46 @@ describe("createCharge — o preço vem do plano, nunca do cliente", () => {
       orderId: ORDER,
       brCode: "000201...",
       brCodeBase64: "iVBORw0KG",
-      ticketUrl: null,
+      ticketUrl: "https://www.mercadopago.com.br/payments/123/ticket",
       status: "action_required",
+      environment: "test",
     });
+  });
+
+  // ── O ambiente precisa chegar à tela ─────────────────────────────────────
+  // Um brCode de sandbox é visualmente idêntico ao real e nenhum banco o
+  // aceita. Sem este campo o checkout não tem como avisar, e o sintoma vira
+  // "o QR não funciona" — que foi como chegou em 05/ago/2026.
+  it("devolve o ambiente do provedor junto com o QR", async () => {
+    const charge = await createCharge({
+      userId: USER, plan: "anual", email: "a@b.c", legalVersion: "1.0",
+    });
+
+    expect(charge.environment).toBe("test");
+  });
+
+  it("assume `test` quando o provedor não informa o ambiente — na dúvida, avisa", async () => {
+    mp.createPixOrder.mockResolvedValue({
+      orderId: ORDER, brCode: "000201...", brCodeBase64: null,
+      ticketUrl: null, status: "action_required",
+      // sem `environment` (servidor/mock antigo)
+    });
+
+    const charge = await createCharge({
+      userId: USER, plan: "anual", email: "a@b.c", legalVersion: "1.0",
+    });
+
+    // Falha para o lado do aviso: mostrar "código de teste" num código real é
+    // constrangedor; esconder isso num código de teste custa uma reclamação.
+    expect(charge.environment).toBe("test");
+  });
+
+  it("repassa o ticketUrl do provedor — é a alternativa de quem não lê o QR", async () => {
+    const charge = await createCharge({
+      userId: USER, plan: "anual", email: "a@b.c", legalVersion: "1.0",
+    });
+
+    expect(charge.ticketUrl).toBe("https://www.mercadopago.com.br/payments/123/ticket");
   });
 
   it("grava o valor do plano anual, e o front não tem como influenciar", async () => {

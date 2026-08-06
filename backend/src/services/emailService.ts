@@ -44,9 +44,22 @@ export interface PriceAlertEmailParams {
   collectedAt?: string | null;
 }
 
-export async function sendPriceAlertEmail(params: PriceAlertEmailParams) {
+/**
+ * Alerta de queda de preço.
+ *
+ * **Devolve `true` só quando o email realmente saiu.** Isso não é detalhe de
+ * estilo: quem chama marca o alerta como "já avisado" depois desta função, e
+ * durante semanas essa marca foi gravada sem que nada tivesse sido enviado —
+ * o job rodava sem SMTP configurado, esta função caía no `return` mudo, e o
+ * chamador tratava o silêncio como sucesso. Alerta marcado sem aviso é pior
+ * que alerta não avaliado: ele nunca mais dispara.
+ *
+ * O `sendExpiryNoticeEmail` logo abaixo sempre fez assim — aqui é a correção
+ * que alinha os dois.
+ */
+export async function sendPriceAlertEmail(params: PriceAlertEmailParams): Promise<boolean> {
   const tx = getTransporter();
-  if (!tx) return;
+  if (!tx) return false;
 
   // Assunto e corpo vivem numa função pura (testável sem enviar email).
   // O link aponta para o próprio app, na série do alerta — antes apontava para a
@@ -66,6 +79,7 @@ export async function sendPriceAlertEmail(params: PriceAlertEmailParams) {
     subject,
     text
   });
+  return true;
 }
 
 export interface ExpiryNoticeEmailParams {

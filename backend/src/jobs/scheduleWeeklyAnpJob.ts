@@ -48,11 +48,19 @@ async function runIngest(trigger: string): Promise<void> {
     "[CRON][ANP] Ingestão finalizada"
   );
 
-  // Só reavalia alertas quando houve dado novo (evita trabalho à toa em 304/skip).
-  if (result.status === "success") {
-    const { evaluated, notified } = await evaluateAllFuelAlerts();
-    logger.info({ evaluated, notified }, "[CRON][ANP] Alertas reavaliados após ingestão");
-  }
+  // Reavalia sempre, não só quando houve dado novo.
+  //
+  // A intenção original — "evitar trabalho à toa em 304/skip" — parecia econômica
+  // e custava caro: a ANP publica CSVs mensais, então a maior parte das execuções
+  // semanais volta `skipped`, e com isso os alertas passavam semanas sem ser
+  // olhados. Além disso o alvo do alerta é do usuário: quem baixa o alvo hoje
+  // precisa ser avaliado contra o preço que já está no banco.
+  //
+  // O custo é baixo e limitado: uma consulta por série distinta (há cache por
+  // série dentro da função) e email só para quem cruzou o alvo e ainda não foi
+  // avisado. Mesma decisão do `applyRetention` e do `sendExpiryNotices` abaixo.
+  const { evaluated, notified } = await evaluateAllFuelAlerts();
+  logger.info({ evaluated, notified }, "[CRON][ANP] Alertas reavaliados após ingestão");
 
   // Fase 9 — retenção automática (free tier): mantém o banco num platô de tamanho.
   // Roda toda semana (mesmo em skip — barata e idempotente); nunca lança.

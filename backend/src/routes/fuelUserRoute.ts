@@ -30,6 +30,7 @@ import {
   deleteFuelAlert,
   evaluateFuelAlertImmediately,
   listFuelAlerts,
+  countFuelAlerts,
 } from "../services/fuelAlertService";
 import { getEntitlement, hasActiveSubscription } from "../services/subscriptionService";
 import { decideAlertQuota } from "../lib/alertQuota";
@@ -121,8 +122,7 @@ router.post(
 
     // ── Gate de assinatura ────────────────────────────────────────────────
     // O backend usa a service_role, que ignora RLS: a checagem TEM de estar
-    // aqui. Hoje `FREE_ALERT_LIMIT` é Infinity, então isto nunca barra ninguém
-    // — a limitação do plano grátis é decisão à parte (ver alertQuota.ts).
+    // aqui. Desde 05/ago/2026 ela barra de verdade — `FREE_ALERT_LIMIT` é 1.
     const existing = await listFuelAlerts(userId);
     const alreadyHasThisSeries = existing.some(
       (a) => (a as { series_id?: string }).series_id === seriesId
@@ -131,9 +131,25 @@ router.post(
     if (!alreadyHasThisSeries) {
       // Só conta cota quando é alerta NOVO: o upsert por (user_id, series_id,
       // channel) faz atualização não criar linha, e atualizar não pode custar cota.
+      //
+      // A contagem vem do `countFuelAlerts`, e não do `existing.length`, por um
+      // motivo específico: aquele devolve `null` quando o banco não responde,
+      // enquanto uma lista vazia é indistinguível de "não tem alerta". Com cota
+      // finita, confundir os dois libera todo mundo justamente quando o sistema
+      // está menos confiável. Diante do "não sei", recusamos.
+      const currentCount = await countFuelAlerts(userId);
+      if (currentCount == null) {
+        return sendError(
+          res,
+          503,
+          "QUOTA_CHECK_FAILED",
+          "Não conseguimos verificar seu plano agora. Tente de novo em instantes."
+        );
+      }
+
       const quota = decideAlertQuota({
         hasActiveSubscription: await hasActiveSubscription(userId),
-        currentCount: existing.length,
+        currentCount,
       });
       if (!quota.allowed) {
         return sendError(res, 402, "ALERT_QUOTA_EXCEEDED", quota.reason);

@@ -12,7 +12,11 @@
 
 import axios from "axios";
 import { randomUUID } from "node:crypto";
-import { getMercadoPagoConfig, MERCADOPAGO_API } from "../config/mercadoPago";
+import {
+  getMercadoPagoConfig,
+  MERCADOPAGO_API,
+  type MercadoPagoEnv,
+} from "../config/mercadoPago";
 import { logger } from "../lib/logger";
 
 export class MercadoPagoError extends Error {
@@ -47,6 +51,16 @@ export interface PixOrder {
   /** Página pronta do Mercado Pago com o QR, alternativa ao nosso. */
   ticketUrl: string | null;
   status: string;
+  /**
+   * Ambiente que gerou este código — e ele precisa chegar até a tela.
+   *
+   * Um brCode de `test` **não é um Pix pagável**: nenhum banco o reconhece
+   * (ver `buildPayer` abaixo). Sem este campo, o checkout mostra um QR
+   * indistinguível do real, a pessoa tenta pagar, o banco recusa e não há nada
+   * na tela explicando o porquê — foi exatamente o que aconteceu em 05/ago/2026.
+   * O front não tem como deduzir isso sozinho: ele não vê o token nem a env.
+   */
+  environment: MercadoPagoEnv;
 }
 
 /** Status normalizado — o resto do sistema não precisa conhecer o vocabulário do provedor. */
@@ -196,6 +210,8 @@ export async function createPixOrder(input: CreatePixOrderInput): Promise<PixOrd
       brCodeBase64: method.qr_code_base64 ? String(method.qr_code_base64) : null,
       ticketUrl: method.ticket_url ? String(method.ticket_url) : null,
       status: String(data.status ?? "unknown"),
+      // `client()` acima já garantiu que a config existe (ela lança se não).
+      environment: getMercadoPagoConfig()?.env ?? "test",
     };
   } catch (err) {
     if (err instanceof MercadoPagoError) throw err;
@@ -211,6 +227,16 @@ export interface OrderSnapshot {
   status: NormalizedStatus;
   rawStatus: string;
   amountCents: number | null;
+  /**
+   * Id da transação de pagamento dentro da order (`PAY01...`).
+   *
+   * Só é necessário para **estorno parcial**: a API do provedor exige apontar
+   * qual transação está sendo devolvida. No estorno total o corpo vai vazio e
+   * este campo não é usado. Buscamos na hora do estorno em vez de guardar no
+   * banco porque é dado do provedor — se ele mudar, a verdade continua sendo a
+   * consulta, nunca a nossa cópia.
+   */
+  paymentTransactionId: string | null;
 }
 
 /**
@@ -255,6 +281,7 @@ export async function getOrder(orderId: string): Promise<OrderSnapshot> {
 
     const rawStatus = String(data?.status ?? "");
     const total = data?.total_amount;
+    const paymentId = data?.transactions?.payments?.[0]?.id;
 
     return {
       orderId: String(data?.id ?? orderId),
@@ -262,10 +289,101 @@ export async function getOrder(orderId: string): Promise<OrderSnapshot> {
       status: normalizeOrderStatus(rawStatus),
       rawStatus,
       amountCents: total != null ? Math.round(Number(total) * 100) : null,
+      paymentTransactionId: paymentId ? String(paymentId) : null,
     };
   } catch (err) {
     const { message, status } = describeError(err);
     logger.error({ err: message, orderId }, "[MercadoPago] Falha ao consultar order");
+    throw new MercadoPagoError("REQUEST_FAILED", message, status);
+  }
+}
+
+export interface RefundResult {
+  /** Status da order depois do estorno (`processed`, `refunded`…). */
+  status: string;
+  /** `refunded` ou `partially_refunded`, conforme o provedor. */
+  statusDetail: string | null;
+  /** Valor efetivamente devolvido, em centavos, quando o provedor informa. */
+  refundedCents: number | null;
+  /** Id do estorno no provedor — vai para o log e para o registro do suporte. */
+  refundId: string | null;
+}
+
+/**
+ * Estorna uma order, total ou parcialmente.
+ *
+ * ## O contrato da API, que não é óbvio
+ *
+ * - **Total:** corpo **vazio**. Mandar o valor cheio em vez de vazio é o erro
+ *   clássico aqui — vira estorno parcial de 100%, que o provedor trata como
+ *   caso diferente.
+ * - **Parcial:** exige `transactions[].id` (o `PAY01...` da transação) além do
+ *   valor. Por isso o `paymentTransactionId` do snapshot.
+ * - Prazo: 180 dias a contar da aprovação.
+ * - **Precisa haver saldo na conta.** Sem saldo, o provedor recusa — e é uma
+ *   falha de negócio, não de código.
+ *
+ * ## Idempotência: determinística de propósito
+ *
+ * `X-Idempotency-Key` é obrigatório. Usamos uma chave derivada da cobrança e do
+ * valor, e não um UUID novo a cada chamada: assim, dois cliques no mesmo
+ * estorno batem na mesma chave e o provedor recusa o segundo em vez de devolver
+ * o dinheiro duas vezes. Num fluxo que move dinheiro para fora, repetir é o
+ * risco maior — preferimos falhar a duplicar.
+ */
+export async function refundOrder(params: {
+  orderId: string;
+  /** Omitido = estorno **total**. Informado = parcial. */
+  amountCents?: number;
+  /** Obrigatório no parcial: id da transação de pagamento na order. */
+  paymentTransactionId?: string | null;
+}): Promise<RefundResult> {
+  const { orderId, amountCents, paymentTransactionId } = params;
+  const parcial = amountCents != null;
+
+  if (parcial && !paymentTransactionId) {
+    throw new MercadoPagoError(
+      "UNEXPECTED_RESPONSE",
+      "Estorno parcial exige o id da transação de pagamento, que não veio na consulta da order."
+    );
+  }
+
+  const body = parcial
+    ? { transactions: [{ id: paymentTransactionId, amount: toAmountString(amountCents) }] }
+    : {}; // total: corpo vazio, conforme a documentação
+
+  const idempotencyKey = parcial ? `refund-${orderId}-${amountCents}` : `refund-${orderId}-total`;
+
+  try {
+    const { data } = await client().post(
+      `/v1/orders/${encodeURIComponent(orderId)}/refund`,
+      body,
+      { headers: { "X-Idempotency-Key": idempotencyKey } }
+    );
+
+    const refund = data?.transactions?.refunds?.[0];
+    const devolvido = refund?.amount;
+
+    logger.info(
+      {
+        orderId,
+        parcial,
+        status: data?.status,
+        statusDetail: data?.status_detail,
+        refundId: refund?.id,
+      },
+      "[MercadoPago] Estorno processado"
+    );
+
+    return {
+      status: String(data?.status ?? "unknown"),
+      statusDetail: data?.status_detail ? String(data.status_detail) : null,
+      refundedCents: devolvido != null ? Math.round(Number(devolvido) * 100) : null,
+      refundId: refund?.id ? String(refund.id) : null,
+    };
+  } catch (err) {
+    const { message, status } = describeError(err);
+    logger.error({ err: message, orderId, parcial }, "[MercadoPago] Falha ao estornar");
     throw new MercadoPagoError("REQUEST_FAILED", message, status);
   }
 }

@@ -95,7 +95,7 @@ flowchart LR
 | Validation | Zod (request schemas + ETL row gate) |
 | Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**177 tests**) |
+| Tests | Vitest + Testing Library + supertest (**318 tests**) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
@@ -137,7 +137,7 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-177 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, alert-email copy and threshold rules, auth error mapping, request schemas, API routes (supertest), and the price-intelligence libs + chart component. GitHub Actions runs lint + type-check + test + build on every push/PR.
+318 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, alert-email copy and threshold rules, auth error mapping, request schemas, API routes (supertest), the price-intelligence libs + chart component, and the billing layer — subscription-period arithmetic (calendar months, pro-rata refunds), charge idempotency, provider status normalization, and signup e-mail validation. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
@@ -148,7 +148,7 @@ npm test        # in backend/ and frontend/
 - **Scheduling that survives a sleeping free tier.** Free hosts hibernate the web process after minutes of inactivity, so an in-process cron may never fire. The weekly ingestion is therefore driven by a **GitHub Actions workflow** that runs the same CLI against Supabase, independent of the API being awake (`ANP_CRON=off` in production); the in-process cron stays as a local/self-hosted option, now pinned to `America/Sao_Paulo` so a UTC host doesn't shift the schedule by three hours.
 - **Authorization enforced in code, not only in RLS.** The backend talks to Supabase with the `service_role` key (the ETL must write the shared table), and that key **bypasses RLS** — so every user-scoped query filters by `user_id` explicitly, and any `series_id` coming from the client is ownership-checked before use. RLS remains the second line of defence for direct client access.
 - **Hardened public API.** Helmet sets security headers and `express-rate-limit` caps per-IP request bursts, so exposing the API publicly doesn't invite trivial abuse. **`npm audit --omit=dev` reports 0 vulnerabilities on both sides** — nothing that ships is affected. The advisories `npm audit` does show are all one transitive dev-tooling dependency (`brace-expansion`, reached through ESLint / `ts-node-dev`) with no fixed version on its release line yet; forcing it via `overrides` was tried, verified green locally, and rejected because it desynchronises the lockfile across platforms — a worse trade than the noise it removes.
-- **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the 177 tests cheap and meaningful.
+- **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the 318 tests cheap and meaningful.
 - **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.
 - **Discover, don't guess.** In 2026 ANP silently changed its file naming — including a typo'd filename and a file published without extension. The ingestor now scrapes the year folder's listing for the real hrefs (pure, fixture-tested parser) and falls back to the old naming pattern only if the listing is unreachable. Real-world government data is messy; the pipeline embraces that.
 - **Built to run free, forever.** The weekly job only ever adds rows (~70k/month ≈ 22 MB/month, measured), which would eventually blow past Supabase's free-tier 500 MB. An automatic **retention policy** (`RETENTION_MONTHS`, default 12 — calibrated from real measurements to plateau at ~56% of the free tier) prunes surveys older than the window after each ingestion, so database size plateaus instead of growing — plus an `npm run db:stats` CLI to watch usage.
