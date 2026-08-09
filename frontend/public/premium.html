@@ -55,7 +55,22 @@
 <meta name="theme-color" content="#f4f3ee" />
 <title>Price Tracker Pro Premium — abasteça na hora certa</title>
 <meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 59,90/ano ou R$ 16,90/mês." />
-<meta name="robots" content="noindex" />
+<!--
+  Indexável desde 09/ago/2026. O `noindex` que estava aqui era herança da fase
+  de "porta falsa": fazia sentido quando a página era um experimento para medir
+  interesse num produto que não existia, e deixou de fazer no minuto em que ela
+  passou a vender de verdade (06/ago, 12:44).
+
+  Ninguém tomou a decisão de mantê-lo — ele só sobreviveu, que é como quase
+  toda ponta solta deste projeto nasceu. Uma página de vendas escondida do
+  Google é uma loja com a porta trancada: o tráfego orgânico é justamente o
+  canal que responderia à pergunta em aberto ("alguém paga sem eu pedir?").
+
+  ⚠️ O `checkout.html` CONTINUA com `noindex`, e de propósito — não copie esta
+  mudança para lá. Aquela página exige login, é transacional e não tem conteúdo
+  que sirva a quem chega de busca; indexá-la só produziria resultado quebrado.
+-->
+<meta name="robots" content="index, follow" />
 
 <!-- TODO 3: cole aqui o script do Vercel Analytics ou Plausible -->
 

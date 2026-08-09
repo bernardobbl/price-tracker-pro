@@ -156,6 +156,62 @@ describe("o que as páginas de venda PRECISAM dizer", () => {
   });
 });
 
+describe("os documentos legais e a revisão jurídica", () => {
+  /**
+   * Os três documentos publicados diziam, no rodapé, **"Documento em rascunho,
+   * ainda não revisado por advogado"** — texto que o cliente lia a um clique do
+   * aceite e de um débito de R$ 59,90. A revisão aconteceu em 06/ago/2026 e a
+   * frase ficou no ar depois disso.
+   *
+   * A contradição era de três pontas ao mesmo tempo, o que é o sinal de que o
+   * fato tinha mais de um dono: o `plan.md` marcava a revisão como ✅, o
+   * `docs/proximos-passos.md` a listava como pendente em quatro lugares, e a
+   * página publicada afirmava a terceira coisa. Nenhum teste falhava.
+   *
+   * O aviso de rascunho não é inofensivo em nenhuma das duas direções: presente
+   * num documento revisado, ele deprecia o contrato diante de quem vai assinar;
+   * ausente num documento não revisado, ele esconde um risco real. Por isso
+   * este teste não checa "a frase sumiu" — checa que as três páginas contam a
+   * **mesma** história, seja ela qual for.
+   */
+  const legais = Object.keys(visivel).filter((c) =>
+    /(termos|privacidade|reembolso)\.html$/.test(c)
+  );
+
+  it("achou as três páginas legais", () => {
+    expect(legais).toHaveLength(3);
+  });
+
+  it.each(legais)("%s não se declara rascunho não revisado", (caminho: string) => {
+    expect(
+      visivel[caminho],
+      `${caminho} volta a dizer ao cliente que o contrato dele não foi revisado ` +
+        `por advogado. Se a revisão de 06/ago/2026 deixou de valer (o texto mudou, ` +
+        `por exemplo), o certo é subir a LEGAL_VERSION e ajustar este teste junto — ` +
+        `não deixar as duas afirmações convivendo.`
+    ).not.toMatch(/rascunho|não revisado por advogado|não é parecer jurídico/i);
+  });
+
+  it("as três declaram a MESMA versão, e ela é a que o checkout envia", () => {
+    // A versão é metade da prova de aceite (a outra é o horário, do servidor).
+    // Três documentos aceitos num clique só precisam estar na mesma versão —
+    // senão "aceitei a 1.0" não diz o que a pessoa leu.
+    const versoes = legais.map((c) => visivel[c].match(/Versão\s*([\d.]+)/i)?.[1]);
+    expect(versoes, "alguma página legal perdeu a marca de versão").not.toContain(undefined);
+    expect(new Set(versoes).size, `versões divergentes entre os documentos: ${versoes}`).toBe(1);
+
+    const checkoutHtml =
+      paginas[Object.keys(paginas).find((c) => c.includes("checkout.html")) as string];
+    const enviada = checkoutHtml.match(/var LEGAL_VERSION\s*=\s*'([^']+)'/)?.[1];
+
+    expect(
+      enviada,
+      "o checkout envia uma versão diferente da que os documentos exibem — " +
+        "o registro de aceite apontaria para um texto que ninguém viu"
+    ).toBe(versoes[0]);
+  });
+});
+
 describe("o botão de simular pagamento não existe em produção", () => {
   /**
    * O comentário antigo do `checkout.html` afirmava que este botão "em produção

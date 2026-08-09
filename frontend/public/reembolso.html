@@ -2,18 +2,29 @@
   ============================================================================
   PRICE TRACKER PRO — POLÍTICA DE REEMBOLSO E CANCELAMENTO
   ----------------------------------------------------------------------------
-  ⚠️ RASCUNHO. NÃO é parecer jurídico — peça revisão antes da primeira
-  cobrança real.
+  ✅ REVISADO POR ADVOGADO em 06/ago/2026. O texto vigente é o de 04/ago e
+  nenhuma palavra mudou na revisão — por isso a versão continua 1.0.
+
+  Este bloco dizia "⚠️ RASCUNHO — NÃO é parecer jurídico", e o rodapé repetia
+  isso para o cliente. Era verdade até 06/ago e ficou no ar depois.
 
   BASE: art. 49 do CDC dá 7 dias de arrependimento em compra fora do
   estabelecimento (o que inclui internet), com devolução integral. Isso NÃO é
   negociável nem renunciável — não adianta escrever cláusula contrária.
 
-  ⚠️ O QUE FALTA NO CÓDIGO PARA HONRAR ISTO (ver docs/proximos-passos.md):
-    • endpoint de estorno chamando o refund do Mercado Pago
-    • webhook de estorno (`refunded`) precisa DESLIGAR o acesso na hora
-    • cálculo pro rata para o reembolso proporcional do anual
-  Prometer aqui e não implementar lá é o pior dos mundos.
+  ✅ O CÓDIGO HONRA AS TRÊS PROMESSAS DESTA PÁGINA (desde 05/ago/2026):
+    • estorno chamando o refund do Mercado Pago → `POST /api/billing/refund`
+      (admin), com o valor conferido contra o `previewRefund` antes de executar
+    • estorno visto na order DESLIGA o acesso → `confirmPaymentByOrderId`
+      encerra a assinatura ao ver `refunded`, o que cobre também o estorno
+      feito à mão pelo painel do Mercado Pago
+    • pró-rata do anual → `computeProRataRefundCents`, por meses inteiros
+
+  Esta lista já foi um "⚠️ O QUE FALTA NO CÓDIGO", com os mesmos três itens,
+  e sobreviveu meses à implementação deles. Prometer aqui e não implementar lá
+  é o pior dos mundos — mas um aviso de dívida já paga também custa: ele manda
+  quem lê procurar um buraco que não existe mais, e treina a ignorar avisos.
+  ⚠️ Se algum destes deixar de valer, este bloco volta a ser "o que falta".
 
   VERSÃO: ao mudar o texto, suba a VERSAO aqui e no checkout.html.
   ============================================================================
@@ -140,7 +151,7 @@
   </p>
 
   <p class="legal-foot">
-    Documento em rascunho, ainda não revisado por advogado. Última atualização: 4 de agosto de 2026.
+    Versão 1.0 · texto de 4 de agosto de 2026, revisado por advogado em 6 de agosto de 2026.
   </p>
 </main>
 

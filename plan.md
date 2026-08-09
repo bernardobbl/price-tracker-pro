@@ -57,7 +57,7 @@
 | 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
 | 12 | **Limpar o dado de teste do banco** | banco | ✅ | 06/ago — `billing_charges` e `subscriptions` a **0 linhas**, conferido no SQL Editor depois do `delete`. A 1ª linha que aparecer é venda real |
 | 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ✅ | `5795602` na `main`, 06/ago — Render e Vercel sobem sozinhos |
-| 14 | Revisão jurídica dos 3 documentos | **você** | ✅ | 06/ago — **nenhum texto mudou**, então `LEGAL_VERSION` segue `1.0` e a §1.5 não se aplica |
+| 14 | Revisão jurídica dos 3 documentos | **você** | ✅ | 06/ago — **nenhum texto mudou**, então `LEGAL_VERSION` segue `1.0` e a §1.5 não se aplica. ⚠️ As páginas publicadas continuaram dizendo *"rascunho, ainda não revisado por advogado"* por três dias depois disso — corrigido em 09/ago, ver §🔧 |
 | 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ✅ | **06/ago, 12:44 — o dinheiro é real a partir daqui.** Boot com `env: "production"` e `temPublicKey: true` |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
@@ -162,15 +162,23 @@ semanal pelo GitHub Actions, alertas de preço por email, e o **checkout Pix cob
 Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22 (`1b4d02f`) e
 pelo #24 (`1e281c9`), em 05/ago/2026.
 
-**Testes:** 296 no backend · 119 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 296 no backend · 129 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
 
-> **09/ago/2026 — quarta varredura da `fix/pontas-soltas`.** O corte por cota que fechou o
-> vazamento de receita (alerta de assinatura vencida parou de disparar) tinha deixado a tela
-> afirmando o contrário: a barra lateral listava os dormentes sob o título **"Alertas ativos"**.
-> Agora `GET /api/fuel/alerts` devolve `dormant` por alerta, calculado pela mesma função do job
-> semanal, e a tela mostra "não avisa" com o caminho para o Premium. Junto: regravar o alvo de um
-> alerta dormente mandava e-mail na hora, por fora da cota. Detalhe em
-> [`docs/proximos-passos.md` §0.4](./docs/proximos-passos.md).
+> ⚠️ **Este é o único lugar do repositório que carrega a contagem de testes.** A §4.5 já teve os
+> números repetidos (“271 passando”), envelheceu sozinha e passou a ensinar quem executava o
+> checklist a ignorar o desvio. Um fato mora num lugar só — inclusive quando o fato é um número.
+
+> **09/ago/2026 — quarta varredura da `fix/pontas-soltas`, em duas passadas.**
+>
+> A primeira fechou a ponta que a correção anterior tinha deixado: o corte por cota parou o
+> vazamento de receita (alerta de assinatura vencida deixou de disparar) e a barra lateral
+> continuou listando os dormentes sob o título **"Alertas ativos"**. Agora
+> `GET /api/fuel/alerts` devolve `dormant` por alerta, calculado pela mesma função do job semanal.
+>
+> A segunda olhou as **páginas de pagamento** e achou cinco coisas, sendo duas graves: os três
+> documentos legais ainda diziam ao cliente que não tinham sido revisados por advogado (a revisão
+> foi em 06/ago), e a faixa do checkout garantia, a partir do hostname, que "nenhuma cobrança é
+> real" — inclusive quando o backend estava em produção. Tabela completa na §🔧 09/ago.
 
 ### 🔴 O dinheiro é real desde 06/ago/2026, 12:44
 
@@ -189,6 +197,29 @@ O que muda na prática, e vale ler antes de mexer em qualquer coisa:
 > até as 12:44 de 06/ago e falsa às 12:45. Ficou nesta posição, no topo, porque foi exatamente uma
 > afirmação desatualizada aqui que custou semanas de alerta semanal sem envio — o caso que originou
 > a regra "um fato mora num lugar só".
+
+### 🔧 Corrigido em 09/ago/2026 — varredura das páginas de pagamento
+
+> Mesma branch `fix/pontas-soltas`, três dias depois. Desta vez o alvo foi o que o cliente **lê e
+> clica** ao pagar: o `checkout.html`, a landing e os três documentos legais. Cinco achados, e o
+> primeiro é o mais caro que esta branch já produziu.
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| 🔴 **Os documentos legais diziam ao cliente que não tinham sido revisados por advogado** | `termos.html`, `privacidade.html`, `reembolso.html` (rodapé) | A revisão aconteceu em **06/ago** (item 14). A frase *"Documento em rascunho, ainda não revisado por advogado"* continuou publicada, a um clique do aceite e de um débito de R$ 59,90. **Contradição de três pontas** — o item 14 aqui dizia ✅, o `proximos-passos.md` listava a revisão como pendente em quatro lugares, e a página afirmava a terceira coisa. Aviso de rascunho num contrato já revisado deprecia o próprio contrato diante de quem vai assiná-lo. Travado por teste |
+| 🔴 **A faixa do checkout garantia, pelo hostname, que "nenhuma cobrança é real"** | `checkout.html` (`avisarModo`) | O cabeçalho do próprio arquivo proíbe deduzir ambiente do hostname, em **dois** lugares, e o `#sandboxNote` obedecia — a faixa não. Rodar local contra um backend com `MERCADOPAGO_ENV=production` é caso previsto: o config permite de propósito e loga *"AMBIENTE LOCAL COM TOKEN DE PRODUÇÃO — cobranças criadas aqui são REAIS"*. Nesse cenário a tela afirmava o oposto do log e o Pix cobrava. **Repare na direção:** o `sandboxNote` erra para o lado de avisar; a faixa errava para o lado de tranquilizar. Numa tela de pagamento, conforto sem evidência é dano. Agora a faixa só afirma para onde a página aponta, e o backend é quem dá a palavra sobre dinheiro |
+| **`status: 'expired'` parava o polling em silêncio** | `checkout.html` (`pollOnce`) | Sem mensagem, sem botão, e com o cronômetro local **continuando a correr**. Quem manda na validade é o Mercado Pago, não o nosso `setInterval`, e os dois divergem quando `expiresAt` não vem na resposta, quando o relógio do cliente está adiantado, ou quando a order é cancelada antes. A pessoa ficava olhando "Aguardando o pagamento…" com contador vivo e código morto — e o polling, única coisa capaz de tirá-la dali, já tinha sido desligado. O ramo irmão (`cancelled`) sempre fez certo |
+| **Contador tratava validade zero como validade ausente** | `checkout.html` (`showPix`) | `c.expiresIn \|\| EXPIRES_SECONDS`: uma cobrança que chega já vencida (relógios fora de sincronia, resposta lenta) ganhava um contador **novo de 30 min** para um código morto. Zero é resposta legítima, não ausência de resposta |
+| **A confirmação dizia o plano que o navegador escolheu** | `checkout.html` (`onPaid`) | `state.plan` é variável do cliente, e o seletor de plano continua clicável com o QR na tela — dava para pagar o mensal e ler "Seu acesso Premium anual foi liberado". Quem sabe o que foi comprado é o registro da cobrança, e ele já vinha na resposta do polling. Mesma regra do preço: a página exibe, o backend decide |
+| Landing escondida do Google (`noindex`) | `premium.html` | Herança da porta falsa. Ninguém decidiu mantê-lo — ele sobreviveu, que é como quase toda ponta solta aqui nasceu. Uma página de vendas com `noindex` é loja de porta trancada, e o tráfego orgânico é justamente o canal que responderia à pergunta em aberto ("alguém paga sem eu pedir?"). O `checkout.html` **continua** `noindex`, e agora com o motivo escrito: exige login e é transacional |
+| Cabeçalho do `reembolso.html`: "⚠️ o que falta no código" | `reembolso.html` | Listava os três itens (estorno, `refunded` cortando acesso, pró-rata) que foram implementados em 05/ago. Aviso de dívida já paga manda quem lê procurar buraco que não existe, e treina a ignorar avisos |
+| Checklist com contagem de testes fixa (271/102) | `plan.md` §4.5 A1/A2 | Já estava errada na primeira releitura e erraria a cada commit. Checklist que envelhece sozinho ensina a ignorar o desvio |
+
+**Novos guardas:** `checkoutPage.test.ts` foi de 7 para 12 casos (faixa, `expired`, plano confirmado,
+validade zero) e o `staticPromises.test.ts` ganhou o bloco dos documentos legais — que não checa "a
+palavra rascunho sumiu", e sim que **as três páginas contam a mesma história** e que a versão que
+elas exibem é a que o checkout envia. Os dois primeiros foram validados ao contrário: os bugs foram
+reintroduzidos de propósito e os testes falharam com a mensagem certa.
 
 ### 🔧 Corrigido em 06/ago/2026 na branch `fix/pontas-soltas` (fora da main)
 
@@ -1267,8 +1298,8 @@ automatizado, portão de go-live cumprido (`docs/runbook-operacao.md` §1).
 
 | # | Teste | Esperado |
 |---|---|---|
-| A1 | `npm test` no backend | 271 passando |
-| A2 | `npm test` no frontend | 102 passando |
+| A1 | `npm test` no backend | tudo verde |
+| A2 | `npm test` no frontend | tudo verde |
 | A3 | `npx tsc --noEmit` nos dois pacotes | sem erro |
 | A4 | `npx eslint .` nos dois pacotes | sem erro |
 | A5 | `npm run build` nos dois pacotes | sem erro |
@@ -1276,6 +1307,12 @@ automatizado, portão de go-live cumprido (`docs/runbook-operacao.md` §1).
 
 > A6 é o teste que trava a armadilha dos links internos — o erro que foi cometido **três vezes** em
 > 05/ago porque funciona em produção e falha em desenvolvimento.
+>
+> ⚠️ **A1 e A2 diziam "271 passando" e "102 passando".** Os números estavam errados na primeira vez
+> que alguém releu a tabela, e continuariam errando a cada commit — um checklist que envelhece
+> sozinho ensina quem o executa a ignorar o desvio ("deve ser dos testes novos"), que é exatamente o
+> contrário do que um teste-guarda serve. **O número vive num lugar só**, na §"Onde o produto está";
+> aqui o critério é o que importa: verde.
 
 ### Bloco B — Estado do ambiente de produção (🟢)
 
