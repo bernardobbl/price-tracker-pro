@@ -2,15 +2,25 @@
   ============================================================================
   PRICE TRACKER PRO — POLÍTICA DE REEMBOLSO E CANCELAMENTO
   ----------------------------------------------------------------------------
-  ✅ REVISADO POR ADVOGADO em 06/ago/2026. O texto vigente é o de 04/ago e
-  nenhuma palavra mudou na revisão — por isso a versão continua 1.0.
-
-  Este bloco dizia "⚠️ RASCUNHO — NÃO é parecer jurídico", e o rodapé repetia
-  isso para o cliente. Era verdade até 06/ago e ficou no ar depois.
+  ⚠️ VERSÃO 1.1 (09/ago/2026) — AGUARDANDO REVISÃO JURÍDICA.
+  A revisão de 06/ago cobriu a versão 1.0 e só ela. A 1.1 trocou o e-mail de
+  contato e reescreveu a seção 3: a falha de disponibilidade deixou de devolver
+  100% do plano e passou a compensar proporcionalmente aos dias parados
+  (seção 3.2), com carve-out para instabilidade de fornecedor e atraso da ANP.
 
   BASE: art. 49 do CDC dá 7 dias de arrependimento em compra fora do
   estabelecimento (o que inclui internet), com devolução integral. Isso NÃO é
-  negociável nem renunciável — não adianta escrever cláusula contrária.
+  negociável nem renunciável — não adianta escrever cláusula contrária, nem
+  omitir o aviso do checkout: a obrigação continua de pé, e esconder informação
+  obrigatória é infração autônoma (CDC art. 6º, III e art. 31). A seção 1 e as
+  duas linhas do `checkout.html` que anunciam os 7 dias existem por isso e não
+  devem ser removidas.
+
+  O pró-rata do anual (seção 2) é voluntário, mas retirá-lo de um plano pré-pago
+  de 12 meses tende a ser lido como abusivo (CDC art. 51, IV) — reter valor de
+  período não entregue é enriquecimento sem causa. Ele também está implementado
+  em `computeProRataRefundCents`: mudar o texto sem mudar o código quebra a
+  promessa nos dois sentidos.
 
   ✅ O CÓDIGO HONRA AS TRÊS PROMESSAS DESTA PÁGINA (desde 05/ago/2026):
     • estorno chamando o refund do Mercado Pago → `POST /api/billing/refund`
@@ -57,7 +67,7 @@
 <main class="legal-wrap legal-doc">
   <p class="legal-eyebrow">Documento legal</p>
   <h1>Política de Reembolso e Cancelamento</h1>
-  <p class="legal-meta">Versão <strong>1.0</strong> · vigente desde 4 de agosto de 2026</p>
+  <p class="legal-meta">Versão <strong>1.1</strong> · vale para compras feitas a partir de 9 de agosto de 2026</p>
 
   <div class="legal-callout legal-callout--good">
     <strong>Resumo:</strong> desistiu em até 7 dias? Devolvemos tudo, sem perguntar por quê.
@@ -74,7 +84,7 @@
   <p>
     Nesse prazo devolvemos <strong>100% do valor pago</strong>, mesmo que você já tenha usado o
     serviço. Basta escrever para
-    <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a> com o
+    <a href="mailto:pricetrackerpro@gmail.com">pricetrackerpro@gmail.com</a> com o
     e-mail da conta.
   </p>
 
@@ -103,18 +113,36 @@
     </tbody>
   </table>
 
-  <h2>3. Quando devolvemos integralmente, a qualquer momento</h2>
+  <h2>3. Outras situações, a qualquer momento</h2>
+
+  <h3>3.1. Quando devolvemos integralmente</h3>
   <ul>
     <li><strong>Cobrança duplicada</strong> ou valor diferente do anunciado;</li>
-    <li><strong>Falha nossa que impeça o uso</strong> do serviço por mais de 7 dias seguidos;</li>
-    <li><strong>Você pagou mas o acesso não foi liberado</strong> e não conseguimos resolver;</li>
-    <li>Você <strong>não concorda com uma mudança</strong> nos Termos e por isso encerra a conta —
-      nesse caso devolvemos a parte proporcional não usufruída.</li>
+    <li><strong>Você pagou mas o acesso não foi liberado</strong> e não conseguimos resolver.</li>
   </ul>
+
+  <h3>3.2. Se o serviço ficar indisponível</h3>
+  <p>
+    Se uma falha nossa impedir o uso do serviço por mais de 7 dias seguidos, você escolhe entre
+    <strong>estender seu acesso</strong> pelo mesmo número de dias em que ele ficou indisponível ou
+    <strong>receber de volta a parte proporcional</strong> a esse período. A compensação é sempre
+    proporcional ao tempo parado, e não ao valor total do plano.
+  </p>
+  <p>
+    Não contam como falha nossa a instabilidade de fornecedores externos nem o atraso da própria ANP
+    em publicar o levantamento de preços, conforme a cláusula 8 dos
+    <a href="/termos.html">Termos de Uso</a>.
+  </p>
+
+  <h3>3.3. Se você não concordar com uma mudança nos Termos</h3>
+  <p>
+    Você pode encerrar a conta e receber de volta a parte proporcional do período pago e ainda não
+    usufruído.
+  </p>
 
   <h2>4. Como pedir</h2>
   <p>
-    Escreva para <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a>
+    Escreva para <a href="mailto:pricetrackerpro@gmail.com">pricetrackerpro@gmail.com</a>
     a partir do e-mail cadastrado, dizendo que quer cancelar. Não exigimos formulário, ligação,
     nem que você fale com um atendente para "reconsiderar".
   </p>
@@ -151,7 +179,7 @@
   </p>
 
   <p class="legal-foot">
-    Versão 1.0 · texto de 4 de agosto de 2026, revisado por advogado em 6 de agosto de 2026.
+    Versão 1.1 · texto de 9 de agosto de 2026. A versão 1.0 foi revisada por advogado em 6 de agosto de 2026.
   </p>
 </main>
 

@@ -4,7 +4,7 @@ import { checkSignupEmail } from "./emailValidation";
 describe("checkSignupEmail", () => {
   it("aceita endereços normais", () => {
     for (const ok of [
-      "bernardobarcellosleite@gmail.com",
+      "usuario.exemplo@gmail.com",
       "alguem@empresa.com.br",
       "nome.sobrenome+tag@dominio.io",
       "a@b.co",
@@ -15,11 +15,11 @@ describe("checkSignupEmail", () => {
 
   it("recusa domínio sem TLD — o caso que aconteceu de verdade", () => {
     // Uma conta foi criada assim em 23/jul/2026 e nunca recebeu email nenhum.
-    const r = checkSignupEmail("bernardobarcellosleite@gmail");
+    const r = checkSignupEmail("usuario.exemplo@gmail");
     expect(r.valid).toBe(false);
     expect(r.problem).toBe("sem-tld");
     // A mensagem sugere a correção provável em vez de só dizer "inválido".
-    expect(r.message).toContain("bernardobarcellosleite@gmail.com");
+    expect(r.message).toContain("usuario.exemplo@gmail.com");
   });
 
   it("recusa TLD que não é alfabético", () => {

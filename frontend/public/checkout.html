@@ -389,7 +389,8 @@
             </label>
             <div class="field-err" id="agreeErr">Você precisa aceitar os documentos para continuar.</div>
             <p class="field-help">
-              Compra avulsa, sem renovação automática — você tem 7 dias para desistir e receber tudo de volta.
+              Compra avulsa, sem renovação automática. Direito de arrependimento em 7 dias, conforme o
+              art. 49 do CDC — ver a <a href="/reembolso.html" target="_blank" rel="noopener">Política de Reembolso</a>.
             </p>
           </div>
 
@@ -518,7 +519,7 @@
 
         <div class="trust">
           <div>🔒 Não guardamos dados de pagamento — quem processa é o Mercado Pago, instituição de pagamento regulada.</div>
-          <div>↩︎ 7 dias para desistir e receber o valor de volta (CDC art. 49).</div>
+          <div>↩︎ Direito de arrependimento em 7 dias (CDC art. 49).</div>
           <div>📄 Dados abertos da ANP como fonte dos preços.</div>
         </div>
       </div>
@@ -564,7 +565,7 @@
   // ⚠️ O backend valida contra uma LISTA BRANCA (`backend/src/lib/legalVersions.ts`).
   // Acrescente a versão nova LÁ PRIMEIRO e só depois aqui — na ordem inversa, o
   // checkout responde 400 para todo mundo até o backend subir.
-  var LEGAL_VERSION = '1.0';
+  var LEGAL_VERSION = '1.1';
 
   // ⚠️ `cycle` aparece no Resumo, ao lado do preço. Ele NÃO pode sugerir cobrança
   // recorrente: a compra é avulsa por decisão de arquitetura (Pix Automático exige

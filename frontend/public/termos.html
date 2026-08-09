@@ -2,19 +2,34 @@
   ============================================================================
   PRICE TRACKER PRO — TERMOS DE USO
   ----------------------------------------------------------------------------
-  ✅ REVISADO POR ADVOGADO em 06/ago/2026. O texto vigente é o de 04/ago e
-  **nenhuma palavra mudou na revisão** — por isso a versão continua 1.0.
+  ⚠️ VERSÃO 1.1 (09/ago/2026) — AGUARDANDO REVISÃO JURÍDICA.
+  A revisão de 06/ago cobriu a versão 1.0 e só ela. A 1.1 mudou a cláusula 9
+  (violação dos Termos deixou de gerar devolução proporcional) e trocou o
+  e-mail de contato. Nada disso passou por advogado.
 
-  Este bloco dizia "⚠️ RASCUNHO — NÃO é parecer jurídico. Antes da primeira
-  cobrança real, peça revisão de um advogado". Era verdade até 06/ago, e ficou
-  no ar depois disso — inclusive no rodapé, onde o cliente lia, a um clique do
-  aceite, que o contrato que ele estava assinando não tinha sido revisado.
-  Aviso de rascunho num documento já revisado deprecia o próprio contrato.
+  A cláusula 9 é a que mais pede revisão. Ela é graduada de propósito: 9.1
+  (scraping, conta compartilhada) devolve proporcional; 9.2 (fraude, revenda,
+  ilícito) não devolve nada. Perda total aplicada de forma uniforme aos dois
+  grupos é o que atrai o art. 51, IV do CDC e o art. 413 do CC — e cláusula
+  uniforme cai em bloco, levando junto a proteção nos casos graves, que são os
+  que custam dinheiro. Se for para simplificar a redação, NÃO junte 9.1 e 9.2.
 
-  ⚠️ QUALQUER edição daqui para a frente invalida a revisão acima. Se mudar o
-  texto: suba a VERSAO (aqui, no `checkout.html` e em `legalVersions.ts`),
-  troque este bloco de volta para "aguardando revisão" e só o marque como
-  revisado quando um advogado tiver olhado a versão nova.
+  O ônus da prova declarado, o direito de contestar e a ressalva do art. 49 são
+  o que sustentam a 9.2. Retirar qualquer um deles enfraquece a cláusula inteira.
+
+  O rodapé desta página NÃO diz "revisado"; diz que a 1.0 foi revisada, que é o
+  que de fato aconteceu. Não mude isso para "revisado por advogado" antes de um
+  advogado ver a 1.1 — o cliente aceita este contrato a um clique do checkout, e
+  afirmar revisão que não houve é pior do que não afirmar nada.
+
+  A 1.1 vale só para compras feitas a partir de 09/ago (cláusula 11, 2º
+  parágrafo). Sem isso, a 9.2 estaria alterando contrato em curso de quem
+  comprou sob a 1.0, o que a própria cláusula 11 proíbe sem aviso de 15 dias —
+  e por isso `LEGAL_VERSIONS` mantém a "1.0" aceita, não é só cache.
+
+  ⚠️ QUALQUER edição daqui para a frente também invalida a revisão. Se mudar o
+  texto: suba a VERSAO (aqui, no `checkout.html` e em `legalVersions.ts`) e só
+  marque como revisado quando um advogado tiver olhado a versão nova.
 
   VERSÃO: ao mudar qualquer texto, suba a VERSAO abaixo e no checkout.html.
   O aceite do usuário é gravado com a versão vigente — se o texto muda e a
@@ -49,7 +64,7 @@
 <main class="legal-wrap legal-doc">
   <p class="legal-eyebrow">Documento legal</p>
   <h1>Termos de Uso</h1>
-  <p class="legal-meta">Versão <strong>1.0</strong> · vigente desde 4 de agosto de 2026</p>
+  <p class="legal-meta">Versão <strong>1.1</strong> · vale para compras feitas a partir de 9 de agosto de 2026</p>
 
   <div class="legal-callout">
     <strong>Resumo em uma frase:</strong> mostramos preços de combustível que o governo publica,
@@ -59,8 +74,8 @@
 
   <h2>1. Quem somos e o que este serviço é</h2>
   <p>
-    O Price Tracker Pro é operado por <strong>Bernardo Barcellos Leite</strong>, pessoa física,
-    contato <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a>.
+    O <strong>Price Tracker Pro</strong> é operado por Bernardo Barcellos Leite, pessoa física,
+    contato <a href="mailto:pricetrackerpro@gmail.com">pricetrackerpro@gmail.com</a>.
   </p>
   <p>
     O serviço reúne, organiza e apresenta preços de combustível a partir da <strong>Série Histórica
@@ -154,13 +169,38 @@
   <p>Você concorda em não:</p>
   <ul>
     <li>Automatizar coleta em massa do serviço (scraping, robôs) fora do uso normal;</li>
+    <li>Compartilhar as credenciais da sua conta com outras pessoas;</li>
     <li>Tentar burlar limites, autenticação ou o controle de assinatura;</li>
     <li>Revender ou redistribuir o serviço como se fosse seu;</li>
     <li>Usar o serviço para qualquer finalidade ilícita.</li>
   </ul>
+
+  <h3>9.1. Uso excessivo ou compartilhamento de conta</h3>
   <p>
-    Se houver violação clara, podemos suspender a conta. Havendo período pago não usufruído,
-    devolvemos a parte proporcional.
+    Nos dois primeiros casos acima, primeiro avisamos por e-mail e podemos aplicar limite técnico de
+    requisições. Só suspendemos a conta se o uso continuar depois do aviso, e você tem
+    <strong>7 dias para regularizar</strong> antes disso. Se ainda assim precisarmos encerrar a
+    conta, devolvemos o período pago e não usufruído nos mesmos critérios da
+    <a href="/reembolso.html">Política de Reembolso</a> — proporcional aos meses inteiros restantes
+    no plano anual; no mensal, o acesso segue até o fim do período já pago.
+  </p>
+
+  <h3>9.2. Fraude, revenda e uso ilícito</h3>
+  <p>
+    Nos três últimos casos — burlar o controle de assinatura ou de pagamento, revender o serviço, ou
+    usá-lo para finalidade ilícita — podemos <strong>encerrar a conta imediatamente e sem devolução</strong>
+    do período pago e não usufruído. Aqui a conduta é incompatível com o próprio contrato, e não se
+    corrige com aviso.
+  </p>
+  <p>
+    Em qualquer dos dois casos, o ônus de demonstrar a violação é <strong>nosso</strong>: informamos
+    por e-mail o que identificamos e em que data, e você pode contestar respondendo àquele e-mail. Se
+    a contestação proceder, restabelecemos a conta e o período que faltava.
+  </p>
+  <p>
+    Esta cláusula <strong>não afeta o seu direito de arrependimento em 7 dias</strong> (art. 49 do
+    CDC), que vale de forma incondicional. Também não afeta o reembolso de cobrança duplicada ou de
+    valor pago sem liberação de acesso.
   </p>
 
   <h2>10. Dados da ANP</h2>
@@ -176,6 +216,11 @@
     com pelo menos <strong>15 dias</strong> de antecedência. Se você não concordar com a nova versão,
     pode encerrar a conta e receber de volta a parte proporcional do período pago e não usufruído.
   </p>
+  <p>
+    Cada versão vale para as compras feitas enquanto ela estava no ar. Se você comprou sob a
+    <strong>versão 1.0</strong>, é ela que rege o seu período até o fim — versão nova não altera
+    contrato já em curso. A versão que você aceitou fica registrada junto com a data da compra.
+  </p>
 
   <h2>12. Lei aplicável</h2>
   <p>
@@ -186,12 +231,12 @@
   <h2>13. Contato</h2>
   <p>
     Dúvidas, pedidos de cancelamento, exclusão de dados ou reclamações:
-    <a href="mailto:bernardobarcellosleite@gmail.com">bernardobarcellosleite@gmail.com</a>.
+    <a href="mailto:pricetrackerpro@gmail.com">pricetrackerpro@gmail.com</a>.
     Respondemos em até 7 dias úteis.
   </p>
 
   <p class="legal-foot">
-    Versão 1.0 · texto de 4 de agosto de 2026, revisado por advogado em 6 de agosto de 2026.
+    Versão 1.1 · texto de 9 de agosto de 2026. A versão 1.0 foi revisada por advogado em 6 de agosto de 2026.
   </p>
 </main>
 
