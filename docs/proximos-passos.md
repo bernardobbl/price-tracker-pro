@@ -252,6 +252,34 @@ cada achado está na tabela §🔧 09/ago do `plan.md`; aqui fica o que muda par
 4. **Os avisos de "rascunho, não revisado por advogado" saíram dos três documentos legais** — a
    revisão foi em 06/ago. Ver a §2 deste arquivo para a condição que os traz de volta.
 
+### 0.4.4 Terceira passada — usando o produto no navegador, como cliente
+
+Bateria dos blocos B, C e D da §4.5 do `plan.md`, rodada no Chrome contra **produção**. O bloco E
+(compra 💸) não foi executado — continua sendo o item 16.
+
+**Verde ao vivo:** `/health` 200 · entitlement `active:false` numa conta sem plano · 1º alerta criado
+normalmente · 2º alerta **bloqueado** com o aviso âmbar e link "Ver o Premium" (não erro vermelho) ·
+mensagem dizendo o que a pessoa ainda pode fazer · `GET /api/billing/refund/<uuid-inexistente>` com a
+conta admin devolvendo **`CHARGE_NOT_FOUND`**, que é a prova positiva do item 10.
+
+Dois defeitos que **só** apareceram usando o produto — nenhum dos dois é visível lendo o código com
+a suíte verde:
+
+1. **`SERVIÃ␇OS AUTOMOTIVOS PEDRODAVI LTDA.`** no ranking de São Paulo. O CSV da ANP é UTF-8 e o
+   `anpIngestor` o decodificava como Latin-1. Novo `ingest/anpDecode.ts` **detecta** o encoding em
+   vez de declará-lo. ⚠️ **A correção não conserta o que já está no banco**: o ingestor pula por
+   `ETag` antes de decodificar, então os nomes só se corrigem quando a ANP publicar arquivo novo —
+   ou na hora, com `npm run ingest -- --url <url-do-mês>`.
+2. **Alerta recusado pela cota deixava um favorito para trás.** O fluxo favorita antes de alertar
+   (não dá para inverter: alerta exige série favoritada), então a recusa chegava depois da escrita.
+   Agora a tentativa desfaz o que ela mesma criou.
+
+> **A lição desta passada, e ela vale para as próximas.** As duas varreduras anteriores foram feitas
+> lendo código e documento, e acharam bastante coisa — mas nenhuma das duas teria achado estas. Um
+> nome com cedilha torta e um favorito a mais não quebram teste, não geram log e não contradizem
+> nenhum documento. **Só aparecem para quem olha a tela.** Abrir o produto e usá-lo é um método de
+> auditoria com alcance próprio, não uma conferência do que a leitura já disse.
+
 ### Verificado e correto (não mexi)
 
 Registrado para a próxima varredura não gastar tempo de novo: o gate de criação e o corte semanal

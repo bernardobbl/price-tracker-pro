@@ -19,6 +19,7 @@ import { supabase } from "../config/supabaseClient";
 import { logger } from "../lib/logger";
 import { fetchBuffer, fetchConditional, ScrapeError } from "../scrapers/httpClient";
 import { extractAnpFileLinks } from "./anpDiscovery";
+import { decodeAnpCsv } from "./anpDecode";
 import { parseAnpCsv } from "./anpParser";
 import { normalizeFuelRows, dedupeFuelRows } from "./anpNormalize";
 import { filterValidRows } from "./anpRowSchema";
@@ -308,8 +309,17 @@ async function ingestOneFile(url: string, baseSource = "anp-shpc"): Promise<Inge
       return { status: "skipped", runId, rowsRead: 0, rowsUpserted: 0, rowsRejected: 0, durationMs };
     }
 
-    const csv = (response.body as Buffer).toString("latin1");
+    // O encoding vem do CONTEÚDO, não de uma suposição sobre a ANP. Esta linha
+    // já foi `toString("latin1")` e corrompia todo nome com cedilha: "SERVIÇOS"
+    // chegava ao banco como "SERVIÃ<0x87>OS", porque o arquivo é UTF-8. O
+    // porquê completo, e por que 296 testes não pegaram, estão no `anpDecode.ts`.
+    const { text: csv, encoding } = decodeAnpCsv(response.body as Buffer);
     const fileHash = hashContent(csv);
+
+    // No log porque é a única pista externa se a detecção um dia errar — e
+    // porque uma troca de encoding pela ANP é exatamente o tipo de mudança
+    // silenciosa que só aparece semanas depois, num nome torto que ninguém lê.
+    logger.info({ encoding }, "[anpIngestor] CSV decodificado");
 
     // 2ª linha de defesa (servidor sem suporte a condicional): pula por hash de conteúdo.
     if (await alreadyIngested(fileHash)) {

@@ -61,10 +61,17 @@
 | 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ✅ | **06/ago, 12:44 — o dinheiro é real a partir daqui.** Boot com `env: "production"` e `temPublicKey: true` |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
+| 18 | **Mergear a `fix/pontas-soltas` na `main`** | deploy | ⛔ | **09/ago.** A branch acumulou correções de texto de contrato e de página de cobrança; a produção ainda serve as versões erradas. Vem **antes** do 16: não faz sentido validar a compra real numa landing que promete preço travado inexistente |
 
 **Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ ~~14~~ ~~15~~ ~~8~~ **todos feitos em 06/ago**
-→ restam **16** e **17**. O passo a passo detalhado de cada um está em
+→ restam **18 → 16 → 17**, nesta ordem. O passo a passo de cada um está em
 **`docs/runbook-operacao.md` §1**, que é a fonte da verdade do procedimento — aqui fica só o estado.
+
+> **O 18 entrou na frente do 16 em 09/ago, e o motivo é o mesmo que criou a branch.** Ela nasceu
+> para não publicar tentativa e erro num produto que cobra; três dias depois, o que ela guarda são
+> correções de contrato e de tela de cobrança, e é a **ausência** delas que está publicada. Validar
+> a compra real (16) antes de mergear seria carimbar de aprovado um caminho que a própria branch já
+> diz estar errado.
 
 > **Os dois itens que faltam são os dois únicos que dependem de você, não de código.** O 16 é a
 > compra real de ponta a ponta (a única coisa que prova o caminho inteiro com dinheiro de verdade),
@@ -162,7 +169,11 @@ semanal pelo GitHub Actions, alertas de preço por email, e o **checkout Pix cob
 Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22 (`1b4d02f`) e
 pelo #24 (`1e281c9`), em 05/ago/2026.
 
-**Testes:** 296 no backend · 129 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 304 no backend · 133 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+
+> 🚨 **Estes números, e as tabelas de correção abaixo, descrevem a branch `fix/pontas-soltas` — não
+> o que está no ar.** A produção serve a `main`, que está três dias atrás. Ver a seção
+> "A BRANCH ESTÁ TRÊS DIAS À FRENTE DA PRODUÇÃO".
 
 > ⚠️ **Este é o único lugar do repositório que carrega a contagem de testes.** A §4.5 já teve os
 > números repetidos (“271 passando”), envelheceu sozinha e passou a ensinar quem executava o
@@ -197,6 +208,56 @@ O que muda na prática, e vale ler antes de mexer em qualquer coisa:
 > até as 12:44 de 06/ago e falsa às 12:45. Ficou nesta posição, no topo, porque foi exatamente uma
 > afirmação desatualizada aqui que custou semanas de alerta semanal sem envio — o caso que originou
 > a regra "um fato mora num lugar só".
+
+### 🚨 09/ago/2026 — A BRANCH ESTÁ TRÊS DIAS À FRENTE DA PRODUÇÃO, E ISSO IMPORTA
+
+> **Descoberto navegando o site em produção como cliente**, não lendo código. É o achado mais
+> importante desta sessão e ele não aparece em nenhum teste, porque os testes rodam contra a branch.
+
+A `main` — o que qualquer visitante vê **agora** em `precos-combustivel-br.vercel.app` — ainda serve
+**todas** as frases que a tabela abaixo e a de 06/ago dão como corrigidas. Verificado por fetch
+direto das páginas publicadas:
+
+| Página em produção | O que ela ainda diz hoje |
+|---|---|
+| `/premium.html` | *"Estamos medindo o interesse antes de lançar"* · *"Preço de fundador **travado** enquanto você for assinante"* · *"seu celular avisa"* · *"12 meses de histórico"* como benefício pago |
+| `/termos.html`, `/privacidade.html`, `/reembolso.html` | *"Documento em rascunho, ainda não revisado por advogado"* |
+| `/checkout.html` | `id="simBtn"` presente no HTML estático, com listener ligado (oculto só porque o `#pixPanel` ancestral está `display:none`) |
+
+**Por que isto é diferente de "ainda não deu tempo de mergear".** A decisão de acumular numa branch
+foi tomada em 06/ago com um argumento correto — *"a main publica sozinha, e o produto cobra dinheiro
+real"*. Só que o conteúdo da branch mudou de natureza desde então: ela deixou de ser refatoração
+interna e virou **correção de texto de contrato numa loja aberta**. Cada dia sem merge é um dia em
+que a landing promete preço travado que não existe, e os documentos legais depreciam a si mesmos
+diante de quem vai pagar.
+
+O argumento original agora aponta para o outro lado: *porque* cobra dinheiro real é que estas
+correções precisam subir.
+
+> ⚠️ **Cuidado ao ler a §"Onde o produto está".** Ela diz "no ar e funcionando, checkout cobrando de
+> verdade" a poucas linhas de tabelas de correções marcadas "fora da main". As duas afirmações são
+> verdadeiras e a leitura natural — *o produto no ar está corrigido* — é falsa. Ao mergear, apague
+> este aviso; enquanto ele estiver aqui, é porque a divergência existe.
+
+### 🔧 Corrigido em 09/ago/2026 — o que o uso real do produto encontrou
+
+Bateria executada no Chrome contra produção, como cliente. Blocos B, C e D da §4.5: `/health` 200,
+entitlement `active:false`, cota bloqueando o 2º alerta em tom de aviso com link para o Premium,
+e a rota de estorno devolvendo **`CHARGE_NOT_FOUND`** para a conta admin — a prova positiva do item
+10, revalidada ao vivo. O bloco E (compra 💸) **não** foi executado: continua sendo o item 16.
+
+Dois defeitos que só apareceram usando o produto:
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| 🔴 **O CSV da ANP é UTF-8 e era decodificado como Latin-1** | `ingest/anpDecode.ts` (novo), `anpIngestor.ts`, `scrapers/httpClient.ts` | Um posto real aparecia no ranking de São Paulo como **"SERVIÃ␇OS AUTOMOTIVOS PEDRODAVI LTDA."**. Os code points na resposta da API eram `U+00C3` + `U+0087` — os dois bytes UTF-8 de **Ç** lidos um a um. **Por que 296 testes não pegaram:** `anpParser.test.ts` e `anpNormalize.test.ts` carregam a fixture com `readFileSync(..., "utf-8")`, ou seja, entregam ao parser bytes já decodificados; a produção fazia `buffer.toString("latin1")`. A única linha que diferia entre teste e produção era a linha errada. A prova de que a suposição era falsa estava **dentro do repositório** desde sempre: a fixture chamada de "real" é UTF-8. Agora o encoding é **detectado** (`TextDecoder` com `fatal:true`, com queda para latin1), não declarado — trocar a constante consertaria hoje e quebraria o backfill de arquivos antigos |
+| **Alerta recusado pela cota deixava um favorito que ninguém pediu** | `App.tsx`, `hooks/useFavorites.ts` | Visto na tela: conta gratuita com 1 alerta, clicar em "Ativar alerta" numa 2ª série devolve o aviso de limite — e a barra lateral ganha um favorito novo. O alerta exige série favoritada, então o favorito nasce primeiro e a recusa vem depois. **Ação recusada não pode deixar rastro.** A correção desfaz só o que aquela tentativa criou; favorito que já existia é da pessoa e não se toca |
+
+**Nota de operação sobre o encoding.** Corrigir o código não conserta as linhas já gravadas: o
+`anpIngestor` pula por `ETag`/`Last-Modified` antes de decodificar. Os nomes tortos só se corrigem
+sozinhos quando a ANP publicar um arquivo novo (ritmo mensal) — ou na hora, com
+`npm run ingest -- --url <url-do-mês>`, que força o download. O `hashContent` opera sobre o texto
+**decodificado**, então o hash muda com a correção e a 2ª linha de defesa não bloqueia o reprocesso.
 
 ### 🔧 Corrigido em 09/ago/2026 — varredura das páginas de pagamento
 

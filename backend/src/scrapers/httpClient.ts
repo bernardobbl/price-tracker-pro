@@ -102,18 +102,27 @@ export async function fetchBuffer(url: string, options: FetchHtmlOptions = {}): 
   );
 }
 
-/**
- * Baixa um arquivo de texto codificado em **Latin-1 / Windows-1252** (padrão dos
- * CSVs da ANP) e o decodifica para uma string JS (UTF-16 interno). O parser
- * (`parseAnpCsv`) recebe essa string já decodificada.
- *
- * Nota: "latin1" no Node é ISO-8859-1; para os acentos usados pela ANP
- * (á, ç, ã, õ...) o resultado é equivalente ao Windows-1252 na prática.
- */
-export async function fetchLatin1(url: string, options: FetchHtmlOptions = {}): Promise<string> {
-  const buffer = await fetchBuffer(url, options);
-  return buffer.toString("latin1");
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// REMOVIDO em 09/ago/2026: `fetchLatin1`.
+//
+// A função afirmava, no próprio docstring, que "os CSVs da ANP são Latin-1 /
+// Windows-1252". **Era falso**, e custou caro: o `anpIngestor` seguia a mesma
+// suposição com um `toString("latin1")` e gravava no banco "SERVIÃ␇OS" no lugar
+// de "SERVIÇOS" — os bytes UTF-8 `C3 87` lidos um a um. O nome torto aparecia no
+// ranking "onde está mais barato", que é a tela mais vista do produto.
+//
+// Duas lições que valem mais que a função:
+//
+//  1. **Ninguém chamava esta função.** Ela era código morto desde algum refactor,
+//     e mesmo assim continuou ensinando a suposição errada a quem lesse o
+//     arquivo — inclusive a quem escreveu a linha do ingestor. Código morto não
+//     é neutro quando carrega uma afirmação.
+//  2. Encoding **se detecta, não se declara**: quem decide agora é
+//     `ingest/anpDecode.ts`, olhando os bytes.
+//
+// Se precisar de novo de um download já decodificado, use `fetchBuffer` +
+// `decodeAnpCsv`.
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface ConditionalOptions extends FetchHtmlOptions {
   /** Valor de ETag da última cópia baixada (envia `If-None-Match`). */
