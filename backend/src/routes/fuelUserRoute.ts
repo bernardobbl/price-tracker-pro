@@ -33,7 +33,7 @@ import {
   countFuelAlerts,
 } from "../services/fuelAlertService";
 import { getEntitlement, hasActiveSubscription } from "../services/subscriptionService";
-import { decideAlertQuota } from "../lib/alertQuota";
+import { decideAlertQuota, markDormantByQuota, type AlertForQuota } from "../lib/alertQuota";
 
 const router = Router();
 
@@ -95,11 +95,37 @@ router.delete(
 );
 
 // ── Alertas por série ───────────────────────────────────────────────────────
+/**
+ * Alertas do usuário, **cada um dizendo se vai disparar**.
+ *
+ * O campo `dormant` não é enfeite: desde que a cota passou a valer também na
+ * hora de disparar, quem deixou a assinatura vencer tem alertas que continuam
+ * salvos e nunca mais enviam e-mail. Sem esta marca, a barra lateral lista
+ * todos sob o título "Alertas ativos" — uma afirmação positiva e falsa, feita
+ * justamente a quem já pagou uma vez e é a pessoa mais provável de renovar.
+ *
+ * A decisão vem do `markDormantByQuota`, que é a **mesma** função usada pelo
+ * job semanal. Calcular isso no navegador exigiria uma segunda cópia do limite
+ * e da ordem de sobrevivência, e telas que divergem do servidor mentem sem que
+ * ninguém perceba.
+ *
+ * Custo: uma consulta a mais (`hasActiveSubscription`) por abertura da lista.
+ * Ela é indexada e a alternativa é a tela errada.
+ */
 router.get(
   "/alerts",
   requireAuth,
   asyncHandler<AuthenticatedRequest>(async (req, res) => {
-    res.json(await listFuelAlerts(req.user?.id));
+    const userId = req.user?.id;
+    const alerts = await listFuelAlerts(userId);
+    if (!userId || alerts.length === 0) return res.json(alerts);
+
+    return res.json(
+      markDormantByQuota(
+        alerts as unknown as AlertForQuota[],
+        await hasActiveSubscription(userId)
+      )
+    );
   })
 );
 
@@ -128,6 +154,10 @@ router.post(
       (a) => (a as { series_id?: string }).series_id === seriesId
     );
 
+    // Uma consulta só de assinatura, reaproveitada pelo gate e pela decisão de
+    // notificar na hora, logo abaixo.
+    const assinante = await hasActiveSubscription(userId);
+
     if (!alreadyHasThisSeries) {
       // Só conta cota quando é alerta NOVO: o upsert por (user_id, series_id,
       // channel) faz atualização não criar linha, e atualizar não pode custar cota.
@@ -148,7 +178,7 @@ router.post(
       }
 
       const quota = decideAlertQuota({
-        hasActiveSubscription: await hasActiveSubscription(userId),
+        hasActiveSubscription: assinante,
         currentCount,
       });
       if (!quota.allowed) {
@@ -165,9 +195,29 @@ router.post(
       enabled,
     });
 
+    // Este alerta, depois de salvo, é dos que disparam — ou é um dos dormentes?
+    //
+    // A pergunta só tem resposta diferente de "dispara" num caso: usuário no
+    // plano gratuito **editando** um alerta que já estava além da cota (criar
+    // um novo, nessa situação, teria parado no 402 acima). Sem esta checagem,
+    // regravar o alvo de um alerta dormente mandava e-mail na hora — ou seja,
+    // o produto entregava por um caminho lateral exatamente o que o corte
+    // semanal existe para reter, e ainda contradizia a própria tela, que passou
+    // a mostrar aquele alerta como parado.
+    // Assinante nunca tem alerta dormente — nesse caso a releitura não pode
+    // mudar a resposta, então ela nem acontece. É o caminho de quem paga, e é o
+    // que não deve ficar mais lento por causa de uma regra do plano gratuito.
+    const alertId = (alert as { id?: string } | null)?.id;
+    const dormente =
+      !assinante &&
+      markDormantByQuota(
+        (await listFuelAlerts(userId)) as unknown as AlertForQuota[],
+        false
+      ).some((a) => a.id === alertId && a.dormant);
+
     // Avaliação imediata: se já está no/abaixo do alvo, notifica na hora.
     const series = (alert as { tracked_series?: unknown })?.tracked_series;
-    if (alert && series && typeof series === "object") {
+    if (alert && series && typeof series === "object" && !dormente) {
       const s = series as {
         product: string; state: string; municipality: string; brand: string | null; label: string;
       };
@@ -180,7 +230,9 @@ router.post(
       });
     }
 
-    return res.status(201).json(alert);
+    // A tela precisa da marca também na resposta do POST: sem ela, o alerta
+    // recém-salvo entraria na lista sem o aviso até o próximo recarregamento.
+    return res.status(201).json(alert ? { ...alert, dormant: dormente } : alert);
   })
 );
 

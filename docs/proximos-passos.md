@@ -176,9 +176,79 @@ não regridem.
 
 ---
 
+## 0.4 🔎 Quarta varredura — 09/ago/2026 (branch `fix/pontas-soltas`)
+
+Leitura do código inteiro procurando o que não fecha. **415 testes passam** (296 backend + 119
+frontend), `tsc` e `eslint` limpos nos dois pacotes, build dos dois ok. Dois achados, e o primeiro
+é filho direto da correção anterior.
+
+### 0.4.1 A tela dizia "Alertas ativos" para alertas que não disparam mais
+
+O corte por cota do commit `722df0e` fechou o vazamento de receita: quem assinou, criou vários
+alertas e deixou vencer parou de recebê-los todo domingo de graça. Ele **não** mexeu na tela — e a
+barra lateral continuou listando os mesmos alertas sob o título `Alertas ativos`.
+
+Para a pessoa nessa situação, o produto passou a afirmar, por escrito, o oposto do que faz. E o
+único registro do corte era o `logger.info` do job semanal: observável para quem opera o serviço,
+invisível para quem usa. O próprio comentário do `alertQuota.ts` previa a pergunta — *"por que
+parei de receber e-mail?" é uma pergunta que chega ao suporte* — e respondeu só para o operador.
+
+É a quinta ocorrência do mesmo padrão neste projeto (Pix de sandbox, SMTP ausente, `/entitlement`
+sem tela, `AccountPanel`, agora esta): **comportamento documentado no código não é comportamento
+comunicado**. Duas coisas a distinguem das anteriores, e as duas pioram o caso:
+
+- não é omissão, é **afirmação positiva e falsa**. Quem lê "ativos" sai mais errado do que se não
+  houvesse título nenhum;
+- cai justamente sobre quem **já pagou uma vez**, que é a pessoa mais provável de renovar e a que
+  mais precisa entender o que aconteceu.
+
+**Correção.** `GET /api/fuel/alerts` passou a devolver `dormant` por alerta, calculado pelo novo
+`markDormantByQuota` — que é a **mesma** função usada pelo job semanal, não uma segunda cópia da
+regra. A tela troca o título por "Seus alertas", marca os dormentes com "não avisa", explica em uma
+frase que nada foi apagado e aponta para o Premium.
+
+> ⚠️ **Não recalcule isso no navegador.** O front tem o `entitlement` e conseguiria contar até
+> `FREE_ALERT_LIMIT` sozinho — ao custo de duplicar o limite, a ordem de sobrevivência e o
+> desempate por `id`. No dia em que uma das três mudasse, a tela marcaria como parado um alerta que
+> dispara: uma mentira nova no lugar da que foi consertada. `test/alertDormantFlag.test.ts` compara
+> as duas saídas alerta por alerta justamente para impedir a divergência.
+
+**Vazamento junto, achado no caminho:** regravar o alvo de um alerta dormente disparava a avaliação
+imediata e **mandava e-mail na hora**. O gate do `POST /alerts` não barra edição (correto: atualizar
+não pode custar cota), então o caminho existia e entregava por uma porta lateral exatamente o que o
+corte semanal retém — além de contradizer a tela, que agora mostra aquele alerta como parado. A
+avaliação imediata passou a pular alertas dormentes.
+
+### 0.4.2 O `render.yaml` dizia que a validação do webhook não existia
+
+O comentário da `MERCADOPAGO_WEBHOOK_SECRET` afirmava *"é lida e não valida nada — a validação
+x-signature é pendência aberta"*. Ela foi implementada em 05/ago/2026 (`lib/webhookSignature.ts`,
+com a rota respondendo 401), e a frase sobreviveu à implementação.
+
+Mesmo mecanismo do SMTP na §0.1: afirmação desatualizada ao lado de fatos corretos herda a
+credibilidade deles. Aqui o efeito prático é direto — o `render.yaml` é o registro do que o serviço
+precisa, e quem o lesse deixaria de preencher um segredo achando que não adiantaria. Falta só o
+valor; o código está pronto dos dois lados.
+
+### Verificado e correto (não mexi)
+
+Registrado para a próxima varredura não gastar tempo de novo: o gate de criação e o corte semanal
+usam a mesma regra; o estorno chama o provedor antes do banco; `confirmPaymentByOrderId` encerra a
+assinatura ao ver `refunded`; a landing diz "o grátis acompanha 1", batendo com `FREE_ALERT_LIMIT`;
+`requireAdmin`, `requireAuth` e `getMercadoPagoConfig` falham fechado; os links das páginas
+estáticas usam `.html`.
+
+**Sobras conhecidas, deliberadamente não tocadas:** `newIdempotencyKey` e `isPlanKey` são exports
+sem nenhum chamador (código morto inofensivo); o cache de e-mail do `userEmailService` não tem TTL,
+então trocar de e-mail num processo já em pé só passa a valer no próximo deploy; e o
+`premium.html` ainda traz `robots: noindex` da época de porta falsa — hoje a página vende, e a
+decisão de indexar ou não é sua, não do código.
+
+---
+
 ## 🔴 RETOMAR AQUI — o que fazer na próxima sessão
 
-**351 testes passam** (250 backend + 101 frontend). O fluxo de checkout Pix foi exercitado de
+**415 testes passam** (296 backend + 119 frontend). O fluxo de checkout Pix foi exercitado de
 ponta a ponta em 05/ago/2026 — cobrança criada, APRO aprovou sozinho (~7s), reconciliação via
 polling, assinatura no banco, gate `active: true`. Registro completo em
 [`docs/teste-ponta-a-ponta.md`](./teste-ponta-a-ponta.md).

@@ -184,3 +184,60 @@ export function splitAlertsByQuota<T extends AlertForQuota>(
 
   return { kept, skipped };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O MESMO CORTE, DITO NA TELA
+//
+// O `splitAlertsByQuota` acima resolveu o vazamento de receita: alerta além da
+// cota deixou de disparar. Ele não resolveu — e criou — o problema seguinte, do
+// outro lado do balcão.
+//
+// A pessoa que assinou, criou seis alertas e deixou vencer continua vendo os
+// seis na barra lateral, sob um título que diz **"Alertas ativos"**. Cinco
+// deles não vão disparar nunca mais, e nada na tela conta isso. O único lugar
+// onde a informação existe é o `logger.info` do job semanal — que é observável
+// para quem opera o serviço, e invisível para quem usa.
+//
+// É a mesma falha que este projeto já catalogou três vezes: *comportamento
+// documentado no código não é comportamento comunicado* (o Pix de sandbox que a
+// tela não avisava, o SMTP ausente que o job não denunciava, o `/entitlement`
+// que nenhuma interface consultava). Só que aqui ela é pior de duas formas:
+//
+//   • a tela faz uma **afirmação positiva e falsa** — "ativos" —, não uma
+//     omissão. Quem lê sai mais errado do que se não houvesse nada escrito;
+//   • ela cai justamente sobre quem já pagou uma vez. A pessoa mais provável de
+//     renovar é a que precisa entender por que parou de receber e-mail, e o
+//     produto responde a ela com silêncio.
+//
+// **Por que a marcação vem do backend e não do navegador.** O front tem o
+// `entitlement` e teria como contar até `FREE_ALERT_LIMIT` sozinho — e aí
+// existiriam duas cópias da regra: o limite, a ordem de sobrevivência e o
+// desempate por `id`. No dia em que uma mudasse, a tela passaria a apontar como
+// dormente um alerta que dispara (ou o contrário), que é uma mentira mais cara
+// do que a que estamos consertando. Aqui a marca sai da **mesma função** que o
+// job usa para decidir, então a tela não pode divergir do comportamento.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Alerta com a resposta a "este aqui vai disparar?". */
+export type AlertWithDormancy<T> = T & { dormant: boolean };
+
+/**
+ * Marca quais alertas de **um** usuário estão dormentes por falta de plano.
+ *
+ * Preserva a ordem recebida: quem chama já devolve a lista ordenada para a
+ * tela, e reordenar aqui embaralharia a barra lateral sem motivo. O que muda é
+ * só o campo novo.
+ */
+export function markDormantByQuota<T extends AlertForQuota>(
+  alerts: readonly T[],
+  hasActiveSubscription: boolean
+): AlertWithDormancy<T>[] {
+  const { skipped } = splitAlertsByQuota(
+    alerts,
+    // Um usuário só: ou ele está no conjunto de pagantes, ou o conjunto é vazio.
+    hasActiveSubscription ? new Set(alerts.map((a) => a.user_id)) : new Set<string>()
+  );
+
+  const dormentes = new Set(skipped.map((a) => a.id));
+  return alerts.map((a) => ({ ...a, dormant: dormentes.has(a.id) }));
+}

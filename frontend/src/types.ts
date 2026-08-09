@@ -77,6 +77,21 @@ export interface FuelAlert {
   enabled: boolean;
   triggered: boolean;
   created_at?: string;
+  /**
+   * `true` quando este alerta está **salvo mas não dispara** — o dono está no
+   * plano gratuito e já tem outro alerta ocupando a cota.
+   *
+   * ⚠️ **Quem decide é o backend, e tem de continuar sendo.** A conta parece
+   * trivial de refazer aqui (o app já sabe se a assinatura está ativa e recebe
+   * a lista ordenada), mas ela embute o limite do plano, a regra de quais
+   * alertas sobrevivem e o desempate por `id`. Duas cópias disso divergem no
+   * primeiro ajuste, e a tela passaria a marcar como parado um alerta que
+   * dispara — trocando uma mentira por outra.
+   *
+   * Ausente = trate como ativo: resposta antiga de um backend não atualizado
+   * não pode fazer a interface acusar alertas de mortos.
+   */
+  dormant?: boolean;
   tracked_series: {
     product: string;
     state: string;

@@ -162,7 +162,15 @@ semanal pelo GitHub Actions, alertas de preço por email, e o **checkout Pix cob
 Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22 (`1b4d02f`) e
 pelo #24 (`1e281c9`), em 05/ago/2026.
 
-**Testes:** 287 no backend · 111 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 296 no backend · 119 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+
+> **09/ago/2026 — quarta varredura da `fix/pontas-soltas`.** O corte por cota que fechou o
+> vazamento de receita (alerta de assinatura vencida parou de disparar) tinha deixado a tela
+> afirmando o contrário: a barra lateral listava os dormentes sob o título **"Alertas ativos"**.
+> Agora `GET /api/fuel/alerts` devolve `dormant` por alerta, calculado pela mesma função do job
+> semanal, e a tela mostra "não avisa" com o caminho para o Premium. Junto: regravar o alvo de um
+> alerta dormente mandava e-mail na hora, por fora da cota. Detalhe em
+> [`docs/proximos-passos.md` §0.4](./docs/proximos-passos.md).
 
 ### 🔴 O dinheiro é real desde 06/ago/2026, 12:44
 
