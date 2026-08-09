@@ -10,10 +10,15 @@
 > sobre os secrets de SMTP, os dois estavam errados, e o alerta semanal ficou semanas sem enviar
 > email nenhum. **Um fato mora num lugar só.**
 >
-> **Para o Bernardo do futuro.** Escrito em 04/ago/2026, atualizado em 05/ago/2026 (noite).
+> **Para o Bernardo do futuro.** Escrito em 04/ago/2026, atualizado pela última vez em
+> **09/ago/2026** (§0.4 e §0.5).
 >
 > **Branch:** `feat/checkout-pix` → [PR #22](https://github.com/bernardobbl/price-tracker-pro/pull/22)
-> — **mergeado** na `main` em 05/ago/2026 (`1b4d02f`).
+> — **mergeado** na `main` em 05/ago/2026 (`1b4d02f`). As correções posteriores vivem na
+> `fix/pontas-soltas`.
+>
+> 🔴 **O produto cobra dinheiro real desde 06/ago/2026, 12:44.** Se você chegou aqui procurando "em
+> que pé estamos", a resposta está na tabela do milestone no `plan.md` — não neste arquivo.
 
 ---
 
@@ -176,9 +181,126 @@ não regridem.
 
 ---
 
+## 0.4 🔎 Quarta varredura — 09/ago/2026 (branch `fix/pontas-soltas`)
+
+Leitura do código inteiro procurando o que não fecha. **415 testes passam** (296 backend + 119
+frontend), `tsc` e `eslint` limpos nos dois pacotes, build dos dois ok. Dois achados, e o primeiro
+é filho direto da correção anterior.
+
+### 0.4.1 A tela dizia "Alertas ativos" para alertas que não disparam mais
+
+O corte por cota do commit `722df0e` fechou o vazamento de receita: quem assinou, criou vários
+alertas e deixou vencer parou de recebê-los todo domingo de graça. Ele **não** mexeu na tela — e a
+barra lateral continuou listando os mesmos alertas sob o título `Alertas ativos`.
+
+Para a pessoa nessa situação, o produto passou a afirmar, por escrito, o oposto do que faz. E o
+único registro do corte era o `logger.info` do job semanal: observável para quem opera o serviço,
+invisível para quem usa. O próprio comentário do `alertQuota.ts` previa a pergunta — *"por que
+parei de receber e-mail?" é uma pergunta que chega ao suporte* — e respondeu só para o operador.
+
+É a quinta ocorrência do mesmo padrão neste projeto (Pix de sandbox, SMTP ausente, `/entitlement`
+sem tela, `AccountPanel`, agora esta): **comportamento documentado no código não é comportamento
+comunicado**. Duas coisas a distinguem das anteriores, e as duas pioram o caso:
+
+- não é omissão, é **afirmação positiva e falsa**. Quem lê "ativos" sai mais errado do que se não
+  houvesse título nenhum;
+- cai justamente sobre quem **já pagou uma vez**, que é a pessoa mais provável de renovar e a que
+  mais precisa entender o que aconteceu.
+
+**Correção.** `GET /api/fuel/alerts` passou a devolver `dormant` por alerta, calculado pelo novo
+`markDormantByQuota` — que é a **mesma** função usada pelo job semanal, não uma segunda cópia da
+regra. A tela troca o título por "Seus alertas", marca os dormentes com "não avisa", explica em uma
+frase que nada foi apagado e aponta para o Premium.
+
+> ⚠️ **Não recalcule isso no navegador.** O front tem o `entitlement` e conseguiria contar até
+> `FREE_ALERT_LIMIT` sozinho — ao custo de duplicar o limite, a ordem de sobrevivência e o
+> desempate por `id`. No dia em que uma das três mudasse, a tela marcaria como parado um alerta que
+> dispara: uma mentira nova no lugar da que foi consertada. `test/alertDormantFlag.test.ts` compara
+> as duas saídas alerta por alerta justamente para impedir a divergência.
+
+**Vazamento junto, achado no caminho:** regravar o alvo de um alerta dormente disparava a avaliação
+imediata e **mandava e-mail na hora**. O gate do `POST /alerts` não barra edição (correto: atualizar
+não pode custar cota), então o caminho existia e entregava por uma porta lateral exatamente o que o
+corte semanal retém — além de contradizer a tela, que agora mostra aquele alerta como parado. A
+avaliação imediata passou a pular alertas dormentes.
+
+### 0.4.2 O `render.yaml` dizia que a validação do webhook não existia
+
+O comentário da `MERCADOPAGO_WEBHOOK_SECRET` afirmava *"é lida e não valida nada — a validação
+x-signature é pendência aberta"*. Ela foi implementada em 05/ago/2026 (`lib/webhookSignature.ts`,
+com a rota respondendo 401), e a frase sobreviveu à implementação.
+
+Mesmo mecanismo do SMTP na §0.1: afirmação desatualizada ao lado de fatos corretos herda a
+credibilidade deles. Aqui o efeito prático é direto — o `render.yaml` é o registro do que o serviço
+precisa, e quem o lesse deixaria de preencher um segredo achando que não adiantaria. Falta só o
+valor; o código está pronto dos dois lados.
+
+### 0.4.3 Segunda passada, no mesmo dia — as páginas de pagamento
+
+Varredura pedida separadamente, olhando só o que o cliente **lê e clica** ao pagar. O detalhe de
+cada achado está na tabela §🔧 09/ago do `plan.md`; aqui fica o que muda para quem for mexer:
+
+1. **A faixa do topo do checkout não pode mais afirmar nada sobre dinheiro a partir do hostname.**
+   Ela dizia "Nenhuma cobrança é real" em `localhost` — e `localhost` + backend com
+   `MERCADOPAGO_ENV=production` é um caso previsto, que o `config/mercadoPago.ts` permite de
+   propósito e denuncia no log. Agora ela só afirma para onde a página aponta, e o
+   `ajustarFaixaAoAmbiente` corrige a frase quando a resposta do backend chega. **É a armadilha nº 8
+   desta lista se repetindo num segundo lugar** — o `#sandboxNote` já obedecia à regra, a faixa não.
+2. **`status: 'expired'` vindo do provedor agora para o cronômetro e oferece saída.** Antes só
+   chamava `stopPolling()`, em silêncio, com o contador correndo.
+3. **A confirmação usa o plano que o backend devolveu**, não o que o navegador escolheu.
+4. **Os avisos de "rascunho, não revisado por advogado" saíram dos três documentos legais** — a
+   revisão foi em 06/ago. Ver a §2 deste arquivo para a condição que os traz de volta.
+
+### 0.4.4 Terceira passada — usando o produto no navegador, como cliente
+
+Bateria dos blocos B, C e D da §4.5 do `plan.md`, rodada no Chrome contra **produção**. O bloco E
+(compra 💸) não foi executado — continua sendo o item 16.
+
+**Verde ao vivo:** `/health` 200 · entitlement `active:false` numa conta sem plano · 1º alerta criado
+normalmente · 2º alerta **bloqueado** com o aviso âmbar e link "Ver o Premium" (não erro vermelho) ·
+mensagem dizendo o que a pessoa ainda pode fazer · `GET /api/billing/refund/<uuid-inexistente>` com a
+conta admin devolvendo **`CHARGE_NOT_FOUND`**, que é a prova positiva do item 10.
+
+Dois defeitos que **só** apareceram usando o produto — nenhum dos dois é visível lendo o código com
+a suíte verde:
+
+1. **`SERVIÃ␇OS AUTOMOTIVOS PEDRODAVI LTDA.`** no ranking de São Paulo. O CSV da ANP é UTF-8 e o
+   `anpIngestor` o decodificava como Latin-1. Novo `ingest/anpDecode.ts` **detecta** o encoding em
+   vez de declará-lo. ⚠️ **A correção não conserta o que já está no banco**: o ingestor pula por
+   `ETag` antes de decodificar, então os nomes só se corrigem quando a ANP publicar arquivo novo —
+   ou na hora, com `npm run ingest -- --url <url-do-mês>`.
+2. **Alerta recusado pela cota deixava um favorito para trás.** O fluxo favorita antes de alertar
+   (não dá para inverter: alerta exige série favoritada), então a recusa chegava depois da escrita.
+   Agora a tentativa desfaz o que ela mesma criou.
+
+> **A lição desta passada, e ela vale para as próximas.** As duas varreduras anteriores foram feitas
+> lendo código e documento, e acharam bastante coisa — mas nenhuma das duas teria achado estas. Um
+> nome com cedilha torta e um favorito a mais não quebram teste, não geram log e não contradizem
+> nenhum documento. **Só aparecem para quem olha a tela.** Abrir o produto e usá-lo é um método de
+> auditoria com alcance próprio, não uma conferência do que a leitura já disse.
+
+### Verificado e correto (não mexi)
+
+Registrado para a próxima varredura não gastar tempo de novo: o gate de criação e o corte semanal
+usam a mesma regra; o estorno chama o provedor antes do banco; `confirmPaymentByOrderId` encerra a
+assinatura ao ver `refunded`; a landing diz "o grátis acompanha 1", batendo com `FREE_ALERT_LIMIT`;
+`requireAdmin`, `requireAuth` e `getMercadoPagoConfig` falham fechado; os links das páginas
+estáticas usam `.html`.
+
+**Sobras conhecidas, deliberadamente não tocadas:** `newIdempotencyKey` e `isPlanKey` são exports
+sem nenhum chamador (código morto inofensivo); e o cache de e-mail do `userEmailService` não tem
+TTL, então trocar de e-mail num processo já em pé só passa a valer no próximo deploy.
+
+> O `robots: noindex` do `premium.html` também estava nesta lista, como decisão de produto. Foi
+> **resolvido em 09/ago**: a landing passou a ser indexável, e o `checkout.html` continua `noindex`
+> de propósito — página transacional que exige login não serve a quem chega de busca.
+
+---
+
 ## 🔴 RETOMAR AQUI — o que fazer na próxima sessão
 
-**351 testes passam** (250 backend + 101 frontend). O fluxo de checkout Pix foi exercitado de
+**415 testes passam** (296 backend + 119 frontend). O fluxo de checkout Pix foi exercitado de
 ponta a ponta em 05/ago/2026 — cobrança criada, APRO aprovou sozinho (~7s), reconciliação via
 polling, assinatura no banco, gate `active: true`. Registro completo em
 [`docs/teste-ponta-a-ponta.md`](./teste-ponta-a-ponta.md).
@@ -223,10 +345,12 @@ que é o pior resultado possível. Na ordem atual, falha do provedor não altera
 
 | # | O quê | Depende de | Nota |
 |---|---|---|---|
-| 1 | **Revisão jurídica** | advogado | Pode correr em paralelo |
-| 2 | **Credenciais de produção + go-live** | item acima | Irreversível — `runbook-operacao.md` §1 |
+| 1 | ~~**Revisão jurídica**~~ | ✅ **FEITA 06/ago/2026** | Nenhum texto mudou → `LEGAL_VERSION` segue `1.0` |
+| 2 | ~~**Credenciais de produção + go-live**~~ | ✅ **FEITO 06/ago/2026, 12:44** | `MERCADOPAGO_ENV=production` no Render |
 
-O irreversível (produção) vem **depois** do que ainda pode ser corrigido de graça.
+> Os dois estão fechados. O que resta são os itens **16** (compra real de ponta a ponta) e **17**
+> (lembrete no calendário) da tabela do milestone no `plan.md` — e os dois dependem de você, não de
+> código.
 
 > ✅ **O limite do plano gratuito foi ligado em 05/ago/2026** — `FREE_ALERT_LIMIT = 1`. A armadilha
 > que este trecho avisava (contagem vinda do `listFuelAlerts`, que confunde "sem alertas" com
@@ -330,7 +454,22 @@ Revisão independente de tudo o que a branch traz, registrada em
 - **Provedor: Mercado Pago.** Taxa percentual (~0,99%) vence a taxa fixa do Asaas (R$ 1,99) com folga em ticket baixo.
 - **Planos:** mensal R$ 16,90 (1 mês exato) e anual R$ 59,90 (12 meses exatos).
 - **Sem renovação automática.** Não é escolha: o Banco Central exige CNPJ ativo para ser recebedor de Pix Automático.
-- **`DEMO = false` com credenciais de TESTE** (`MERCADOPAGO_ENV=test`). O fluxo é real de ponta a ponta, mas nenhum dinheiro circula até as credenciais de produção entrarem.
+- ~~**`DEMO = false` com credenciais de TESTE** (`MERCADOPAGO_ENV=test`). O fluxo é real de ponta a
+  ponta, mas nenhum dinheiro circula até as credenciais de produção entrarem.~~
+  🔴 **SUPERADO EM 06/ago/2026, 12:44 — `DEMO = false` com credenciais de PRODUÇÃO**
+  (`MERCADOPAGO_ENV=production`). Um Pix gerado no checkout é pagável por qualquer banco e o valor
+  cai numa conta real.
+
+  > Esta linha ficou riscada em vez de reescrita de propósito. Ela era a afirmação mais perigosa
+  > deste arquivo — "nenhum dinheiro circula" é exatamente a permissão que alguém procura antes de
+  > testar algo no checkout —, e este documento é o que o `plan.md` aponta como fonte da verdade
+  > para quem retoma a frente de pagamentos. Um leitor que chegasse aqui em busca de "onde
+  > paramos" leria, com toda a confiança de uma seção chamada *decisões travadas*, o oposto do
+  > estado atual. É o mesmo mecanismo que fez o alerta semanal passar semanas sem enviar e-mail:
+  > afirmação desatualizada ao lado de fatos corretos herda a credibilidade deles.
+  >
+  > **O estado do pagamento mora na tabela do milestone, no `plan.md`.** Aqui ficam as armadilhas e
+  > o como-rodar-local.
 
 ---
 
@@ -343,13 +482,18 @@ Nada disso eu consigo fazer — precisa ser você, e algumas travam o resto.
 | 1 | ~~Ver a taxa real do Pix por API~~ | ✅ **FEITO 04/ago** | **0,99% na aba "Checkout", liberação na hora.** R$ 0,17 no mensal, R$ 0,59 no anual. (A aba "QR Code" a 0,00% é o QR presencial — outro produto, não serve.) |
 | 2 | **Cadastrar uma chave Pix** na conta | Painel do Mercado Pago | **Trava a API inteira** — sem chave, `/v1/orders` não funciona. |
 | 3 | **Criar a aplicação** e pegar as credenciais de teste | [Suas integrações](https://www.mercadopago.com.br/developers/panel/app) | Trava o desenvolvimento. |
-| 4 | **Revisão jurídica** dos 3 documentos | Advogado | Trava o dinheiro real, não o código. |
+| 4 | ~~**Revisão jurídica** dos 3 documentos~~ | ✅ **FEITA 06/ago/2026** | Destravou o go-live no mesmo dia. Os avisos de "rascunho" nas páginas publicadas sobreviveram três dias à revisão — corrigidos em 09/ago e travados por teste (`staticPromises.test.ts`). |
 | 5 | **Decidir o gatilho de virar MEI** | Você + contador | Nada agora. Decida o número ("quando passar de X/mês") para não virar susto depois. |
 | 6 | **Secrets de SMTP** no GitHub Actions — os cinco: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Settings → Secrets and variables → Actions → aba **Secrets** | **Conferido em 05/ago: não existe nenhum deles.** Trava o alerta semanal de preço (que hoje não envia nada) e o aviso de vencimento. Copie do painel do **Render**, não do `.env` local — ver §0.1. A variable `FRONTEND_URL` **já está lá**, não mexa. |
 
-> Os documentos legais são **rascunhos meus, não parecer jurídico.** Estão escritos a partir do que
-> o produto realmente faz — o que é mais do que a maioria dos modelos genéricos entrega — mas
-> ninguém com OAB olhou.
+> ~~Os documentos legais são **rascunhos meus, não parecer jurídico** — ninguém com OAB olhou.~~
+> **Superado em 06/ago/2026: a revisão jurídica aconteceu e nenhum texto mudou.** A frase riscada
+> ficou porque ela era a justificativa de todo o resto desta seção, e apagá-la sem marca faria
+> parecer que a revisão nunca foi uma pendência.
+>
+> ⚠️ A revisão vale para o **texto de 04/ago, versão 1.0**. Qualquer edição futura nos três
+> documentos invalida a revisão: suba a `LEGAL_VERSION` (em `checkout.html` **e** em
+> `backend/src/lib/legalVersions.ts`) e trate como não revisado até um advogado ver a versão nova.
 
 ---
 
@@ -412,8 +556,8 @@ há o que ganhar: reprocessar é idempotente e a verdade continua vindo da consu
 
 - [x] ~~Rodapé do app React com links para `/termos`, `/privacidade`, `/reembolso`~~ — **já estava feito**, e este arquivo é que estava desatualizado. Ver `frontend/src/App.tsx`, `<footer className="site-footer">`: os três links e a isenção da ANP.
 - [x] ~~Limitar alertas do plano grátis~~ — `FREE_ALERT_LIMIT = 1`, ligado em 05/ago/2026.
-- [ ] Revisão jurídica
-- [ ] Credencial de produção + `MERCADOPAGO_ENV=production`
+- [x] ~~Revisão jurídica~~ — **06/ago/2026**, nenhum texto mudou
+- [x] ~~Credencial de produção + `MERCADOPAGO_ENV=production`~~ — **06/ago/2026, 12:44**
 - [x] ~~Tela de conta com exportar/excluir dados~~ — `AccountPanel`, 05/ago/2026
 
 ---
@@ -428,6 +572,8 @@ há o que ganhar: reprocessar é idempotente e a verdade continua vindo da consu
 6. **`LEGAL_VERSION` no `checkout.html` precisa subir junto** com qualquer edição nos documentos. Sem isso você não prova o que a pessoa aceitou.
 7. **Só o `expiration_time` da order não expira a assinatura.** São coisas diferentes: um é o prazo do QR (**30 min** — `QR_EXPIRES_MINUTES` no `billingService.ts`, espelhado em `EXPIRES_SECONDS` no `checkout.html`), outro é a vigência do acesso (1 mês / 12 meses).
 8. **Um Pix de sandbox não é pagável — e a tela tem de dizer isso.** Com `MERCADOPAGO_ENV=test` o `qr_code` não é reconhecido por banco nenhum: copiar ou ler o QR falha *por desenho*. O `POST /checkout` devolve `environment` justamente para o checkout avisar. **Nunca deduza o ambiente pelo hostname:** frontend publicado + backend em modo teste não denuncia nada pela URL, e foi assim que o sintoma chegou como "o QR não funciona" (§0.3).
+
+   ⚠️ **Esta regra já foi quebrada duas vezes, no mesmo arquivo.** Consertada no `#sandboxNote` em 05/ago, ela continuou valendo na faixa do topo (`avisarModo`), que via `localhost` e escrevia "Nenhuma cobrança é real" (§0.4.3). O caso perigoso é o **inverso** do de 05/ago: máquina local apontando para backend de produção — que o `config/mercadoPago.ts` permite de propósito e anuncia no log como *"cobranças criadas aqui são REAIS"*. Ao escrever qualquer frase sobre dinheiro nesta página, a pergunta é sempre: **quem me disse isso, o backend ou a barra de endereço?**
 9. **O `checkout.html` não passa pelo compilador.** É HTML com `<script>` inline: um `$('id')` errado devolve `null`, a linha seguinte estoura e leva junto o polling que confirma o pagamento. `frontend/src/lib/checkoutPage.test.ts` é o único `tsc` que aquela página tem — não apague, e acrescente ali ao mexer.
 10. **O webhook precisa recusar `user_id` vazio.** A coluna é nullable por causa da anonimização (LGPD), então o banco aceita uma assinatura sem dono sem reclamar — foi exatamente o que aconteceu no teste manual de 04/ago. Em produção isso vira dinheiro recebido sem ninguém liberado. **Valide no código antes do insert:** se não achou o usuário, é erro, não linha órfã.
 
@@ -477,7 +623,7 @@ A Etapa A saiu no mesmo dia, não em 2–3. O que resta:
 | Estorno + reembolso proporcional (Etapa B) | 1–2 dias | nada |
 | Exclusão de conta + exportação LGPD (Etapa B) | 1 dia | nada |
 | Webhook com assinatura validada | ~2 h | URL pública (deploy) |
-| Revisão jurídica | — | advogado |
+| ~~Revisão jurídica~~ | ✅ feita 06/ago | — |
 
 ---
 

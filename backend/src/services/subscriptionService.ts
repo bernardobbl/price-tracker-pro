@@ -109,3 +109,48 @@ export async function hasActiveSubscription(
 ): Promise<boolean> {
   return (await getActiveSubscription(userId, now)) !== null;
 }
+
+/**
+ * Quais destes usuários têm acesso pago valendo agora — **em uma consulta só**.
+ *
+ * Existe para o job semanal, que precisa da resposta para dezenas ou centenas
+ * de donos de alerta de uma vez. Chamar `hasActiveSubscription` num laço faria
+ * uma ida ao banco por pessoa; num job que já roda no free tier, isso é a
+ * diferença entre uma consulta e trezentas.
+ *
+ * **Falha fechado, e aqui isso tem um custo que vale nomear.** Erro de banco
+ * devolve conjunto vazio — ou seja, *ninguém* é tratado como assinante e quem
+ * paga fica sem os alertas excedentes naquela rodada. É o lado certo para
+ * errar: a alternativa (tratar todo mundo como pago quando o banco falha) é a
+ * mesma falha aberta que o `countFuelAlerts` foi criado para eliminar, e um
+ * aviso atrasado uma semana é reparável — receita entregue de graça, não.
+ */
+export async function listActiveSubscriberIds(
+  userIds: readonly string[],
+  now: Date = new Date()
+): Promise<Set<string>> {
+  const unicos = [...new Set(userIds)];
+  if (!supabase || unicos.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("user_id")
+    .in("user_id", unicos)
+    .eq("status", "active")
+    .gt("expires_at", now.toISOString());
+
+  if (error) {
+    logger.error(
+      { err: error.message },
+      "[Subscription] Falha ao consultar assinantes em lote — tratando todos como gratuitos"
+    );
+    return new Set();
+  }
+
+  const ativos = new Set<string>();
+  for (const row of data ?? []) {
+    const id = (row as { user_id: string | null }).user_id;
+    if (id) ativos.add(id);
+  }
+  return ativos;
+}

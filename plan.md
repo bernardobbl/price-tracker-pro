@@ -8,7 +8,7 @@
 
 ---
 
-## 📍 ESTADO ATUAL — 05/ago/2026 (leia esta seção primeiro)
+## 📍 ESTADO ATUAL — 06/ago/2026 (leia esta seção primeiro)
 
 > Esta seção existe porque o projeto passou a ter **seis documentos** e eles começaram a se
 > contradizer. Em 05/ago/2026 essa contradição custou caro: a §7.6 aqui afirmava que os secrets de
@@ -57,14 +57,28 @@
 | 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
 | 12 | **Limpar o dado de teste do banco** | banco | ✅ | 06/ago — `billing_charges` e `subscriptions` a **0 linhas**, conferido no SQL Editor depois do `delete`. A 1ª linha que aparecer é venda real |
 | 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ✅ | `5795602` na `main`, 06/ago — Render e Vercel sobem sozinhos |
-| 14 | Revisão jurídica dos 3 documentos | **você** | ✅ | 06/ago — **nenhum texto mudou**, então `LEGAL_VERSION` segue `1.0` e a §1.5 não se aplica |
+| 14 | Revisão jurídica dos 3 documentos | **você** | ✅ | 06/ago — **nenhum texto mudou**, então `LEGAL_VERSION` segue `1.0` e a §1.5 não se aplica. ⚠️ As páginas publicadas continuaram dizendo *"rascunho, ainda não revisado por advogado"* por três dias depois disso — corrigido em 09/ago, ver §🔧 |
 | 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ✅ | **06/ago, 12:44 — o dinheiro é real a partir daqui.** Boot com `env: "production"` e `temPublicKey: true` |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
+| 18 | **Mergear a `fix/pontas-soltas` na `main`** | deploy | ⛔ | **09/ago.** A branch acumulou correções de texto de contrato e de página de cobrança; a produção ainda serve as versões erradas. Vem **antes** do 16: não faz sentido validar a compra real numa landing que promete preço travado inexistente |
 
-**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ **feitos em 06/ago** → 14 → 15 → 8 (confirmar)
-→ 16 → 17. O passo a passo detalhado de cada um está em **`docs/runbook-operacao.md` §1**, que é a
-fonte da verdade do procedimento — aqui fica só o estado.
+**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ ~~14~~ ~~15~~ ~~8~~ **todos feitos em 06/ago**
+→ restam **18 → 16 → 17**, nesta ordem. O passo a passo de cada um está em
+**`docs/runbook-operacao.md` §1**, que é a fonte da verdade do procedimento — aqui fica só o estado.
+
+> **O 18 entrou na frente do 16 em 09/ago, e o motivo é o mesmo que criou a branch.** Ela nasceu
+> para não publicar tentativa e erro num produto que cobra; três dias depois, o que ela guarda são
+> correções de contrato e de tela de cobrança, e é a **ausência** delas que está publicada. Validar
+> a compra real (16) antes de mergear seria carimbar de aprovado um caminho que a própria branch já
+> diz estar errado.
+
+> **Os dois itens que faltam são os dois únicos que dependem de você, não de código.** O 16 é a
+> compra real de ponta a ponta (a única coisa que prova o caminho inteiro com dinheiro de verdade),
+> e o 17 é o lembrete semanal no calendário. Vale notar o desconforto: o 15 já aconteceu, então o
+> checkout **já cobra** de quem chegar nele, e o 16 — a verificação de que esse caminho funciona —
+> ainda não foi feito. A ordem certa teria sido 16 antes de abrir a porta; ela ficou invertida e o
+> jeito de reduzir o risco agora é fazer o 16 logo, não deixá-lo envelhecer.
 
 ### 🧪 Como o item 10 foi provado, e por que "o erro sumiu do log" não bastava
 
@@ -110,36 +124,41 @@ para trás. Fica o registro, já que o dado se foi.
 > outro evento — a limpeza do banco de **produção**, feita em 06/ago. Quem quiser saber o estado
 > do banco hoje lê esta tabela, não aquele registro.
 
-> ⚠️ **`✅` na coluna de código significa "escrito e testado", não "no ar".** Os itens 5 e 6 estão
-> prontos no repositório e **não estão em produção** — daí o item 13 existir separado. Confundir as
-> duas coisas foi o que fez o `MERCADOPAGO_WEBHOOK_SECRET` ser colado num backend que ainda não
-> sabia o que fazer com ele.
+> ⚠️ **`✅` na coluna de código significa "escrito e testado", não "no ar".** A distinção é o motivo
+> de o item 13 (deploy) existir separado dos itens 5 e 6 (código). Confundir as duas coisas foi o
+> que fez o `MERCADOPAGO_WEBHOOK_SECRET` ser colado num backend que ainda não sabia o que fazer com
+> ele. Hoje o 13 está fechado — os dois estão no ar —, mas a regra continua valendo para o próximo
+> item de código que aparecer nesta tabela.
 
-> ### ⚠️ A armadilha do item 8, e ela custou uma sessão inteira
+> ### ✅ A armadilha do item 8 — resolvida, e vale guardar o mecanismo
 >
-> O `MERCADOPAGO_WEBHOOK_SECRET` já está no Render e **mesmo assim a conferência de assinatura
-> está desligada**. O motivo: o segredo mora *dentro* de `getMercadoPagoConfig()`, que devolve
-> `null` na primeira linha quando falta `MERCADOPAGO_ACCESS_TOKEN`. Sem token, o segredo é
-> inalcançável.
+> Por um tempo o `MERCADOPAGO_WEBHOOK_SECRET` esteve no Render **com a conferência de assinatura
+> desligada**, e a causa não era o segredo: ele mora *dentro* de `getMercadoPagoConfig()`, que
+> devolve `null` na primeira linha quando falta `MERCADOPAGO_ACCESS_TOKEN`. Sem token, o segredo
+> era inalcançável.
 >
-> E não adianta pôr o token de **teste** no Render para destravar: o `render.yaml` define
+> E não adiantava pôr o token de **teste** no Render para destravar: o `render.yaml` define
 > `NODE_ENV=production`, e o config **recusa o boot** com `NODE_ENV=production` +
 > `MERCADOPAGO_ENV=test` — a proteção que impede um cliente de pagar um QR de sandbox.
 >
-> **Consequência:** o item 8 só pode ser *verificado* depois do item 13. Simular a notificação
-> antes disso devolve 200, mas por causa da cobrança desligada, não porque a assinatura bateu —
-> um verde que não prova nada é pior que nenhum. A ordem "webhook primeiro, credenciais depois"
-> parecia óbvia e estava errada para este projeto.
+> **Consequência que ficou de lição:** o item 8 só podia ser *verificado* depois do 13 e do 15.
+> Simular a notificação antes disso devolvia 200, mas por causa da cobrança desligada, não porque a
+> assinatura bateu — um verde que não prova nada é pior que nenhum. A ordem "webhook primeiro,
+> credenciais depois" parecia óbvia e estava errada para este projeto.
+>
+> Destravou em 06/ago junto com o 15, exatamente como previsto: o boot passou a mostrar
+> `validacaoDeAssinaturaDoWebhook: "ATIVA"`.
 
-**Como saber que o item 13 pegou:** no log do Render (aba **Logs**, busque `MercadoPago`), logo
-depois de `Backend rodando na porta`:
+**Como confirmar que o backend está no modo certo** — vale para qualquer sessão futura, não só
+para o item 13. No log do Render (aba **Logs**, busque `MercadoPago`), logo depois de
+`Backend rodando na porta`:
 
 ```json
 {"env":"production","validacaoDeAssinaturaDoWebhook":"ATIVA","msg":"[MercadoPago] Configurado"}
 ```
 
-E, do lado do usuário: **o aviso amarelo de "código de teste" some do checkout.** Se ele continuar
-aparecendo, o backend ainda está em sandbox — não pague nada.
+E, do lado do usuário: **o aviso amarelo de "código de teste" não aparece no checkout.** Se ele
+reaparecer, o backend voltou para sandbox — não pague nada.
 
 ---
 
@@ -150,7 +169,27 @@ semanal pelo GitHub Actions, alertas de preço por email, e o **checkout Pix cob
 Fases 0 a 9 concluídas; a Fase 10 (monetização) foi mergeada na `main` pelo PR #22 (`1b4d02f`) e
 pelo #24 (`1e281c9`), em 05/ago/2026.
 
-**Testes:** 271 no backend · 102 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+**Testes:** 304 no backend · 133 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
+
+> 🚨 **Estes números, e as tabelas de correção abaixo, descrevem a branch `fix/pontas-soltas` — não
+> o que está no ar.** A produção serve a `main`, que está três dias atrás. Ver a seção
+> "A BRANCH ESTÁ TRÊS DIAS À FRENTE DA PRODUÇÃO".
+
+> ⚠️ **Este é o único lugar do repositório que carrega a contagem de testes.** A §4.5 já teve os
+> números repetidos (“271 passando”), envelheceu sozinha e passou a ensinar quem executava o
+> checklist a ignorar o desvio. Um fato mora num lugar só — inclusive quando o fato é um número.
+
+> **09/ago/2026 — quarta varredura da `fix/pontas-soltas`, em duas passadas.**
+>
+> A primeira fechou a ponta que a correção anterior tinha deixado: o corte por cota parou o
+> vazamento de receita (alerta de assinatura vencida deixou de disparar) e a barra lateral
+> continuou listando os dormentes sob o título **"Alertas ativos"**. Agora
+> `GET /api/fuel/alerts` devolve `dormant` por alerta, calculado pela mesma função do job semanal.
+>
+> A segunda olhou as **páginas de pagamento** e achou cinco coisas, sendo duas graves: os três
+> documentos legais ainda diziam ao cliente que não tinham sido revisados por advogado (a revisão
+> foi em 06/ago), e a faixa do checkout garantia, a partir do hostname, que "nenhuma cobrança é
+> real" — inclusive quando o backend estava em produção. Tabela completa na §🔧 09/ago.
 
 ### 🔴 O dinheiro é real desde 06/ago/2026, 12:44
 
@@ -169,6 +208,135 @@ O que muda na prática, e vale ler antes de mexer em qualquer coisa:
 > até as 12:44 de 06/ago e falsa às 12:45. Ficou nesta posição, no topo, porque foi exatamente uma
 > afirmação desatualizada aqui que custou semanas de alerta semanal sem envio — o caso que originou
 > a regra "um fato mora num lugar só".
+
+### 🚨 09/ago/2026 — A BRANCH ESTÁ TRÊS DIAS À FRENTE DA PRODUÇÃO, E ISSO IMPORTA
+
+> **Descoberto navegando o site em produção como cliente**, não lendo código. É o achado mais
+> importante desta sessão e ele não aparece em nenhum teste, porque os testes rodam contra a branch.
+
+A `main` — o que qualquer visitante vê **agora** em `precos-combustivel-br.vercel.app` — ainda serve
+**todas** as frases que a tabela abaixo e a de 06/ago dão como corrigidas. Verificado por fetch
+direto das páginas publicadas:
+
+| Página em produção | O que ela ainda diz hoje |
+|---|---|
+| `/premium.html` | *"Estamos medindo o interesse antes de lançar"* · *"Preço de fundador **travado** enquanto você for assinante"* · *"seu celular avisa"* · *"12 meses de histórico"* como benefício pago |
+| `/termos.html`, `/privacidade.html`, `/reembolso.html` | *"Documento em rascunho, ainda não revisado por advogado"* |
+| `/checkout.html` | `id="simBtn"` presente no HTML estático, com listener ligado (oculto só porque o `#pixPanel` ancestral está `display:none`) |
+
+**Por que isto é diferente de "ainda não deu tempo de mergear".** A decisão de acumular numa branch
+foi tomada em 06/ago com um argumento correto — *"a main publica sozinha, e o produto cobra dinheiro
+real"*. Só que o conteúdo da branch mudou de natureza desde então: ela deixou de ser refatoração
+interna e virou **correção de texto de contrato numa loja aberta**. Cada dia sem merge é um dia em
+que a landing promete preço travado que não existe, e os documentos legais depreciam a si mesmos
+diante de quem vai pagar.
+
+O argumento original agora aponta para o outro lado: *porque* cobra dinheiro real é que estas
+correções precisam subir.
+
+> ⚠️ **Cuidado ao ler a §"Onde o produto está".** Ela diz "no ar e funcionando, checkout cobrando de
+> verdade" a poucas linhas de tabelas de correções marcadas "fora da main". As duas afirmações são
+> verdadeiras e a leitura natural — *o produto no ar está corrigido* — é falsa. Ao mergear, apague
+> este aviso; enquanto ele estiver aqui, é porque a divergência existe.
+
+### 🔧 Corrigido em 09/ago/2026 — o que o uso real do produto encontrou
+
+Bateria executada no Chrome contra produção, como cliente. Blocos B, C e D da §4.5: `/health` 200,
+entitlement `active:false`, cota bloqueando o 2º alerta em tom de aviso com link para o Premium,
+e a rota de estorno devolvendo **`CHARGE_NOT_FOUND`** para a conta admin — a prova positiva do item
+10, revalidada ao vivo. O bloco E (compra 💸) **não** foi executado: continua sendo o item 16.
+
+Dois defeitos que só apareceram usando o produto:
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| 🔴 **O CSV da ANP é UTF-8 e era decodificado como Latin-1** | `ingest/anpDecode.ts` (novo), `anpIngestor.ts`, `scrapers/httpClient.ts` | Um posto real aparecia no ranking de São Paulo como **"SERVIÃ␇OS AUTOMOTIVOS PEDRODAVI LTDA."**. Os code points na resposta da API eram `U+00C3` + `U+0087` — os dois bytes UTF-8 de **Ç** lidos um a um. **Por que 296 testes não pegaram:** `anpParser.test.ts` e `anpNormalize.test.ts` carregam a fixture com `readFileSync(..., "utf-8")`, ou seja, entregam ao parser bytes já decodificados; a produção fazia `buffer.toString("latin1")`. A única linha que diferia entre teste e produção era a linha errada. A prova de que a suposição era falsa estava **dentro do repositório** desde sempre: a fixture chamada de "real" é UTF-8. Agora o encoding é **detectado** (`TextDecoder` com `fatal:true`, com queda para latin1), não declarado — trocar a constante consertaria hoje e quebraria o backfill de arquivos antigos |
+| **Alerta recusado pela cota deixava um favorito que ninguém pediu** | `App.tsx`, `hooks/useFavorites.ts` | Visto na tela: conta gratuita com 1 alerta, clicar em "Ativar alerta" numa 2ª série devolve o aviso de limite — e a barra lateral ganha um favorito novo. O alerta exige série favoritada, então o favorito nasce primeiro e a recusa vem depois. **Ação recusada não pode deixar rastro.** A correção desfaz só o que aquela tentativa criou; favorito que já existia é da pessoa e não se toca |
+
+**Nota de operação sobre o encoding.** Corrigir o código não conserta as linhas já gravadas: o
+`anpIngestor` pula por `ETag`/`Last-Modified` antes de decodificar. Os nomes tortos só se corrigem
+sozinhos quando a ANP publicar um arquivo novo (ritmo mensal) — ou na hora, com
+`npm run ingest -- --url <url-do-mês>`, que força o download. O `hashContent` opera sobre o texto
+**decodificado**, então o hash muda com a correção e a 2ª linha de defesa não bloqueia o reprocesso.
+
+### 🔧 Corrigido em 09/ago/2026 — varredura das páginas de pagamento
+
+> Mesma branch `fix/pontas-soltas`, três dias depois. Desta vez o alvo foi o que o cliente **lê e
+> clica** ao pagar: o `checkout.html`, a landing e os três documentos legais. Cinco achados, e o
+> primeiro é o mais caro que esta branch já produziu.
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| 🔴 **Os documentos legais diziam ao cliente que não tinham sido revisados por advogado** | `termos.html`, `privacidade.html`, `reembolso.html` (rodapé) | A revisão aconteceu em **06/ago** (item 14). A frase *"Documento em rascunho, ainda não revisado por advogado"* continuou publicada, a um clique do aceite e de um débito de R$ 59,90. **Contradição de três pontas** — o item 14 aqui dizia ✅, o `proximos-passos.md` listava a revisão como pendente em quatro lugares, e a página afirmava a terceira coisa. Aviso de rascunho num contrato já revisado deprecia o próprio contrato diante de quem vai assiná-lo. Travado por teste |
+| 🔴 **A faixa do checkout garantia, pelo hostname, que "nenhuma cobrança é real"** | `checkout.html` (`avisarModo`) | O cabeçalho do próprio arquivo proíbe deduzir ambiente do hostname, em **dois** lugares, e o `#sandboxNote` obedecia — a faixa não. Rodar local contra um backend com `MERCADOPAGO_ENV=production` é caso previsto: o config permite de propósito e loga *"AMBIENTE LOCAL COM TOKEN DE PRODUÇÃO — cobranças criadas aqui são REAIS"*. Nesse cenário a tela afirmava o oposto do log e o Pix cobrava. **Repare na direção:** o `sandboxNote` erra para o lado de avisar; a faixa errava para o lado de tranquilizar. Numa tela de pagamento, conforto sem evidência é dano. Agora a faixa só afirma para onde a página aponta, e o backend é quem dá a palavra sobre dinheiro |
+| **`status: 'expired'` parava o polling em silêncio** | `checkout.html` (`pollOnce`) | Sem mensagem, sem botão, e com o cronômetro local **continuando a correr**. Quem manda na validade é o Mercado Pago, não o nosso `setInterval`, e os dois divergem quando `expiresAt` não vem na resposta, quando o relógio do cliente está adiantado, ou quando a order é cancelada antes. A pessoa ficava olhando "Aguardando o pagamento…" com contador vivo e código morto — e o polling, única coisa capaz de tirá-la dali, já tinha sido desligado. O ramo irmão (`cancelled`) sempre fez certo |
+| **Contador tratava validade zero como validade ausente** | `checkout.html` (`showPix`) | `c.expiresIn \|\| EXPIRES_SECONDS`: uma cobrança que chega já vencida (relógios fora de sincronia, resposta lenta) ganhava um contador **novo de 30 min** para um código morto. Zero é resposta legítima, não ausência de resposta |
+| **A confirmação dizia o plano que o navegador escolheu** | `checkout.html` (`onPaid`) | `state.plan` é variável do cliente, e o seletor de plano continua clicável com o QR na tela — dava para pagar o mensal e ler "Seu acesso Premium anual foi liberado". Quem sabe o que foi comprado é o registro da cobrança, e ele já vinha na resposta do polling. Mesma regra do preço: a página exibe, o backend decide |
+| Landing escondida do Google (`noindex`) | `premium.html` | Herança da porta falsa. Ninguém decidiu mantê-lo — ele sobreviveu, que é como quase toda ponta solta aqui nasceu. Uma página de vendas com `noindex` é loja de porta trancada, e o tráfego orgânico é justamente o canal que responderia à pergunta em aberto ("alguém paga sem eu pedir?"). O `checkout.html` **continua** `noindex`, e agora com o motivo escrito: exige login e é transacional |
+| Cabeçalho do `reembolso.html`: "⚠️ o que falta no código" | `reembolso.html` | Listava os três itens (estorno, `refunded` cortando acesso, pró-rata) que foram implementados em 05/ago. Aviso de dívida já paga manda quem lê procurar buraco que não existe, e treina a ignorar avisos |
+| Checklist com contagem de testes fixa (271/102) | `plan.md` §4.5 A1/A2 | Já estava errada na primeira releitura e erraria a cada commit. Checklist que envelhece sozinho ensina a ignorar o desvio |
+
+**Novos guardas:** `checkoutPage.test.ts` foi de 7 para 12 casos (faixa, `expired`, plano confirmado,
+validade zero) e o `staticPromises.test.ts` ganhou o bloco dos documentos legais — que não checa "a
+palavra rascunho sumiu", e sim que **as três páginas contam a mesma história** e que a versão que
+elas exibem é a que o checkout envia. Os dois primeiros foram validados ao contrário: os bugs foram
+reintroduzidos de propósito e os testes falharam com a mensagem certa.
+
+### 🔧 Corrigido em 06/ago/2026 na branch `fix/pontas-soltas` (fora da main)
+
+> **Por que numa branch.** A main dispara deploy no Render e na Vercel a cada push, e o produto
+> agora cobra dinheiro real. Correção de pontas soltas é justamente o tipo de trabalho que produz
+> muitos commits pequenos e alguma tentativa e erro — o lugar errado para isso é uma branch que
+> publica sozinha. A branch acumula, a main recebe uma vez.
+
+| O quê | Onde | Por que importava |
+|---|---|---|
+| **Alerta continuava sendo enviado depois da assinatura vencer** | `fuelAlertService.ts`, `alertQuota.ts`, `subscriptionService.ts` | O gate do `POST /alerts` protege a **criação**; a varredura semanal nunca consultou assinatura. Quem criou 6 alertas como assinante e deixou vencer continuava recebendo os 6, para sempre — o produto entregando de graça a única coisa que cobra. Excedentes agora ficam **dormentes, não apagados**. +16 testes |
+| `evaluateAllFuelAlerts` **sem nenhum teste** | `test/alertSweepQuota.test.ts` (novo) | É a função que decide quem recebe e-mail toda semana. A única cobertura era a do caminho de um alerta só; o caminho de produção — vários donos, vários planos — nunca tinha sido exercitado, e foi ali que o vazamento morava |
+| Landing: "Estamos medindo o interesse antes de lançar" | `premium.html` (rodapé) | Frase da fase de porta falsa, a um clique de um débito de R$ 59,90. Mesma classe do formulário de e-mail removido horas antes |
+| Checkout: "experimento da Fase 10" | `checkout.html` (rodapé) | Idem, na página que emite a cobrança |
+| "Posso cancelar? Sim, **em um clique**" | `premium.html` (FAQ) | O clique nunca existiu — e não precisa: a compra é avulsa, sem recorrência. A correção foi dizer a verdade, não construir o botão |
+| "seu celular avisa" | `premium.html` (card) | Promete push; `createFuelAlertSchema` aceita `channel: z.literal("email")` e nada mais |
+| "12 meses de histórico" vendido como benefício **pago** | `premium.html` + `checkout.html` (resumo) | O histórico é público e sem login. O FAQ da mesma landing promete o mesmo de graça "para sempre" — duas afirmações opostas na mesma página |
+| "Preço de fundador **travado** enquanto você for assinante" | `premium.html` | Não há mecanismo de preço por pessoa: `PLAN_PRICE_CENTS` é constante única e cada renovação é compra nova pelo preço vigente. Congelamento de preço prometido em contrato de consumo sem código que o cumpra |
+| Botão "Simular pagamento" **renderizado em produção** | `checkout.html` | O comentário afirmava que não era. Vinha no HTML sempre, listener ligado, escondido só por `display:none`. `simBtn.click()` no console pintava "Pagamento confirmado" numa página de cobrança real — sem liberar acesso (o gate é o backend), mas com captura de tela de confirmação falsa. Agora é injetado por JS dentro de `if (DEMO)` |
+| Cabeçalhos das duas páginas descrevendo sandbox/porta falsa | `premium.html`, `checkout.html` | O do checkout dizia "credenciais de TESTE — nenhum dinheiro real circula". É a primeira coisa que se lê antes de mexer no que cobra, e estava autorizando experimentos que hoje custam dinheiro de outra pessoa |
+| `URL.revokeObjectURL` na linha seguinte ao `click()` | `api/client.ts` | Pode cancelar o download sem erro e sem log. Aconteceria em "baixar meus dados" — direito da LGPD que a Política de Privacidade promete por escrito. A tela diria que deu certo e nenhum arquivo apareceria |
+| `checkoutPage.test.ts` acusava os próprios comentários | `checkoutPage.test.ts` | O teste varria o arquivo cru; este repositório documenta defeitos **citando** o código que os causava, então a documentação da correção reprovava a correção. Passou a ignorar comentários — com o `//` removido só quando abre a linha, para não engolir metade de um `https://` e afrouxar o teste sem ninguém notar |
+| Contradições dentro da própria §ESTADO ATUAL | `plan.md` | O cabeçalho dizia 05/ago com conteúdo de 06/ago; uma nota afirmava que os itens 5 e 6 "não estão em produção" ao lado do item 13 ✅ que é o deploy deles; o bloco da "armadilha do item 8" descrevia a assinatura como desligada ao lado do item 8 ✅ `ATIVA`; e a ordem de execução ainda mandava fazer 14, 15 e 8 |
+
+**Novo teste-guarda: `staticPromises.test.ts`.** Irmão do `staticLinks.test.ts`, e pela mesma razão:
+o padrão já se repetiu quatro vezes e o trabalho de achá-lo é manual, lento e ninguém repete a cada
+commit. Ele trava as seis frases derrubadas acima contra o retorno, e afirma o inverso — que "sem
+cobrança automática", os 7 dias do CDC e o nome do processador de pagamento continuem na tela.
+
+**O que ele deliberadamente NÃO faz:** julgar se uma promessa *nova* é cumprida. Isso exige ler o
+código e decidir, e um teste que tentasse fazê-lo daria falso verde. Ele impede que as promessas
+**já derrubadas** voltem — que é o jeito mais provável de elas voltarem: alguém "restaurando a
+funcionalidade" sem ler o porquê.
+
+#### Dependências: uma corrigida, uma deixada de propósito
+
+O `npm audit` acusava vulnerabilidade alta nos dois pacotes. **Só uma delas importa**, e a
+diferença é a que separa "tem CVE" de "está exposto":
+
+| Onde | Achado | O que foi feito |
+|---|---|---|
+| **backend** (produção) | `ip-address ≤ 10.3.0`, puxada por `express-rate-limit@8.6.0`. Três avisos de má classificação de IP (octetos com zero à esquerda, sufixo CIDR, IPv6 mapeado) | **Corrigido.** `express-rate-limit ^8.6.2` + `ip-address` para 10.4.0. `npm audit --omit=dev` agora dá **0 vulnerabilidades** |
+| **frontend** (só teste) | `undici`, puxada por `jsdom` — que é `devDependency` | **Deixado.** `npm audit --omit=dev` já dava **0**: a `undici` não entra no bundle e só existe no ambiente que roda os testes. Corrigir exigiria subir o `jsdom` de major (29 → 30) para trocar uma dependência que nenhum usuário executa |
+
+**Por que a do backend não era teórica.** O que o `express-rate-limit` faz com a `ip-address` é
+decidir *qual chave* conta a requisição — e esta API roda atrás de proxy, com `trust proxy: 1`, o
+que significa que a chave sai de um cabeçalho que o cliente controla. IP mal classificado ali não
+vira SSRF (o Express não busca URL nenhuma que o usuário mande), vira **evasão do rate-limit**: uma
+única origem contando como várias, num endpoint público. Modesto, e do tipo que não deixa rastro.
+
+**Majors não foram tocados** (React 18→19, Express 4→5, Vite 6→8, TypeScript 5→7, ESLint 9→10).
+Cada um é uma migração com risco próprio, e nenhum deles resolve um problema que exista hoje —
+misturá-los com correções de comportamento numa branch só tornaria impossível dizer o que quebrou
+o quê. Ficam para uma sessão que tenha isso como único assunto.
+
+---
 
 ### Corrigido em 05/ago/2026 (a sessão de varredura)
 
@@ -309,10 +477,14 @@ pessoa ainda pode fazer (trocar a série do alerta que já tem, de graça) em ve
 > em cima, é a única lista de pendências deste documento.** Aqui fica só o que ela não cobre.
 
 1. **Item 16 do milestone** — a compra real de ponta a ponta, feita por você e estornada.
-2. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
-3. **Fase 8** — faltam screenshots/GIF no README e o post de LinkedIn.
-4. **Validar a hipótese de mercado** — o experimento da Fase 10 nunca rodou. Não bloqueia nada
-   técnico; bloqueia saber se o produto tem cliente.
+2. **Item 17 do milestone** — o lembrete semanal no calendário.
+3. **Decidir o gatilho de virar MEI** — nada trava hoje; decida o número antes de virar susto.
+4. **Fase 8** — faltam screenshots/GIF no README e o post de LinkedIn.
+5. **Validar a hipótese de mercado** — a landing está no ar e cobrando, mas **ninguém pagou ainda**
+   e não há analytics instalado (o `trackEvent` do `premium.html` só faz `console.log`; é o único
+   `TODO` que sobrou naquele arquivo). Sem visitantes → cliques → pagamentos medidos, "o produto
+   tem cliente?" continua sem resposta — e a resposta não vem sozinha por o checkout estar ligado.
+   Não bloqueia nada técnico.
 
 ### O fio que puxou esta sessão inteira
 
@@ -1187,8 +1359,8 @@ automatizado, portão de go-live cumprido (`docs/runbook-operacao.md` §1).
 
 | # | Teste | Esperado |
 |---|---|---|
-| A1 | `npm test` no backend | 271 passando |
-| A2 | `npm test` no frontend | 102 passando |
+| A1 | `npm test` no backend | tudo verde |
+| A2 | `npm test` no frontend | tudo verde |
 | A3 | `npx tsc --noEmit` nos dois pacotes | sem erro |
 | A4 | `npx eslint .` nos dois pacotes | sem erro |
 | A5 | `npm run build` nos dois pacotes | sem erro |
@@ -1196,6 +1368,12 @@ automatizado, portão de go-live cumprido (`docs/runbook-operacao.md` §1).
 
 > A6 é o teste que trava a armadilha dos links internos — o erro que foi cometido **três vezes** em
 > 05/ago porque funciona em produção e falha em desenvolvimento.
+>
+> ⚠️ **A1 e A2 diziam "271 passando" e "102 passando".** Os números estavam errados na primeira vez
+> que alguém releu a tabela, e continuariam errando a cada commit — um checklist que envelhece
+> sozinho ensina quem o executa a ignorar o desvio ("deve ser dos testes novos"), que é exatamente o
+> contrário do que um teste-guarda serve. **O número vive num lugar só**, na §"Onde o produto está";
+> aqui o critério é o que importa: verde.
 
 ### Bloco B — Estado do ambiente de produção (🟢)
 

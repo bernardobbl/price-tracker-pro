@@ -387,8 +387,17 @@ export async function downloadAccountData(): Promise<string> {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  // Sem o revoke, o blob fica preso na memória da aba até ela fechar.
-  URL.revokeObjectURL(url);
+
+  // ⚠️ O revoke é ADIADO de propósito. Sem o revoke, o blob fica preso na
+  // memória da aba até ela fechar; revogando na linha seguinte ao `click()`, a
+  // URL pode morrer antes de o navegador ter começado a ler o arquivo — e o
+  // download é cancelado sem erro, sem log e sem nada na tela. O sintoma é o
+  // pior possível para esta função em particular: a pessoa clica em "baixar meus
+  // dados" (um direito da LGPD que a Política de Privacidade promete por
+  // escrito), a tela diz que deu certo, e nenhum arquivo aparece.
+  //
+  // O atraso não trava nada: o `setTimeout` roda depois desta função retornar.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 
   return nome;
 }

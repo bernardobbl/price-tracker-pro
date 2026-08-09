@@ -89,3 +89,155 @@ export function decideAlertQuota({
       `acompanhar quantas quiser.`,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A COTA NA HORA DE DISPARAR — e não só na hora de criar
+//
+// `decideAlertQuota` acima protege a CRIAÇÃO. Durante meses foi a única
+// checagem que existiu, e isso deixava um vazamento silencioso do tamanho do
+// produto inteiro:
+//
+//   1. a pessoa assina, cria 6 alertas (permitido, é ilimitado);
+//   2. a assinatura vence e ninguém renova;
+//   3. o `PlanBadge` volta a dizer "plano gratuito", o `POST /alerts` volta a
+//      barrar no segundo — e **os 6 alertas continuam disparando por e-mail,
+//      toda semana, para sempre**.
+//
+// O que o Premium vende, segundo a própria landing, é *ser avisado sem precisar
+// voltar no site*. Continuar avisando depois do vencimento é entregar de graça
+// exatamente aquilo que se cobra — e o formato da falha é o de sempre: nada
+// quebra, nenhum log reclama, e o único sintoma é receita que não aparece.
+//
+// A regra aplicada aqui é a mesma do gate de criação, sem invenção: assinante
+// dispara tudo; quem está no gratuito dispara `FREE_ALERT_LIMIT` alertas. Os
+// demais ficam **dormentes, não apagados** — o dado é da pessoa, ela pode
+// renovar amanhã, e apagar alerta por causa de vencimento seria destruir
+// configuração alheia sem pedir.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** O mínimo que o corte por cota precisa saber sobre um alerta. */
+export interface AlertForQuota {
+  id: string;
+  user_id: string;
+  /** Usado para decidir QUAIS alertas sobrevivem. Ausente vai para o fim. */
+  created_at?: string | null;
+}
+
+export interface QuotaSplit<T> {
+  /** Alertas que devem ser avaliados nesta rodada. */
+  kept: T[];
+  /** Alertas dormentes por falta de plano — não são apagados, só ignorados. */
+  skipped: T[];
+}
+
+/**
+ * Separa os alertas que o plano de cada dono ainda sustenta.
+ *
+ * **Quais sobrevivem quando a cota aperta: os mais antigos.** É a única ordem
+ * que a pessoa consegue prever sem abrir o banco — o primeiro alerta que ela
+ * criou é o que ela mais provavelmente ainda quer. Escolher os mais recentes
+ * faria o alerta principal calar por causa de um teste feito no mês passado, e
+ * escolher "o mais barato" ou "o mais perto do alvo" seria o app decidindo por
+ * ela qual combustível importa.
+ *
+ * Empate de `created_at` (ou data ausente) é desempatado pelo `id`, para a
+ * função ser **determinística**: sem isso, a mesma entrada poderia calar
+ * alertas diferentes a cada semana, conforme a ordem que o banco devolvesse.
+ *
+ * Função pura de propósito — a decisão de quem recebe e-mail é exatamente o
+ * tipo de regra que precisa ser testável sem banco, sem SMTP e sem relógio.
+ */
+export function splitAlertsByQuota<T extends AlertForQuota>(
+  alerts: readonly T[],
+  paidUserIds: ReadonlySet<string>
+): QuotaSplit<T> {
+  const porDono = new Map<string, T[]>();
+  for (const alerta of alerts) {
+    const lista = porDono.get(alerta.user_id);
+    if (lista) lista.push(alerta);
+    else porDono.set(alerta.user_id, [alerta]);
+  }
+
+  const kept: T[] = [];
+  const skipped: T[] = [];
+
+  for (const [userId, doDono] of porDono) {
+    if (paidUserIds.has(userId)) {
+      kept.push(...doDono);
+      continue;
+    }
+
+    const ordenados = [...doDono].sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : Number.NaN;
+      const tb = b.created_at ? Date.parse(b.created_at) : Number.NaN;
+      // Data ausente/inválida vai para o fim: quem tem data conhecida é mais
+      // confiável para decidir "o mais antigo".
+      const va = Number.isNaN(ta) ? Number.POSITIVE_INFINITY : ta;
+      const vb = Number.isNaN(tb) ? Number.POSITIVE_INFINITY : tb;
+      if (va !== vb) return va - vb;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+
+    kept.push(...ordenados.slice(0, FREE_ALERT_LIMIT));
+    skipped.push(...ordenados.slice(FREE_ALERT_LIMIT));
+  }
+
+  return { kept, skipped };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O MESMO CORTE, DITO NA TELA
+//
+// O `splitAlertsByQuota` acima resolveu o vazamento de receita: alerta além da
+// cota deixou de disparar. Ele não resolveu — e criou — o problema seguinte, do
+// outro lado do balcão.
+//
+// A pessoa que assinou, criou seis alertas e deixou vencer continua vendo os
+// seis na barra lateral, sob um título que diz **"Alertas ativos"**. Cinco
+// deles não vão disparar nunca mais, e nada na tela conta isso. O único lugar
+// onde a informação existe é o `logger.info` do job semanal — que é observável
+// para quem opera o serviço, e invisível para quem usa.
+//
+// É a mesma falha que este projeto já catalogou três vezes: *comportamento
+// documentado no código não é comportamento comunicado* (o Pix de sandbox que a
+// tela não avisava, o SMTP ausente que o job não denunciava, o `/entitlement`
+// que nenhuma interface consultava). Só que aqui ela é pior de duas formas:
+//
+//   • a tela faz uma **afirmação positiva e falsa** — "ativos" —, não uma
+//     omissão. Quem lê sai mais errado do que se não houvesse nada escrito;
+//   • ela cai justamente sobre quem já pagou uma vez. A pessoa mais provável de
+//     renovar é a que precisa entender por que parou de receber e-mail, e o
+//     produto responde a ela com silêncio.
+//
+// **Por que a marcação vem do backend e não do navegador.** O front tem o
+// `entitlement` e teria como contar até `FREE_ALERT_LIMIT` sozinho — e aí
+// existiriam duas cópias da regra: o limite, a ordem de sobrevivência e o
+// desempate por `id`. No dia em que uma mudasse, a tela passaria a apontar como
+// dormente um alerta que dispara (ou o contrário), que é uma mentira mais cara
+// do que a que estamos consertando. Aqui a marca sai da **mesma função** que o
+// job usa para decidir, então a tela não pode divergir do comportamento.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Alerta com a resposta a "este aqui vai disparar?". */
+export type AlertWithDormancy<T> = T & { dormant: boolean };
+
+/**
+ * Marca quais alertas de **um** usuário estão dormentes por falta de plano.
+ *
+ * Preserva a ordem recebida: quem chama já devolve a lista ordenada para a
+ * tela, e reordenar aqui embaralharia a barra lateral sem motivo. O que muda é
+ * só o campo novo.
+ */
+export function markDormantByQuota<T extends AlertForQuota>(
+  alerts: readonly T[],
+  hasActiveSubscription: boolean
+): AlertWithDormancy<T>[] {
+  const { skipped } = splitAlertsByQuota(
+    alerts,
+    // Um usuário só: ou ele está no conjunto de pagantes, ou o conjunto é vazio.
+    hasActiveSubscription ? new Set(alerts.map((a) => a.user_id)) : new Set<string>()
+  );
+
+  const dormentes = new Set(skipped.map((a) => a.id));
+  return alerts.map((a) => ({ ...a, dormant: dormentes.has(a.id) }));
+}

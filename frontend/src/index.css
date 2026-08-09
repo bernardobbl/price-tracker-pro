@@ -977,6 +977,34 @@ body {
   border-radius: 999px;
 }
 
+/* ── Alerta dormente (fora da cota do plano gratuito) ──────────────────────
+   Cinza, não vermelho: não é erro nem alarme, é o plano funcionando como
+   vendido. Vermelho aqui pediria uma ação urgente que não existe — o alerta
+   está salvo e intacto, e a pessoa pode simplesmente não se importar. */
+.alert-item--dormant {
+  opacity: 0.62;
+  border-style: dashed;
+}
+
+.alert-badge--dormant {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--line-strong);
+}
+
+.alert-dormant-note {
+  margin: 0 0 0.7rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.alert-dormant-note a {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .btn-icon-danger {
   flex-shrink: 0;
   padding: 0.4rem 0.8rem;

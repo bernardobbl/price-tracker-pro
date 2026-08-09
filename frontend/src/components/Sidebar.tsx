@@ -148,15 +148,44 @@ export function Sidebar({
 
       {canManage && alerts.length > 0 && (
         <div className="panel">
-          <h2>Alertas ativos</h2>
+          {/* O título dizia "Alertas ativos" para todos, sempre — e depois que a
+              cota passou a valer também na hora de disparar, isso virou uma
+              afirmação falsa para quem deixou a assinatura vencer: os alertas
+              excedentes continuam salvos e nunca mais enviam e-mail. Com
+              dormentes na lista, o título deixa de prometer atividade e a
+              explicação vem logo abaixo. */}
+          <h2>{alerts.some((a) => a.dormant) ? "Seus alertas" : "Alertas ativos"}</h2>
+
+          {alerts.some((a) => a.dormant) && (
+            <p className="alert-dormant-note" role="status">
+              O plano gratuito envia e-mail de{" "}
+              <strong>{alerts.filter((a) => !a.dormant).length}</strong>{" "}
+              {alerts.filter((a) => !a.dormant).length === 1 ? "alerta" : "alertas"}. Os demais
+              ficam guardados e voltam a funcionar se você assinar — nada foi apagado.{" "}
+              <a href="/premium.html">Ver o Premium</a>
+            </p>
+          )}
+
           <ul className="alert-list">
             {alerts.map((a) => (
-              <li key={a.id} className="alert-item">
+              <li key={a.id} className={`alert-item${a.dormant ? " alert-item--dormant" : ""}`}>
                 <div className="alert-item-info">
                   <span className="alert-item-product">{a.tracked_series?.label ?? "Série"}</span>
                   <span className="alert-item-threshold">
                     abaixo de {a.currency} {fmt(Number(a.threshold_price))}
-                    {a.triggered && <span className="alert-badge">disparado</span>}
+                    {a.dormant ? (
+                      // O badge fala do EFEITO ("não avisa"), não do estado
+                      // interno ("dormente"): quem lê quer saber se vai receber
+                      // e-mail, não o nome que demos à situação no código.
+                      <span
+                        className="alert-badge alert-badge--dormant"
+                        title="Fora da cota do plano gratuito: este alerta está salvo, mas não envia e-mail."
+                      >
+                        não avisa
+                      </span>
+                    ) : (
+                      a.triggered && <span className="alert-badge">disparado</span>
+                    )}
                   </span>
                 </div>
                 <button

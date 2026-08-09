@@ -86,8 +86,20 @@ services:
       # as credenciais de produção não entram. Ver docs/runbook-operacao.md §1.
       - key: MERCADOPAGO_ENV
         sync: false
-      # Só existe depois de cadastrar a URL pública do webhook no painel. Hoje
-      # é lida e não valida nada — a validação x-signature é pendência aberta.
+      # Só existe depois de cadastrar a URL pública do webhook no painel.
+      #
+      # ⚠️ O código da validação `x-signature` EXISTE desde 05/ago/2026
+      # (`backend/src/lib/webhookSignature.ts`; a rota responde 401 ao que não
+      # bater). O que falta é só o valor: **sem esta variável a conferência fica
+      # desligada** e o backend avisa uma vez no log. Preencher aqui é o que
+      # liga a proteção — não há código pendente do outro lado.
+      #
+      # Este comentário já disse o contrário ("é lida e não valida nada"), e a
+      # frase sobreviveu à implementação. É a armadilha catalogada em
+      # docs/proximos-passos.md: afirmação desatualizada ao lado de fatos
+      # corretos herda a credibilidade deles — e num arquivo que é o registro do
+      # que o serviço precisa, ela faz alguém deixar de preencher um segredo
+      # achando que não adiantaria.
       - key: MERCADOPAGO_WEBHOOK_SECRET
         sync: false
 

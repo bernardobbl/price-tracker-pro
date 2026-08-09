@@ -102,8 +102,14 @@ function App() {
     }
 
     setAlertSaving(true);
+    // Criar o alerta exige uma série favoritada, então o favorito nasce primeiro.
+    // Guardamos se ELE nasceu agora para poder desfazê-lo se o alerta for
+    // recusado — ver o `catch`.
+    let favoritoCriadoAgora: string | null = null;
     try {
-      const favorite = await favorites.ensureFavorite(view);
+      const { favorite, created } = await favorites.ensureFavorite(view);
+      if (created) favoritoCriadoAgora = favorite.id;
+
       await createFuelAlert({
         seriesId: favorite.id,
         thresholdPrice: numericThreshold,
@@ -111,10 +117,19 @@ function App() {
         channel: "email",
         enabled: true,
       });
+      favoritoCriadoAgora = null; // deu certo: o favorito fica, e deve ficar
       setAlertThreshold("");
       await Promise.all([reloadAlerts(), favorites.reload()]);
       push("success", "Alerta salvo! Você será avisado por email.");
     } catch (err: unknown) {
+      // Ação recusada não pode deixar rastro. Visto em produção em 09/ago: quem
+      // batia na cota clicando em "Ativar alerta" recebia o aviso de limite E
+      // ganhava, em silêncio, um favorito que não tinha pedido — porque ele já
+      // havia sido criado uma linha antes. Só apagamos o que ESTA tentativa
+      // criou; favorito que já existia é da pessoa e não se toca.
+      if (favoritoCriadoAgora) {
+        await favorites.discardFavorite(favoritoCriadoAgora);
+      }
       setAlertError(err instanceof Error ? err.message : "Erro ao salvar alerta");
       // Bater no limite do plano gratuito não é erro da pessoa — é o momento em
       // que faz sentido mostrar o caminho para o Premium. Guardamos o código

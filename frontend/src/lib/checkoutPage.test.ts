@@ -36,7 +36,19 @@ describe("checkout.html", () => {
   // de execução — derrubando o resto do script inteiro, inclusive o polling
   // que confirma o pagamento. Sem este teste, nada avisa antes do usuário.
   it("não referencia nenhum id que não existe no HTML", () => {
-    const html = checkout as string;
+    // Comentários fora antes de varrer. Este repositório documenta os defeitos
+    // corrigidos citando o código que os causava — um comentário que explica
+    // "`$('simBtn')` devolvia null aqui" não é uma chamada, é a lição. Sem esta
+    // linha, a documentação da correção reprova a própria correção. (Código
+    // comentado também sai, e deve mesmo: código comentado não executa.)
+    //
+    // O `//` só é removido quando ABRE a linha. Um `/\/\/.*/` solto engoliria
+    // metade de qualquer `https://...` e, com ela, qualquer `$('id')` escrito
+    // depois na mesma linha — o teste ficaria mais frouxo sem ninguém notar,
+    // que é o pior resultado possível para um teste-guarda.
+    const html = (checkout as string)
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/^[ \t]*\/\/[^\n]*/gm, " ");
 
     const idsUsados = [...html.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]);
     const idsExistentes = new Set(
@@ -149,5 +161,106 @@ describe("checkout.html", () => {
       /r\.status === 503|code === 503/
     );
     expect(html).toContain("tentar de novo não vai adiantar");
+  });
+
+  // ── 7. A faixa do topo não pode afirmar que a cobrança não é real ───────
+  //
+  // O cabeçalho deste arquivo proíbe deduzir ambiente do hostname, em dois
+  // lugares, e o `#sandboxNote` obedecia. A faixa do topo não: ela via
+  // `localhost` e escrevia **"Nenhuma cobrança é real"**.
+  //
+  // Rodar local contra um backend com `MERCADOPAGO_ENV=production` é um caso
+  // previsto — `config/mercadoPago.ts` permite de propósito e loga "AMBIENTE
+  // LOCAL COM TOKEN DE PRODUÇÃO — cobranças criadas aqui são REAIS". Nesse
+  // cenário a tela afirmava o contrário do log, e o Pix cobrava.
+  //
+  // Note a direção do erro, que é o que torna este pior que o do `sandboxNote`:
+  // aquele erra para o lado de **avisar**, este errava para o lado de
+  // **tranquilizar**. Numa tela de pagamento, conforto sem evidência é dano.
+  it("não afirma, a partir do hostname, que nenhuma cobrança é real", () => {
+    const html = (checkout as string)
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/^[ \t]*\/\/[^\n]*/gm, " ");
+
+    // A frase só pode existir sob `DEMO`, que é a única situação em que a
+    // página sabe, sozinha, que não há cobrança nenhuma.
+    const trechoLocalhost = html.match(
+      /API\.indexOf\('localhost'\)[\s\S]{0,600}?\)\(\);/
+    );
+    expect(trechoLocalhost, "o bloco `avisarModo` mudou de forma — revise à mão").toBeTruthy();
+
+    expect(
+      trechoLocalhost![0],
+      "a faixa voltou a garantir, pelo hostname, que a cobrança não é real"
+    ).not.toMatch(/Nenhuma cobrança é real|não cobra nada/i);
+  });
+
+  it("corrige a faixa quando o backend responde que está em produção", () => {
+    const html = checkout as string;
+
+    expect(html, "sumiu o ajuste da faixa pelo ambiente informado pelo backend").toContain(
+      "ajustarFaixaAoAmbiente"
+    );
+    // O caso que motivou tudo: local + backend produtivo = dinheiro de verdade,
+    // e a pessoa está mentalmente em "estou testando".
+    expect(html, "o aviso de backend produtivo em ambiente local sumiu").toMatch(
+      /modo PRODUÇÃO/
+    );
+  });
+
+  // ── 8. Expiração vinda do provedor não pode ser silenciosa ──────────────
+  //
+  // `status: 'expired'` só chamava `stopPolling()`: sem mensagem, sem botão, e
+  // com o cronômetro local continuando a correr. Quem manda na validade é o
+  // Mercado Pago, não o nosso `setInterval` — e os dois divergem quando o
+  // `expiresAt` não vem na resposta, quando o relógio do cliente está adiantado
+  // ou quando a order é cancelada mais cedo. Nesses casos a pessoa ficava
+  // olhando "Aguardando o pagamento…" com contador vivo e código morto, sem
+  // nada capaz de tirá-la dali — o polling já tinha sido desligado.
+  it("quando o provedor diz que expirou, para o relógio e oferece saída", () => {
+    const html = (checkout as string).replace(/<!--[\s\S]*?-->/g, " ");
+
+    const ramo = html.match(/d\.status === 'expired'\)\s*\{[\s\S]{0,700}?\n\s*\}/);
+    expect(ramo, "o tratamento de `expired` sumiu ou virou uma linha só").toBeTruthy();
+
+    const corpo = ramo![0];
+    expect(corpo, "o cronômetro continua correndo depois de expirar").toContain(
+      "clearInterval(state.tick)"
+    );
+    expect(corpo, "expirou sem dizer nada na tela").toContain("setStatus");
+    expect(corpo, "expirou sem oferecer o caminho de gerar outro código").toContain("againBtn");
+  });
+
+  // ── 9. A confirmação diz o que o BACKEND registrou ──────────────────────
+  //
+  // `onPaid` montava a frase "Seu acesso <plano> foi liberado" a partir de
+  // `state.plan` — variável do navegador. O seletor de plano continua clicável
+  // com o QR na tela, então dá para pagar o mensal e ler "anual". Quem sabe o
+  // que foi comprado é o registro da cobrança, e ele vem na resposta do polling.
+  it("monta a confirmação com o plano que o backend devolveu", () => {
+    const html = checkout as string;
+
+    expect(html, "onPaid voltou a ser chamado sem a resposta do backend").toContain(
+      "onPaid(d)"
+    );
+    expect(html, "a confirmação não usa mais o plano confirmado pelo servidor").toContain(
+      "planoConfirmado"
+    );
+  });
+
+  // ── 10. Contador: zero é resposta, não ausência de resposta ─────────────
+  //
+  // `state.left = c.expiresIn || EXPIRES_SECONDS` tratava **0** como "não
+  // informado" e caía no padrão de 30 minutos. Uma cobrança que chega já
+  // vencida (relógios fora de sincronia, resposta lenta) ganharia um contador
+  // novo em folha para um código morto.
+  it("não confunde validade zero com validade ausente", () => {
+    const html = checkout as string;
+
+    expect(
+      html,
+      "voltou o `||` no cálculo do contador — zero cairia no padrão de 30 min"
+    ).not.toMatch(/state\.left\s*=\s*c\.expiresIn\s*\|\|/);
+    expect(html).toMatch(/c\.expiresIn\s*!=\s*null/);
   });
 });

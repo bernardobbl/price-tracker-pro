@@ -1,10 +1,20 @@
 <!--
   ============================================================================
-  PRICE TRACKER PRO — página de validação do Premium ("porta falsa")
+  PRICE TRACKER PRO — landing do Premium
   ----------------------------------------------------------------------------
-  ⚠️ ~~ESTE ARQUIVO SÓ EXISTE NA BRANCH `feat/premium-landing`.~~
-     Desatualizado: mergeado na main pelo PR #22 em 05/ago/2026, e a cobrança
-     por trás dele existe de verdade (Mercado Pago, credenciais de teste).
+  ⚠️ ESTA PÁGINA VENDE DE VERDADE. Nasceu como "porta falsa" (um experimento para
+     medir se alguém pagaria, sem construir a cobrança), e três camadas de
+     história ficaram escritas aqui depois que ela deixou de ser isso:
+
+       • branch `feat/premium-landing` → mergeada na main pelo PR #22, 05/ago/2026;
+       • credenciais de TESTE do Mercado Pago → produção desde 06/ago/2026, 12:44;
+       • "medindo o interesse antes de lançar" → lançado, cobrando, com contrato.
+
+     Cada linha desta página é uma afirmação feita a um consumidor a um clique de
+     um débito de R$ 59,90. Antes de escrever qualquer promessa aqui, confira se
+     existe código que a cumpra — foi assim que caíram, em 06/ago, o formulário
+     de e-mail que descartava o e-mail, o "cancele em um clique" sem botão e o
+     "preço travado" sem mecanismo.
 
   🔗 REGRA DOS LINKS INTERNOS — leia antes de mexer em qualquer href.
      Esta página é servida em DOIS endereços: /premium.html (o arquivo, que
@@ -23,17 +33,18 @@
     • R$ 16,90/mês no mensal (âncora: 12x16,90 = R$202,80, o anual fica 70% menor)
     • Vitalício DESCARTADO: receita que morre com despesa que não morre.
 
-  2 COISAS PRA CONFIGURAR (procure por "TODO" no código):
-    1. CAPTURA DE EMAIL: troque o endpoint do formulário por um Formspree
-       (formspree.io, grátis) ou pela sua própria API.
-    2. ANALYTICS: cole o script do Vercel Analytics ou Plausible no <head>
-       pra medir visitantes -> cliques -> pagamentos. Os eventos já disparam
-       nos pontos certos (procure por trackEvent).
+  O QUE AINDA FALTA CONFIGURAR (1 item — procure por "TODO"):
+    • ANALYTICS: cole o script do Vercel Analytics ou Plausible no <head> pra
+      medir visitantes -> cliques -> pagamentos. Os eventos já disparam nos
+      pontos certos (procure por trackEvent).
+
+    (Havia um segundo item, "CAPTURA DE EMAIL". O formulário foi REMOVIDO em
+     06/ago/2026 — ele prometia avisar quando o Premium abrisse e descartava o
+     endereço num `form.reset()`. A história completa está no comentário que
+     ficou no lugar dele, mais abaixo.)
 
   O checkout é o frontend/public/checkout.html — linke como /checkout.html
   (o apelido /premium/checkout só existe na Vercel; ver a regra acima).
-
-  DICA DE TESTE: rode 2-4 semanas. Sinal forte = alguém PAGA de verdade.
   ============================================================================
 -->
 <!DOCTYPE html>
@@ -44,7 +55,22 @@
 <meta name="theme-color" content="#f4f3ee" />
 <title>Price Tracker Pro Premium — abasteça na hora certa</title>
 <meta name="description" content="Vigiamos o preço do combustível na sua cidade com os dados da ANP e avisamos quando ele cai. R$ 59,90/ano ou R$ 16,90/mês." />
-<meta name="robots" content="noindex" />
+<!--
+  Indexável desde 09/ago/2026. O `noindex` que estava aqui era herança da fase
+  de "porta falsa": fazia sentido quando a página era um experimento para medir
+  interesse num produto que não existia, e deixou de fazer no minuto em que ela
+  passou a vender de verdade (06/ago, 12:44).
+
+  Ninguém tomou a decisão de mantê-lo — ele só sobreviveu, que é como quase
+  toda ponta solta deste projeto nasceu. Uma página de vendas escondida do
+  Google é uma loja com a porta trancada: o tráfego orgânico é justamente o
+  canal que responderia à pergunta em aberto ("alguém paga sem eu pedir?").
+
+  ⚠️ O `checkout.html` CONTINUA com `noindex`, e de propósito — não copie esta
+  mudança para lá. Aquela página exige login, é transacional e não tem conteúdo
+  que sirva a quem chega de busca; indexá-la só produziria resultado quebrado.
+-->
+<meta name="robots" content="index, follow" />
 
 <!-- TODO 3: cole aqui o script do Vercel Analytics ou Plausible -->
 
@@ -360,7 +386,12 @@
       <div class="card">
         <div class="ic">!</div>
         <h3>Alertas que valem dinheiro</h3>
-        <p>Escolha os combustíveis e as cidades que te interessam. Quando a média cai, seu celular avisa — sem você abrir o app toda hora.</p>
+        <!-- Dizia "seu celular avisa", que promete notificação push: não existe app
+             nativo nem push, e o schema do alerta só aceita `channel: "email"`
+             (backend/src/schemas/requestSchemas.ts). O card ao lado já diz "no
+             email" — os dois juntos faziam a página prometer dois canais e
+             entregar um. -->
+        <p>Escolha os combustíveis e as cidades que te interessam. Quando a média cai, o aviso chega no seu email — sem você abrir o app toda hora.</p>
       </div>
       <div class="card">
         <div class="ic">→</div>
@@ -383,11 +414,38 @@
         <div>
           <h2>Menos de um café por mês.</h2>
           <p class="offer-lede">Um tanque cheio custa uns R$ 300. Acertar o dia de abastecer já paga a assinatura do ano inteiro — várias vezes.</p>
+          <!--
+            LISTA REESCRITA EM 06/ago/2026. As quatro linhas anteriores foram
+            conferidas uma a uma contra o código, e três não se sustentavam:
+
+            • "12 meses de histórico, com comparação entre cidades" — o histórico
+              é PÚBLICO e sem login (`GET /api/fuel/*` não tem `requireAuth`; a
+              retenção de 12 meses é a mesma para todo mundo, em
+              `retentionService.ts`). Estava vendendo como benefício pago algo que
+              o próprio FAQ, três parágrafos abaixo, promete de graça "para
+              sempre". Duas afirmações opostas na mesma página.
+
+            • "Cancela quando quiser, sem falar com ninguém" — não existe cancelamento
+              porque não existe cobrança recorrente: a compra é avulsa (Pix
+              Automático exige CNPJ, ver docs/recebimento-sem-cnpj.md). Não há o
+              que cancelar, e a frase fazia a pessoa procurar um botão que não
+              existe. O fato verdadeiro é melhor do que a promessa: nada é
+              debitado de novo, ponto.
+
+            • "Preço de fundador travado enquanto você for assinante" — não há
+              nada no código que trave preço por pessoa. `PLAN_PRICE_CENTS` é uma
+              constante única para todos, e cada renovação é uma compra nova pelo
+              preço vigente naquele dia. Prometer congelamento de preço por
+              escrito, num contrato de consumo, sem mecanismo que o cumpra, é a
+              promessa mais cara desta lista.
+
+            O que sobrou é o que o gate realmente entrega: alertas ilimitados.
+          -->
           <ul>
             <li>Alertas de queda em quantas séries você quiser <span class="offer-note">(o grátis acompanha 1)</span></li>
-            <li>12 meses de histórico, com comparação entre cidades</li>
-            <li>Cancela quando quiser, sem falar com ninguém</li>
-            <li>Preço de fundador travado enquanto você for assinante</li>
+            <li>Compare gasolina e etanol, ou a cidade de casa e a da estrada, ao mesmo tempo</li>
+            <li>Sem cobrança automática: nada é debitado sem você pedir de novo</li>
+            <li>Aviso por email antes de vencer — você decide se renova</li>
           </ul>
         </div>
 
@@ -428,8 +486,13 @@
         <div class="a">Porque o custo de vigiar os preços é todo mês — servidor, banco, envio de alerta. Um pagamento único acabaria e a conta continuaria chegando; em algum momento o serviço morreria. Assinatura barata é o que mantém o app vivo e melhorando.</div>
       </details>
       <details>
-        <summary>Posso cancelar?</summary>
-        <div class="a">Sim, a qualquer momento, em um clique. Você continua com acesso até o fim do período já pago e não é cobrado de novo.</div>
+        <summary>Preciso cancelar depois?</summary>
+        <!-- Dizia "Sim, a qualquer momento, em UM CLIQUE" — e esse clique nunca
+             existiu em lugar nenhum do produto. Não por esquecimento: a compra é
+             avulsa e não há assinatura recorrente para cancelar. A resposta certa
+             não é construir o botão, é dizer a verdade, que é melhor para quem
+             pergunta. -->
+        <div class="a">Não precisa. Não existe cobrança automática: você paga uma vez e o acesso vale pelo período comprado. Quando chegar perto do fim, avisamos por email — se você não fizer nada, o acesso simplesmente termina e nada é debitado. E se mudar de ideia nos primeiros 7 dias, devolvemos tudo (art. 49 do CDC); é só escrever para a gente, como diz a <a href="/reembolso.html">Política de Reembolso</a>.</div>
       </details>
       <details>
         <summary>Como eu pago?</summary>
@@ -450,7 +513,21 @@
 <footer>
   <div class="wrap">
     <span>Price Tracker Pro · dados abertos da ANP</span>
-    <span>Estamos medindo o interesse antes de lançar. Obrigado por fazer parte.</span>
+    <!--
+      CORRIGIDO EM 06/ago/2026 — dizia "Estamos medindo o interesse antes de lançar".
+
+      A frase é da fase de "porta falsa", quando esta página existia para medir se
+      alguém pagaria e o botão não levava a cobrança nenhuma. Desde 06/ago/2026,
+      12:44, o checkout cobra de verdade: o Pix gerado é pagável por qualquer banco
+      e o dinheiro cai na conta.
+
+      Dizer "antes de lançar" a um metro de um botão que debita R$ 59,90 é a mesma
+      falha do formulário de e-mail removido logo acima — a página afirmando um
+      estado do produto que deixou de ser verdade, numa página de venda, por
+      escrito, para um consumidor. Não custa nada e é exatamente o tipo de frase
+      que vira argumento de quem pede o dinheiro de volta.
+    -->
+    <span>No ar desde ago/2026 · <a href="/termos.html">Termos</a> · <a href="/privacidade.html">Privacidade</a> · <a href="/reembolso.html">Reembolso</a></span>
   </div>
 </footer>
 

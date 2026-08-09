@@ -2,12 +2,23 @@
   ============================================================================
   PRICE TRACKER PRO — CHECKOUT (/premium/checkout)
   ----------------------------------------------------------------------------
-  Branch `feat/checkout-pix`. Planos e vigência: docs/vigencia-do-acesso.md.
+  Planos e vigência: docs/vigencia-do-acesso.md.
   Provedor e taxas: docs/recebimento-sem-cnpj.md.
 
-  ESTADO: ligado ao backend (DEMO = false). As credenciais em uso são as de
-  TESTE do Mercado Pago (MERCADOPAGO_ENV=test no backend) — nenhum dinheiro
-  real circula até você trocar as credenciais e a bandeira de ambiente.
+  🔴 ESTADO: COBRANDO DE VERDADE desde 06/ago/2026, 12:44.
+  `MERCADOPAGO_ENV=production` no Render, credenciais de produção, validação de
+  assinatura do webhook ATIVA. Um Pix gerado nesta página é pagável por qualquer
+  banco e o valor cai numa conta real.
+
+  O texto anterior aqui dizia o contrário ("credenciais de TESTE — nenhum
+  dinheiro real circula"), e era verdade até aquele minuto. Um comentário de
+  cabeçalho desatualizado num arquivo de checkout não é detalhe de documentação:
+  é a primeira coisa que alguém lê antes de mexer no que cobra, e ele estava
+  autorizando experimentos que agora custam dinheiro de outra pessoa.
+
+  Como saber em qual modo o backend está, sem confiar neste comentário: gere uma
+  cobrança e olhe o campo `environment` da resposta. `production` = real. A
+  própria página faz isso e pinta o aviso amarelo (`#sandboxNote`) quando não é.
 
   EXIGE LOGIN. A assinatura é amarrada a um usuário (alertas e favoritos vivem
   numa conta), então esta página lê o token do Supabase no localStorage — que
@@ -56,6 +67,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#f4f3ee" />
 <title>Checkout · Price Tracker Pro Premium</title>
+<!-- `noindex` DELIBERADO, e diferente do caso da premium.html (que passou a ser
+     indexável em 09/ago). Esta página exige login e é transacional: para quem
+     chega de uma busca, ela é uma tela vazia pedindo sessão. Indexá-la geraria
+     resultado quebrado e canibalizaria a landing, que é a página feita para
+     receber quem ainda não decidiu. -->
 <meta name="robots" content="noindex" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -436,8 +452,24 @@
           </div>
 
           <div class="copy-row" style="margin-top:14px">
-            <!-- Este botão só existe em DEMO/devMode. Em produção ele não é renderizado. -->
-            <button class="btn btn-quiet" id="simBtn">Simular pagamento (devMode)</button>
+            <!--
+              O botão "Simular pagamento (devMode)" MORAVA AQUI, com um comentário
+              afirmando "em produção ele não é renderizado". Não era verdade: ele
+              vinha no HTML sempre, com o listener sempre ligado, e a única coisa
+              que o segurava era um `style.display = 'none'` aplicado depois, em
+              JavaScript, dentro do `showPix`.
+
+              Consequência: numa página de pagamento em produção, `simBtn.click()`
+              no console — ou dois cliques no inspetor para reexibi-lo — pintava a
+              tela verde de "Pagamento confirmado" sem um centavo ter saído. Não
+              libera acesso nenhum (o gate é o backend, que reconsulta a API do
+              provedor), mas produz uma captura de tela de confirmação falsa numa
+              página de cobrança real. Isso basta para virar disputa.
+
+              Agora ele é INJETADO por JavaScript, e só quando `DEMO === true`.
+              Em produção o elemento não chega a existir — que é o que o
+              comentário antigo prometia.
+            -->
             <button class="btn btn-quiet" id="againBtn" style="display:none">Gerar novo código</button>
           </div>
         </div>
@@ -463,9 +495,23 @@
           <span class="v" id="sumTotal">R$ 59,90</span>
         </div>
 
+        <!--
+          ⚠️ ESTA LISTA É O QUE A PESSOA ESTÁ COMPRANDO, lida no segundo em que ela
+          decide pagar. Cada item precisa ser algo que o gate realmente entrega
+          só a quem paga — não uma qualidade geral do produto.
+
+          "12 meses de histórico da ANP" foi removido em 06/ago/2026: o histórico
+          é público, sem login (`GET /api/fuel/*`), e a janela de 12 meses vale
+          para todo mundo (`retentionService.ts`). Cobrar por ele na tela de
+          pagamento, enquanto a landing promete o mesmo de graça "para sempre",
+          é vender o que já é do cliente.
+
+          A mesma checagem vale para qualquer linha nova aqui: se o visitante
+          anônimo já tem, não entra.
+        -->
         <ul class="sum-what">
-          <li>Alertas de queda nas séries que você seguir</li>
-          <li>12 meses de histórico da ANP</li>
+          <li>Alertas de queda em quantas séries você quiser</li>
+          <li>Comparar gasolina e etanol, ou duas cidades, ao mesmo tempo</li>
           <li>Aviso por email assim que o preço cai</li>
           <li>Sem cobrança automática — nada é debitado sem você agir</li>
         </ul>
@@ -482,7 +528,11 @@
 
 <footer>
   <div class="wrap">
-    <span>Price Tracker Pro · experimento da Fase 10</span>
+    <!-- Dizia "experimento da Fase 10". Chamar de experimento a página que emite
+         a cobrança, no rodapé dela, depois que o dinheiro passou a ser real, é o
+         mesmo erro do "estamos medindo o interesse antes de lançar" que estava no
+         rodapé da premium.html. Quem lê é o cliente, não o desenvolvedor. -->
+    <span>Price Tracker Pro · pagamento processado pelo Mercado Pago</span>
     <span><a href="/premium.html">← voltar</a></span>
   </div>
 </footer>
@@ -579,19 +629,68 @@
 
   var sessao = DEMO ? { token: 'demo', email: 'demo@exemplo.com' } : lerSessao();
 
-  // A faixa do topo tem de dizer a verdade sobre o modo em que a página está.
-  // Antes ela afirmava "modo demonstração" de forma fixa — com DEMO=false isso
-  // vira uma mentira na tela, e mentira sobre cobrança é a pior espécie.
+  // ── A faixa do topo ────────────────────────────────────────────────────────
+  //
+  // Ela tem de dizer a verdade sobre o modo em que a página está. Já mentiu
+  // duas vezes, de duas formas diferentes:
+  //
+  //  1. afirmava "modo demonstração" de forma fixa — com DEMO=false, mentira;
+  //  2. **deduzia do hostname que nenhuma cobrança era real.** Este arquivo
+  //     proíbe isso em dois lugares no cabeçalho ("o ambiente vem do BACKEND,
+  //     nunca do hostname") e o `#sandboxNote` obedece — a faixa não obedecia.
+  //
+  // Por que o nº 2 era o pior dos dois. Rodar `localhost` contra um backend com
+  // `MERCADOPAGO_ENV=production` é um caso **real e previsto**: o
+  // `config/mercadoPago.ts` permite de propósito (pode ser um smoke test) e
+  // grita no log "AMBIENTE LOCAL COM TOKEN DE PRODUÇÃO — cobranças criadas aqui
+  // são REAIS". Nesse exato cenário, esta faixa dizia na tela "Nenhuma cobrança
+  // é real", e o Pix gerado cobra de verdade.
+  //
+  // Repare na direção do erro. O `#sandboxNote` erra para o lado do **aviso**:
+  // na dúvida, alerta. A faixa errava para o lado do **conforto**: afirmava
+  // segurança que não tinha como conferir. Numa tela de pagamento, tranquilizar
+  // sem saber é pior do que não dizer nada.
+  //
+  // Regra agora: a faixa só afirma o que ela sabe de fato (para onde a página
+  // está apontando). Quem é dono da frase sobre dinheiro é o backend, e ela
+  // chega depois, em `showPix`.
   (function avisarModo(){
     var texto = DEMO
       ? '<strong>Modo demonstração</strong> — esta página não cobra nada. Os dados são falsos.'
       : (API.indexOf('localhost') !== -1
-          ? '<strong>Ambiente de desenvolvimento</strong> — usando as credenciais de teste do Mercado Pago. Nenhuma cobrança é real.'
+          ? '<strong>Ambiente de desenvolvimento</strong> — apontando para o backend local. '
+            + 'Se a cobrança é real ou de teste depende de como <em>ele</em> está configurado, '
+            + 'e isso aparece aqui ao gerar o pagamento.'
           : '');
     if (!texto) return;                       // produção de verdade: sem faixa
     $('demoBarText').innerHTML = texto;
     $('demoBar').hidden = false;
   })();
+
+  /**
+   * Atualiza a faixa depois que o backend informou o ambiente da cobrança.
+   *
+   * Só age em desenvolvimento, e por um motivo: em produção não há faixa
+   * nenhuma, e `environment: 'test'` já é tratado pelo `#sandboxNote`, que é
+   * mais visível e fica ao lado do QR. O que faltava era o caso inverso —
+   * página local, backend produtivo, dinheiro de verdade — em que a pessoa está
+   * mentalmente em "estou testando".
+   */
+  function ajustarFaixaAoAmbiente(environment){
+    if (DEMO || API.indexOf('localhost') === -1) return;
+
+    if (environment === 'production'){
+      $('demoBarText').innerHTML =
+        '<strong>⚠️ Atenção: este backend está em modo PRODUÇÃO.</strong> '
+        + 'O código Pix abaixo é pagável de verdade e o valor cai numa conta real. '
+        + 'Não pague para testar.';
+    } else {
+      $('demoBarText').innerHTML =
+        '<strong>Ambiente de desenvolvimento</strong> — o backend está em modo de teste. '
+        + 'O código Pix gerado não é pagável por banco nenhum.';
+    }
+    $('demoBar').hidden = false;
+  }
 
   function authHeaders(extra){
     var h = extra || {};
@@ -857,7 +956,13 @@
   // ══════════════════════════════════════════════════════════════════════════
   function showPix(c){
     state.chargeId = c.chargeId;
-    state.left = c.expiresIn || EXPIRES_SECONDS;
+
+    // ⚠️ `!= null` e não `||`. Com `||`, um `expiresIn` de **0** (cobrança que
+    // já nasceu vencida, ou relógios do cliente e do servidor fora de sincronia)
+    // é falsy e cairia no padrão de 30 minutos — a tela mostraria um contador
+    // novinho em folha para um código morto, e a pessoa esperaria meia hora por
+    // uma confirmação que nunca vem. O zero é uma resposta legítima aqui.
+    state.left = (c.expiresIn != null) ? c.expiresIn : EXPIRES_SECONDS;
 
     $('brcode').value = c.brCode;
 
@@ -869,6 +974,9 @@
     if (!DEMO && c.environment !== 'production'){
       $('sandboxNote').hidden = false;
     }
+    // A faixa do topo só agora sabe o que dizer sobre dinheiro: é o backend
+    // quem responde, e a resposta acabou de chegar.
+    ajustarFaixaAoAmbiente(c.environment);
 
     // ── QR ─────────────────────────────────────────────────────────────────
     if (c.brCodeBase64){
@@ -894,7 +1002,7 @@
 
     $('formCard').style.opacity = '.6';
     $('pixPanel').classList.add('show');
-    $('simBtn').style.display = DEMO ? 'inline-flex' : 'none';
+    // (o botão de simular não é mais escondido aqui — em produção ele nem existe)
     markSteps(3);
     setStatus('wait', 'Aguardando o pagamento… você pode deixar esta página aberta.', true);
     $('pixPanel').scrollIntoView({ behavior:'smooth', block:'center' });
@@ -929,7 +1037,12 @@
         $('timer').textContent = '00:00';
         setStatus('bad', 'O código expirou. Gere um novo para pagar.');
         $('againBtn').style.display = 'inline-flex';
-        $('simBtn').style.display = 'none';
+        // `simBtn` só existe em DEMO — em produção ele nem é criado. Sem esta
+        // guarda, `$('simBtn')` devolve null aqui e a linha seguinte derruba o
+        // callback do timer na tela de pagamento. O `checkoutPage.test.ts` pegou
+        // exatamente isso quando o botão deixou de vir no HTML estático.
+        var sim = document.getElementById('simBtn');
+        if (sim) sim.style.display = 'none';
         return;
       }
       render();
@@ -1032,10 +1145,38 @@
       .then(function(d){
         if (!d) return;                      // 429 reagendou, ou 401 encerrou
         state.pollFails = 0;
-        if (d.status === 'paid')      return onPaid();
-        if (d.status === 'expired')   return stopPolling();
+        if (d.status === 'paid') return onPaid(d);
+
+        // ── Expirado pelo provedor ───────────────────────────────────────────
+        //
+        // Isto **não** é redundante com o contador local, e a diferença já era
+        // um jeito de a tela mentir: antes, este caso só fazia `stopPolling()`
+        // — sem mensagem, sem botão, com o cronômetro continuando a correr.
+        //
+        // Quem manda na validade é o Mercado Pago, não o nosso `setInterval`.
+        // Os dois só coincidem se os relógios coincidirem, e há três motivos
+        // reais para não coincidirem: `expiresAt` ausente na resposta (a página
+        // assume 30 min por padrão), relógio do cliente adiantado, e a própria
+        // order cancelada mais cedo do lado do provedor. Em qualquer um deles a
+        // pessoa ficava olhando "Aguardando o pagamento…" com um contador vivo,
+        // esperando por um código que já estava morto — e o polling, que era a
+        // única coisa capaz de tirá-la dali, já tinha sido desligado.
+        //
+        // Agora este ramo faz o mesmo que o de cancelamento logo abaixo: para o
+        // relógio, diz o que houve e oferece o caminho de saída.
+        if (d.status === 'expired'){
+          stopPolling();
+          clearInterval(state.tick);
+          state.left = 0;
+          $('timer').textContent = '00:00';
+          setStatus('bad', 'O código expirou antes de o pagamento chegar. Gere um novo para pagar.');
+          $('againBtn').style.display = 'inline-flex';
+          return;
+        }
+
         if (d.status === 'cancelled' || d.status === 'refunded'){
           stopPolling();
+          clearInterval(state.tick);
           setStatus('bad', 'Esta cobrança foi cancelada. Gere um novo código para pagar.');
           $('againBtn').style.display = 'inline-flex';
           return;
@@ -1058,16 +1199,35 @@
       });
   }
 
-  function onPaid(){
+  /**
+   * Confirmação de pagamento.
+   *
+   * ⚠️ Recebe a resposta do backend e **prefere o plano que ela informa** ao
+   * que esta página escolheu. Parece preciosismo — os dois batem em todo fluxo
+   * normal —, mas esta é a frase que diz à pessoa o que ela acabou de comprar,
+   * e quem sabe isso é o registro da cobrança, não uma variável do navegador
+   * que a pessoa pode ter mexido depois de gerar o código (o seletor de plano
+   * continua clicável enquanto o QR está na tela). Mesma regra do preço: a
+   * página exibe, o backend decide.
+   */
+  function onPaid(d){
     stopPolling();
     clearInterval(state.tick);
+
+    var planoConfirmado = (d && PLANS[d.plan]) ? d.plan : state.plan;
+
     $('pixPanel').classList.remove('show');
     $('formCard').style.display = 'none';
     $('donePanel').classList.add('show');
-    $('doneText').textContent = 'Seu acesso ' + PLANS[state.plan].label
+    $('doneText').textContent = 'Seu acesso ' + PLANS[planoConfirmado].label
       + ' foi liberado na conta ' + ((sessao && sessao.email) || 'que você usou para entrar') + '.';
     markSteps(4);
-    trackEvent('purchase', { plan:state.plan, value_cents:PLANS[state.plan].cents });
+    trackEvent('purchase', {
+      plan: planoConfirmado,
+      // O valor também vem do backend quando ele informa: é o que foi cobrado
+      // de fato, e é esse número que vale numa métrica de receita.
+      value_cents: (d && d.amountCents != null) ? d.amountCents : PLANS[planoConfirmado].cents
+    });
   }
 
   // ── copiar ────────────────────────────────────────────────────────────────
@@ -1090,12 +1250,23 @@
   });
 
   // ── botões de teste / recomeçar ────────────────────────────────────────────
-  $('simBtn').addEventListener('click', function(){
-    // Em produção este botão não aparece (DEMO=false). Em devMode, o equivalente
-    // real é pagar o QR de teste no ambiente sandbox do Mercado Pago.
-    setStatus('wait', 'Pagamento simulado recebido, confirmando…', true);
-    setTimeout(onPaid, 1200);
-  });
+  //
+  // O "Simular pagamento" só passa a EXISTIR quando DEMO é true. Antes ele vinha
+  // no HTML e era escondido com `display:none` — o que é enfeite, não proteção:
+  // o elemento estava no DOM de produção e o listener, ligado. Criar o botão
+  // aqui dentro do `if` é a diferença entre "escondido" e "não existe".
+  if (DEMO){
+    var simBtn = document.createElement('button');
+    simBtn.className = 'btn btn-quiet';
+    simBtn.id = 'simBtn';
+    simBtn.type = 'button';
+    simBtn.textContent = 'Simular pagamento (devMode)';
+    simBtn.addEventListener('click', function(){
+      setStatus('wait', 'Pagamento simulado recebido, confirmando…', true);
+      setTimeout(onPaid, 1200);
+    });
+    $('againBtn').parentNode.insertBefore(simBtn, $('againBtn'));
+  }
   $('againBtn').addEventListener('click', function(){ location.reload(); });
 
   // ══════════════════════════════════════════════════════════════════════════
