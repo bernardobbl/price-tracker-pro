@@ -2,6 +2,13 @@
    Estilo compartilhado das páginas legais (termos / privacidade / reembolso).
    Paleta idêntica a frontend/src/index.css — não inventar cor nova aqui.
    ══════════════════════════════════════════════════════════════════════════ */
+/* O Safari do iPhone infla a fonte por conta própria ao girar para paisagem;
+   `100%` mantém a escala pedida sem tirar o zoom por gesto do usuário. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 :root {
   --paper: #f4f3ee;
   --surface: #ffffff;
@@ -109,4 +116,21 @@ body {
 .legal-foot {
   margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
   font-size: 0.8rem; color: var(--muted); font-style: italic;
+}
+
+/* ── Celular ──────────────────────────────────────────────────────────────
+   Tabela larga é o único elemento destes documentos que não cabe numa tela de
+   360px. Em vez de encolher a fonte até ninguém conseguir ler, ela ganha
+   rolagem horizontal própria — a página continua inteira na largura da tela e
+   só a tabela desliza. */
+@media (max-width: 640px) {
+  .legal-wrap { padding: 0 16px; }
+  .legal-doc { padding: 28px 16px 60px; }
+  .legal-eyebrow { font-size: 0.78rem; }
+  .legal-doc table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
+/* Alvo de toque no dedo: 44px é o mínimo de iOS e Android. */
+@media (pointer: coarse) {
+  .legal-nav a, .legal-brand { min-height: 44px; display: inline-flex; align-items: center; }
 }

@@ -93,6 +93,9 @@
     --font-display:"Fraunces",Georgia,serif;
   }
   *{ box-sizing:border-box; }
+  /* O Safari do iPhone infla a fonte por conta própria ao girar para paisagem;
+     `100%` mantém a escala pedida sem tirar o zoom por gesto do usuário. */
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-ui); font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased; }
   h1,h2,h3{ margin:0; font-family:var(--font-display); font-weight:700; letter-spacing:-.015em; line-height:1.15; }
   p{ margin:0; }
@@ -261,10 +264,35 @@
   footer .wrap{ display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; }
 
   @media (max-width:880px){
-    .grid{ grid-template-columns:1fr; }
+    /* `minmax(0,1fr)` e não `1fr`: uma coluna de grade automática não encolhe
+       abaixo do min-content do conteúdo, e o valor do plano é `nowrap`. Com
+       `1fr` puro a página ficava 363px de largura num celular de 320/360px e o
+       navegador dava zoom-out na tela inteira. */
+    .grid{ grid-template-columns:minmax(0,1fr); }
     .summary{ position:static; }
     .pix-grid{ grid-template-columns:1fr; justify-items:center; }
     .brcode{ height:96px; }
+  }
+
+  /* Celular estreito: o cabeçalho empilha (o título parava em três linhas ao
+     lado do aviso do Mercado Pago) e o valor do plano vai para a linha de
+     baixo, para o texto do plano deixar de ser espremido numa coluna de
+     ~110px. */
+  @media (max-width:430px){
+    .wrap{ padding:0 16px; }
+    /* 10,5px é pequeno demais na mão; sobe sem desmontar a hierarquia. */
+    .badge{ font-size:11.5px; }
+    header.top .wrap{ flex-wrap:wrap; gap:8px; }
+    .brand{ white-space:nowrap; }
+    .plan-opt{ flex-wrap:wrap; }
+    .plan-main{ flex:1 1 100%; }
+    .plan-amount{ margin-left:31px; }
+  }
+
+  /* Alvo de toque no dedo: 44px é o mínimo de iOS e Android. */
+  @media (pointer:coarse){
+    .plan-opt, .method, .btn{ min-height:44px; }
+    footer a, .back-link{ display:inline-flex; align-items:center; min-height:44px; }
   }
   @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
 </style>

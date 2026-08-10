@@ -55,12 +55,26 @@
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
+/* O Safari do iPhone infla a fonte de alguns blocos por conta própria quando o
+   aparelho gira para paisagem ("text autosizing"). É um comportamento só dele:
+   nenhum teste em Chromium revela, e o efeito é a tipografia sair da escala e o
+   layout que cabia deixar de caber. `100%` diz "use o tamanho que eu pedi" —
+   não desliga o zoom do usuário, que continua funcionando pelo gesto. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--font-ui);
   background: var(--paper);
   color: var(--ink);
+  /* `100vh` no iOS é a altura COM a barra de endereço escondida, então sobra um
+     pedaço de rolagem morta. `dvh` é a altura de verdade; quem não conhece a
+     unidade ignora a segunda linha e fica com a primeira. */
   min-height: 100vh;
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -80,6 +94,7 @@ body {
 /* ── Layout ── */
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -298,6 +313,7 @@ body {
   margin: 0.35rem 0 1.1rem;
   font-size: 0.85rem;
   color: var(--muted);
+  overflow-wrap: break-word; /* Safari < 15.4 não conhece `anywhere` */
   overflow-wrap: anywhere;
 }
 
@@ -571,10 +587,20 @@ body {
 /* ══════════════════════════════════════════════════════════════════════════
    Dashboard
    ══════════════════════════════════════════════════════════════════════════ */
+/* `minmax(0, 1fr)` e não o `1fr` implícito: uma coluna de grade automática tem
+   largura MÍNIMA igual ao min-content do que está dentro dela, e o min-content
+   da sidebar é o nome de posto mais comprido que aparecer — texto `nowrap` não
+   encolhe. O resultado era a página inteira ficar ~544px de largura num celular
+   de 360px, e o navegador respondia dando zoom-out: tudo minúsculo, com faixa
+   morta à direita. Só acontecia com alguém logado, porque é aí que favoritos e
+   alertas (com rótulos longos) entram na sidebar. O `minmax(0, …)` remove esse
+   piso e deixa a coluna encolher até a largura da tela; o `min-width: 0` abaixo
+   faz o mesmo para os elementos flex do caminho. */
 .dashboard {
   flex: 1;
   padding: 1.5rem 2rem 2.5rem;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
@@ -583,6 +609,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  min-width: 0;
 }
 
 /* A sidebar só É uma sidebar — e portanto só faz sentido grudar na tela — quando
@@ -610,6 +637,7 @@ body {
   border-radius: var(--radius-lg);
   padding: 1.15rem 1.25rem;
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .card {
@@ -797,6 +825,7 @@ body {
   display: flex;
   align-items: stretch;
   gap: 0.35rem;
+  min-width: 0;
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--surface-soft);
@@ -936,6 +965,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  min-width: 0;
   padding: 0.65rem 0.85rem;
   border-radius: var(--radius);
   border: 1px solid var(--line);
@@ -1311,6 +1341,15 @@ body {
   .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+/* Faixa que os breakpoints anteriores não cobriam: a partir de 960px o layout
+   vira duas colunas, e a coluna de detalhe fica bem mais estreita que a janela.
+   Num iPad em retrato (1024px) sobravam ~556px para seis cards de estatística
+   que pedem 582 — "R$ 5,644" saía cortado. Aqui a régua é a largura da coluna,
+   não a da tela, por isso o intervalo fechado. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 520px) {
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -1324,8 +1363,18 @@ body {
   margin: 0 0 0.5rem;
 }
 
+/* O canvas do Chart.js só reduz quando o contêiner reduz — e o contêiner não
+   reduzia, porque herdava o piso de min-content da grade. Sem o `min-width: 0`
+   aqui, o gráfico virava o item mais largo da página e segurava a largura toda
+   em 478px. O `max-width` no canvas é o cinto de segurança para o intervalo
+   entre o redimensionamento da tela e o redesenho do gráfico. */
 .chart-container {
   height: 340px;
+  min-width: 0;
+}
+
+.chart-container canvas {
+  max-width: 100%;
 }
 
 .detail-meta {
@@ -1411,13 +1460,17 @@ body {
   color: var(--muted);
 }
 
+/* O campo e o botão ficam lado a lado enquanto couber; abaixo disso o botão cai
+   para a linha de baixo em vez de espremer o campo até o valor não caber. */
 .alert-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
 }
 
 .alert-controls input {
-  flex: 1;
+  flex: 1 1 12rem;
+  min-width: 0;
   padding: 0.6rem 0.85rem;
   border-radius: var(--radius);
   border: 1px solid var(--line-strong);
@@ -1660,10 +1713,17 @@ input[type="number"] {
 /* ══════════════════════════════════════════════════════════════════════════
    Toasts
    ══════════════════════════════════════════════════════════════════════════ */
+/* O aviso flutuante ficava a 24px do rodapé — e o indicador de home do iPhone
+   ocupa ~34px, então em aparelho sem botão o toast nascia por baixo dele. O
+   `env(safe-area-inset-*)` é a medida que o próprio sistema informa; navegador
+   que não conhece a função descarta a linha e fica com a de cima. Em paisagem o
+   mesmo vale para o entalhe lateral. */
 .toast-container {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1.5rem + env(safe-area-inset-right, 0px));
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -1817,9 +1877,13 @@ input[type="number"] {
   gap: 0.35rem;
 }
 
+/* `minmax(0, 1fr)` na coluna do meio pelo mesmo motivo do `.dashboard`: o nome
+   do posto é `nowrap`, então um `1fr` puro nunca encolheria abaixo do nome
+   inteiro — e nomes da ANP são longuíssimos ("Auto Posto Estrela Do Norte
+   Comercio De Combustiveis Ltda"). */
 .ranking-row {
   display: grid;
-  grid-template-columns: 1.5rem 1fr auto;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
@@ -2096,4 +2160,187 @@ input[type="number"] {
      a partir de 960px, então não há mais o que desfazer neste breakpoint) */
   .header { padding: 1rem 1.25rem; }
   .segmented { width: 100%; justify-content: space-between; }
+
+  /* O header é `flex-wrap`, então em tela estreita o título e o subtítulo já
+     iam parar em linhas diferentes — mas lado a lado, com o título espremido em
+     "Price / Tracker / Pro" em três linhas e o subtítulo colado. Empilhar
+     resolve com a mesma informação e sem quebra de palavra. */
+  .header-brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .header-brand h1 { font-size: 1.25rem; }
+
+  /* O botão do período tinha "30 dias" quebrando em duas linhas dentro da
+     pílula. Cabe em uma só reduzindo o respiro lateral. */
+  .segmented-btn {
+    padding: 0.4rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  /* Nome e endereço do posto vinham cortados na metade ("Auto Posto Estrela
+     Do…"), o que num ranking de "onde está mais barato" tira justamente a
+     informação que a pessoa foi buscar. No celular a linha vira duas colunas
+     (posição + dados) com o preço embaixo, e o nome ganha até duas linhas. */
+  .ranking-row {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.5rem 0.65rem;
+  }
+
+  /* `break-word` primeiro, `anywhere` depois: o Safari só entende `anywhere` a
+     partir do 15.4, e sem a primeira linha um aparelho mais velho ficaria sem
+     nenhuma regra de quebra. As duas resolvem o mesmo caso aqui — nome de posto
+     com uma palavra longa demais para a linha. */
+  .ranking-name {
+    display: block;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+
+  .ranking-brand {
+    display: inline-block;
+    margin-left: 0.35rem;
+  }
+
+  .ranking-loc {
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.35;
+  }
+
+  .ranking-price {
+    grid-column: 2;
+    justify-self: start;
+    font-size: 1.05rem;
+  }
+
+  /* O e-mail no header competia com "Sair" por um espaço que não existe. */
+  .auth-email--button { max-width: 14ch; }
+
+  /* O botão "Favoritar" roubava ~110px da mesma linha do preço, e sobrava tão
+     pouco que "R$ 5,893" quebrava em duas linhas — o número que é o motivo da
+     tela existir. Empilhando, o preço recupera a largura inteira e o botão vira
+     uma faixa cheia, mais fácil de acertar com o dedo. */
+  .detail-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .detail-head-info { min-width: 0; }
+
+  .btn-fav { justify-content: center; }
+
+  .price { font-size: 2rem; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Toque e leitura em telas pequenas
+   ──────────────────────────────────────────────────────────────────────────
+   Duas correções que valem para QUALQUER largura, mas que só doem no celular.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 1. Zoom automático do iOS. O Safari dá zoom na página inteira quando o dedo
+      toca um campo com fonte menor que 16px — e sai do zoom nunca, porque o
+      `viewport` não tem `maximum-scale` (e não deve ter: travar o zoom quebra a
+      acessibilidade de quem precisa ampliar). A saída correta é a fonte do
+      campo ter 16px no celular. Só nos campos: o resto da tipografia continua
+      na escala do desenho. */
+@media (max-width: 768px) {
+  .search-box input,
+  .alert-controls input,
+  .explore-form select,
+  .input-group select,
+  .input-group input,
+  .auth-form input,
+  .account-panel input,
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* 2. Alvo de toque. O dedo médio cobre ~9mm; as recomendações de iOS e Android
+      convergem em 44px de altura mínima. Vários botões estavam em 28–34px, o
+      que na prática vira erro de clique — e num deles ("Remover" do alerta) o
+      erro é destrutivo. Vale só para ponteiro grosso (`coarse`), então o mouse
+      no desktop continua vendo o desenho compacto original. */
+@media (pointer: coarse) {
+  .btn-login,
+  .btn-logout,
+  .auth-email--button,
+  .segmented-btn,
+  .btn-icon-danger,
+  .product-card-remove,
+  .account-close,
+  .btn-quiet-app,
+  .btn-danger,
+  .btn-fav,
+  .btn-alert,
+  .auth-tab,
+  .auth-back,
+  .plan-badge {
+    min-height: 44px;
+  }
+
+  .product-card-remove { width: 44px; }
+
+  .account-close {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  /* O link do rodapé e o do endereço do posto são pequenos demais para o dedo;
+     o `padding` vertical aumenta a área sem mexer no texto. */
+  /* `padding-top`/`bottom` em vez de `padding-block`: a forma abreviada só
+     existe no Safari a partir do 14.1, e aqui ela não paga nada por si. */
+  .site-footer-links a,
+  .ranking-loc {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+}
+
+/* 3. Texto pequeno demais. Alguns rótulos caíam para 10–11px, abaixo do que se
+      lê com conforto num celular na mão. Subimos o piso sem mudar a hierarquia
+      visual — continuam menores que o texto ao redor, só que legíveis. */
+@media (max-width: 640px) {
+  .panel h2,
+  .card h2 { font-size: 0.82rem; }
+
+  .stat-label,
+  .detail-eyebrow,
+  .product-card-id,
+  .legal-eyebrow { font-size: 0.75rem; }
+
+  .alert-badge,
+  .alert-badge--dormant { font-size: 0.75rem; }
+}
+
+/* Aparelhos bem estreitos (iPhone SE 1ª geração, Androids de entrada em 320px).
+   Nada aqui muda o desenho: só recolhe respiro lateral onde ele era o que fazia
+   o conteúdo não caber. */
+@media (max-width: 360px) {
+  .dashboard { padding: 0.85rem 0.75rem 2rem; }
+  .panel, .card { padding: 1rem 0.85rem; }
+
+  .segmented-btn { padding: 0.4rem 0.3rem; font-size: 0.74rem; }
+
+  /* "Volatilidade" é a palavra mais longa dos cards e não tem onde quebrar;
+     em 320px ela definia a largura mínima da grade inteira. */
+  .stat { padding: 0.6rem 0.55rem; }
+  .stat-label { overflow-wrap: break-word; overflow-wrap: anywhere; }
+  .stat-value { white-space: normal; }
+
+  .price { font-size: 1.75rem; }
 }

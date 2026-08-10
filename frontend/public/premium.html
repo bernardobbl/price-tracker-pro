@@ -117,7 +117,9 @@
   }
 
   *{ box-sizing:border-box; }
-  html{ scroll-behavior:smooth; }
+  /* `text-size-adjust`: o Safari do iPhone infla a fonte sozinho ao girar para
+     paisagem; `100%` mantém a escala pedida sem tirar o zoom por gesto. */
+  html{ scroll-behavior:smooth; -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   body{
     margin:0;
     background:var(--paper);
@@ -303,11 +305,22 @@
 
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:860px){
-    .hero .wrap{ grid-template-columns:1fr; gap:40px; }
-    .cards{ grid-template-columns:1fr; }
+    /* `minmax(0,…)` no lugar de `1fr`: coluna de grade automática tem piso de
+       min-content, e basta um preço ou título `nowrap` para a página inteira
+       ficar mais larga que o celular e o navegador dar zoom-out. */
+    .hero .wrap{ grid-template-columns:minmax(0,1fr); gap:40px; }
+    .cards{ grid-template-columns:minmax(0,1fr); }
     .offer{ padding:28px 22px; }
-    .offer .wrap-inner{ grid-template-columns:1fr; gap:28px; }
+    .offer .wrap-inner{ grid-template-columns:minmax(0,1fr); gap:28px; }
     .cta-row{ max-width:none; }
+  }
+  @media (max-width:430px){
+    .wrap{ padding-left:16px; padding-right:16px; }
+  }
+  /* Alvo de toque no dedo: 44px é o mínimo de iOS e Android. */
+  @media (pointer:coarse){
+    .btn, .cta-row a, .toggle button{ min-height:44px; }
+    .toggle button{ display:inline-flex; align-items:center; justify-content:center; }
   }
   @media (prefers-reduced-motion:reduce){
     *{ animation:none !important; transition:none !important; }
