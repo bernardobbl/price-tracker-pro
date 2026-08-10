@@ -60,6 +60,9 @@ body {
   width: 13px; height: 13px; border-radius: 4px;
   background: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft);
 }
+/* Texto solto dentro de um flex é item anônimo e quebra palavra a palavra
+   quando a linha aperta — "Price / Tracker / Pro" em três linhas no celular. */
+.legal-brand { white-space: nowrap; }
 .legal-nav { display: flex; gap: 4px; flex-wrap: wrap; }
 .legal-nav a {
   font-size: 0.82rem; font-weight: 600; color: var(--muted);

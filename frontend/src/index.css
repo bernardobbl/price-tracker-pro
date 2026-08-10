@@ -533,13 +533,17 @@ body {
   border-color: var(--camel);
 }
 
-/* Em tela estreita o header já é apertado; o selo some antes do e-mail porque
-   é a informação menos urgente das duas. O caminho para o Premium continua no
-   rodapé, que existe em qualquer largura. */
-@media (max-width: 560px) {
-  .plan-badge {
-    display: none;
-  }
+/* Aqui morava um `display: none` abaixo de 560px. A justificativa era que o
+   header ficava apertado e o selo era "a informação menos urgente" — mas o selo
+   do plano gratuito É o único caminho para o Premium dentro do app, e quem abre
+   pelo celular é a maioria. O efeito prático era o link de assinar sumir
+   exatamente para quem mais o veria, e reaparecer ao girar o aparelho: some às
+   vezes, o que parece defeito.
+   A premissa também estava errada. O header não precisa caber numa linha: em
+   tela estreita ele empilha (ver o bloco de responsivo no fim do arquivo), e aí
+   sobra largura para os três elementos sem espremer nenhum. */
+.plan-badge {
+  max-width: 100%;
 }
 
 .btn-logout {
@@ -1490,6 +1494,8 @@ body {
 
 .btn-alert {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
   padding: 0.6rem 1.1rem;
   border-radius: var(--radius);
   border: 1px solid var(--good);
@@ -2161,10 +2167,23 @@ input[type="number"] {
   .header { padding: 1rem 1.25rem; }
   .segmented { width: 100%; justify-content: space-between; }
 
-  /* O header é `flex-wrap`, então em tela estreita o título e o subtítulo já
-     iam parar em linhas diferentes — mas lado a lado, com o título espremido em
-     "Price / Tracker / Pro" em três linhas e o subtítulo colado. Empilhar
-     resolve com a mesma informação e sem quebra de palavra. */
+  /* O header no celular vira três faixas empilhadas, e não uma linha só tentando
+     acomodar tudo:
+         Price Tracker Pro
+         Preços reais de combustível (dados abertos da ANP)
+         [ Plano gratuito · conhecer o Premium ]
+         [ e-mail ]                            [ Sair ]
+     Era isso que faltava para o selo do plano poder voltar a aparecer: numa
+     linha só ele não cabia mesmo, e a solução anterior tinha sido escondê-lo.
+     Com o header empilhado sobra largura para os três. */
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.7rem;
+  }
+
+  /* O título e o subtítulo iam para linhas diferentes mas ficavam lado a lado,
+     com o nome espremido em "Price / Tracker / Pro" e o subtítulo colado. */
   .header-brand {
     flex-direction: column;
     align-items: flex-start;
@@ -2173,6 +2192,32 @@ input[type="number"] {
   }
 
   .header-brand h1 { font-size: 1.25rem; }
+
+  .auth-row,
+  .auth-row--logged {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* O selo ocupa a própria linha: o texto do plano gratuito é longo e, dividindo
+     linha com o e-mail, os dois virariam reticências. */
+  .plan-badge {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  /* Última linha: e-mail e "Sair" dividem o espaço. A base é `0` de propósito —
+     com `auto`, o e-mail pediria a largura do endereço inteiro, empurraria o
+     "Sair" para uma terceira linha e deixaria o botão sozinho e solto. Com base
+     zero ele ocupa o que sobra depois do "Sair" e corta com reticências, que é
+     o que a pílula já fazia no desktop. */
+  .auth-email--button {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .btn-logout { flex: 0 0 auto; }
 
   /* O botão do período tinha "30 dias" quebrando em duas linhas dentro da
      pílula. Cabe em uma só reduzindo o respiro lateral. */
@@ -2220,9 +2265,6 @@ input[type="number"] {
     font-size: 1.05rem;
   }
 
-  /* O e-mail no header competia com "Sair" por um espaço que não existe. */
-  .auth-email--button { max-width: 14ch; }
-
   /* O botão "Favoritar" roubava ~110px da mesma linha do preço, e sobrava tão
      pouco que "R$ 5,893" quebrava em duas linhas — o número que é o motivo da
      tela existir. Empilhando, o preço recupera a largura inteira e o botão vira
@@ -2238,6 +2280,13 @@ input[type="number"] {
   .btn-fav { justify-content: center; }
 
   .price { font-size: 2rem; }
+
+  /* O campo e o botão disputavam uma linha que não dava para os dois: sobrava um
+     campo estreito demais para ler o valor e um botão espremido ao lado. No
+     celular cada um fica com a largura inteira, na ordem em que se usam —
+     digita, depois confirma. */
+  .alert-controls input { flex: 1 1 100%; }
+  .btn-alert { flex: 1 1 100%; justify-content: center; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

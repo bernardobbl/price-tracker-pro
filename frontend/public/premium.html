@@ -138,6 +138,7 @@
   .nav{ padding:22px 0; border-bottom:1px solid var(--line); background:var(--surface); }
   .nav .wrap{ display:flex; align-items:center; justify-content:space-between; gap:16px; }
   .brand{ display:flex; align-items:center; gap:10px; font-weight:700; font-family:var(--font-display); letter-spacing:-0.02em; }
+  .brand-name{ white-space:nowrap; }
   .brand .dot{
     width:13px; height:13px; border-radius:4px;
     background:var(--brand); box-shadow:0 0 0 3px var(--brand-soft);
@@ -314,6 +315,16 @@
     .offer .wrap-inner{ grid-template-columns:minmax(0,1fr); gap:28px; }
     .cta-row{ max-width:none; }
   }
+  /* Topo no celular. O `justify-content:space-between` do desktop empurrava a
+     marca e o link "voltar" para os cantos e espremia os dois no meio: o nome
+     quebrava em três linhas e o link em duas. Empilhados, cada um fica numa
+     faixa e o topo volta a ter uma leitura só — quem é o site, e como sair
+     dele. O `padding` menor é o mesmo respiro do resto das telas estreitas. */
+  @media (max-width:560px){
+    .nav{ padding:14px 0; }
+    .nav .wrap{ flex-direction:column; align-items:flex-start; gap:8px; }
+    .nav-link{ font-size:15px; }
+  }
   @media (max-width:430px){
     .wrap{ padding-left:16px; padding-right:16px; }
   }
@@ -332,8 +343,13 @@
 
 <nav class="nav">
   <div class="wrap">
+    <!-- O nome vive num `span` próprio, e não solto entre os dois selos, porque
+         texto solto dentro de um flex vira um item anônimo que quebra palavra a
+         palavra: no iPhone virava "Price / Tracker / Pro" em três linhas, com o
+         ponto e o selo pendurados ao lado. Com o `span` dá para dizer que ele
+         não quebra. -->
     <div class="brand">
-      <span class="dot"></span> Price Tracker Pro <span class="tag">Premium</span>
+      <span class="dot"></span> <span class="brand-name">Price Tracker Pro</span> <span class="tag">Premium</span>
     </div>
     <a class="nav-link" href="/">← voltar aos preços grátis</a>
   </div>

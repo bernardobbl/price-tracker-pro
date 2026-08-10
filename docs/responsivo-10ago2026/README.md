@@ -127,6 +127,47 @@ break-word` antes de `anywhere`, `padding-top/bottom` no lugar de `padding-block
 tenho como afirmar que não existe nenhum. O teste de 5 minutos que fecha essa
 lacuna está no fim deste documento.
 
+## Segunda rodada — o que os prints do iPhone real mostraram
+
+Três apontamentos vindos de uso de verdade num iPhone, e a lição é que dois deles
+a medição automática **não pegaria nunca**: eram decisões de projeto, não
+defeitos de layout. A régua achava que estava tudo certo porque nada estourava.
+
+### O selo do Premium sumia no celular
+
+Não era bug de responsivo: era um `display: none` abaixo de 560px, escrito de
+propósito, com comentário justificando. A justificativa: "em tela estreita o
+header já é apertado, e o selo é a informação menos urgente".
+
+A premissa estava errada em duas pontas. O selo do plano gratuito é **o único
+caminho para o Premium dentro do app** — some justamente para quem mais o veria.
+E o header não precisava caber numa linha: bastava empilhar. No celular ele agora
+é
+
+```
+Price Tracker Pro
+Preços reais de combustível (dados abertos da ANP)
+[ Plano gratuito · conhecer o Premium ]
+[ e-mail ]                       [ Sair ]
+```
+
+e cabem os três sem espremer nenhum. O "some às vezes" que o Bernardo notou era o
+breakpoint: aparecia ao girar o aparelho para paisagem, sumia em retrato.
+
+### O topo quebrava "Price / Tracker / Pro" em três linhas
+
+Nas três páginas estáticas, pela mesma causa: o nome era **texto solto dentro de
+um contêiner flex**. Texto solto vira um item anônimo, e item anônimo quebra
+palavra a palavra quando a linha aperta. Envolver o nome num `span` dá onde
+pendurar o `white-space: nowrap`. Na `premium.html` o topo também empilha abaixo
+de 560px — antes o `space-between` jogava a marca e o "voltar" para os cantos e
+espremia os dois.
+
+### "Ativar alerta" espremido ao lado do campo
+
+O campo e o botão dividiam uma linha que não comportava os dois. No celular cada
+um ocupa a largura inteira, na ordem em que se usam: digita, depois confirma.
+
 ## O que sobrou de propósito
 
 - **Reticências** em `.auth-email` (e-mail no header) e `.product-card-name`
@@ -167,5 +208,8 @@ estado logado, que é o que ninguém confere:
    barrinha de home.
 6. Rolar até "onde está mais barato" e conferir se dá para ler o nome do posto
    inteiro.
+7. Conferir se o selo "Plano gratuito · conhecer o Premium" está no topo, em
+   retrato **e** em paisagem — era ele que sumia.
+8. Abrir `/premium.html` e ver se "Price Tracker Pro" cabe numa linha só.
 
-Se os seis passarem, o iPhone está coberto de fato, e não por inferência.
+Se os oito passarem, o iPhone está coberto de fato, e não por inferência.
