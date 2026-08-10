@@ -27,7 +27,7 @@
  * mas o backend aceita qualquer uma da lista — um cliente com a página em
  * cache não pode ser bloqueado no meio de uma compra.
  */
-export const LEGAL_VERSIONS = ["1.0"] as const;
+export const LEGAL_VERSIONS = ["1.1", "1.0"] as const;
 
 export type LegalVersion = (typeof LEGAL_VERSIONS)[number];
 

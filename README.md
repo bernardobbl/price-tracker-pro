@@ -96,7 +96,7 @@ flowchart LR
 | Validation | Zod (request schemas + ETL row gate) |
 | Security | Helmet (security headers) + rate limiting on the public API |
 | Email | Nodemailer (SMTP) |
-| Tests | Vitest + Testing Library + supertest (**398 tests**) |
+| Tests | Vitest + Testing Library + supertest (full suite on every push) |
 | CI | GitHub Actions (lint · type-check · test · build) |
 
 ## 🚀 Run locally
@@ -138,7 +138,7 @@ npm run dev               # dashboard on http://localhost:5173
 npm test        # in backend/ and frontend/
 ```
 
-398 tests cover the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, alert-email copy and threshold rules, auth error mapping, request schemas, API routes (supertest), the price-intelligence libs + chart component, and the billing layer — subscription-period arithmetic (calendar months, pro-rata refunds), charge idempotency, provider status normalization, and signup e-mail validation. GitHub Actions runs lint + type-check + test + build on every push/PR.
+The suite covers the parser (real ANP fixtures), normalization/dedup, alert logic, series ownership, CORS rules, API-client resilience, alert-email copy and threshold rules, auth error mapping, request schemas, API routes (supertest), the price-intelligence libs + chart component, and the billing layer — subscription-period arithmetic (calendar months, pro-rata refunds), charge idempotency, provider status normalization, and signup e-mail validation. GitHub Actions runs lint + type-check + test + build on every push/PR.
 
 ## 🧠 Technical decisions & trade-offs
 
@@ -149,7 +149,7 @@ npm test        # in backend/ and frontend/
 - **Scheduling that survives a sleeping free tier.** Free hosts hibernate the web process after minutes of inactivity, so an in-process cron may never fire. The weekly ingestion is therefore driven by a **GitHub Actions workflow** that runs the same CLI against Supabase, independent of the API being awake (`ANP_CRON=off` in production); the in-process cron stays as a local/self-hosted option, now pinned to `America/Sao_Paulo` so a UTC host doesn't shift the schedule by three hours.
 - **Authorization enforced in code, not only in RLS.** The backend talks to Supabase with the `service_role` key (the ETL must write the shared table), and that key **bypasses RLS** — so every user-scoped query filters by `user_id` explicitly, and any `series_id` coming from the client is ownership-checked before use. RLS remains the second line of defence for direct client access.
 - **Hardened public API.** Helmet sets security headers and `express-rate-limit` caps per-IP request bursts, so exposing the API publicly doesn't invite trivial abuse. **`npm audit --omit=dev` reports 0 vulnerabilities on both sides** — nothing that ships is affected, and the distinction is the point of the audit rather than a way around it. The one advisory that *did* reach production was fixed rather than explained away: `express-rate-limit` pulled an `ip-address` version that misclassifies IPs, which behind a proxy is rate-limit evasion — a single origin counting as many on a public endpoint. What remains is `undici` via `jsdom`, a `devDependency` that never enters the bundle and only runs the test suite; clearing it would mean a `jsdom` major bump to replace a package no user executes.
-- **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the 398 tests cheap and meaningful.
+- **Pure functions everywhere the logic lives.** Parsing, normalization, aggregation, buy-signal, trend and volatility are I/O-free and unit-tested, which is what makes the test suite cheap and meaningful.
 - **Monthly split files handled gracefully.** ANP ships monthly CSVs split by fuel group; the ingestor fans out over the list and skips any file that 404s, so a not-yet-published month never breaks the batch.
 - **Discover, don't guess.** In 2026 ANP silently changed its file naming — including a typo'd filename and a file published without extension. The ingestor now scrapes the year folder's listing for the real hrefs (pure, fixture-tested parser) and falls back to the old naming pattern only if the listing is unreachable. Real-world government data is messy; the pipeline embraces that.
 - **Built to run free, forever.** The weekly job only ever adds rows (~70k/month ≈ 22 MB/month, measured), which would eventually blow past Supabase's free-tier 500 MB. An automatic **retention policy** (`RETENTION_MONTHS`, default 12 — calibrated from real measurements to plateau at ~56% of the free tier) prunes surveys older than the window after each ingestion, so database size plateaus instead of growing — plus an `npm run db:stats` CLI to watch usage.

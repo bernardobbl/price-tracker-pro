@@ -57,28 +57,37 @@
 | 11 | Tabelas `subscriptions` e `billing_charges` em produção | banco | ✅ | conferido em 06/ago |
 | 12 | **Limpar o dado de teste do banco** | banco | ✅ | 06/ago — `billing_charges` e `subscriptions` a **0 linhas**, conferido no SQL Editor depois do `delete`. A 1ª linha que aparecer é venda real |
 | 13 | **Deploy do comprovante e do cold start** (itens 5 e 6) | deploy | ✅ | `5795602` na `main`, 06/ago — Render e Vercel sobem sozinhos |
-| 14 | Revisão jurídica dos 3 documentos | **você** | ✅ | 06/ago — **nenhum texto mudou**, então `LEGAL_VERSION` segue `1.0` e a §1.5 não se aplica. ⚠️ As páginas publicadas continuaram dizendo *"rascunho, ainda não revisado por advogado"* por três dias depois disso — corrigido em 09/ago, ver §🔧 |
+| 14 | Revisão jurídica da versão **1.0** | **você** | ✅ | 06/ago — nenhum texto mudou na revisão. ⚠️ As páginas publicadas continuaram dizendo *"rascunho, ainda não revisado por advogado"* por três dias depois disso — corrigido em 09/ago, ver §🔧. **A 1.0 saiu de circulação em 09/ago; ver o item 19** |
 | 15 | Credenciais de produção + `MERCADOPAGO_ENV=production` | painel | ✅ | **06/ago, 12:44 — o dinheiro é real a partir daqui.** Boot com `env: "production"` e `temPublicKey: true` |
 | 16 | Compra real de ponta a ponta, feita por você, e estornada | verificação | ⛔ | prova o caminho inteiro (runbook §1.4) |
 | 17 | Lembrete semanal no calendário | **você** | ⛔ | o único item que protege cliente pagante, e é grátis |
-| 18 | **Mergear a `fix/pontas-soltas` na `main`** | deploy | ⛔ | **09/ago.** A branch acumulou correções de texto de contrato e de página de cobrança; a produção ainda serve as versões erradas. Vem **antes** do 16: não faz sentido validar a compra real numa landing que promete preço travado inexistente |
+| 18 | **Mergear as branches de correção na `main`** | deploy | ✅ | **09/ago** — PR #25 (`0ed2c49`, 12:16) e PR #27 (`c2244bd`, 13:10), em squash. Produção e `main` conferidas e idênticas. Falta só a **1.1**, que está na branch e ainda não subiu |
+| 19 | **Revisão jurídica da versão 1.1** | **você** | ⛔ | **09/ago.** A revisão do item 14 cobriu a 1.0 e só ela. A 1.1 mudou a cláusula 9 dos Termos e a seção 3 do reembolso — as duas mexem em dinheiro do consumidor. O rodapé das páginas já diz *"a versão 1.0 foi revisada"*, e não "revisado", enquanto isto estiver ⛔ |
+| 20 | **Caixa `pricetrackerpro@gmail.com` existindo e sendo lida** | **você** | ⛔ | **09/ago.** A 1.1 apontou os três documentos para ela: LGPD art. 18 em 15 dias, Termos em 7 dias úteis. Prazo declarado corre com ou sem alguém do outro lado. Conferir também o `EMAIL_FROM` no Render e nos secrets do Actions — se o comprovante sai do endereço antigo, o "responder" do cliente cai onde nenhum documento aponta |
 
-**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ ~~14~~ ~~15~~ ~~8~~ **todos feitos em 06/ago**
-→ restam **18 → 16 → 17**, nesta ordem. O passo a passo de cada um está em
+**Ordem de execução:** ~~9~~ ~~10~~ ~~12~~ ~~13~~ ~~14~~ ~~15~~ ~~8~~ **em 06/ago** · ~~18~~ **em
+09/ago** → restam **20 → 19 → 16 → 17**, nesta ordem. O passo a passo de cada um está em
 **`docs/runbook-operacao.md` §1**, que é a fonte da verdade do procedimento — aqui fica só o estado.
 
-> **O 18 entrou na frente do 16 em 09/ago, e o motivo é o mesmo que criou a branch.** Ela nasceu
-> para não publicar tentativa e erro num produto que cobra; três dias depois, o que ela guarda são
-> correções de contrato e de tela de cobrança, e é a **ausência** delas que está publicada. Validar
-> a compra real (16) antes de mergear seria carimbar de aprovado um caminho que a própria branch já
-> diz estar errado.
+> **Por que o 20 vem antes de tudo.** Ele é o único com prazo correndo assim que a 1.1 subir: os
+> documentos que apontam para aquela caixa já estão commitados, e no instante em que forem
+> publicados, um pedido de exclusão de dados enviado para lá começa a contar 15 dias. Os outros três
+> esperam sem custo. **Faça o 20 antes do push da 1.1, não depois.**
+>
+> **Publicar a 1.1 sem o carimbo do 19 é a escolha certa**, e é deliberada: a 1.0 que está no ar
+> promete devolução proporcional a quem fraudou, e é justamente o defeito que a 1.1 corrige. Entre
+> um contrato correto sem revisão e um revisado com o defeito, o primeiro protege mais — e a página
+> diz por escrito que a 1.1 não passou por advogado, então ninguém é induzido a nada.
+>
+> ⚠️ **Ordem do deploy da 1.1:** o Render tem de subir **antes** da Vercel. A `LEGAL_VERSIONS` nova
+> aceita `1.1`; enquanto o backend não subir, um checkout já servido pela Vercel envia `1.1` para
+> quem só conhece `1.0` e a resposta é **400 para todo mundo**.
 
-> **Os dois itens que faltam são os dois únicos que dependem de você, não de código.** O 16 é a
-> compra real de ponta a ponta (a única coisa que prova o caminho inteiro com dinheiro de verdade),
-> e o 17 é o lembrete semanal no calendário. Vale notar o desconforto: o 15 já aconteceu, então o
-> checkout **já cobra** de quem chegar nele, e o 16 — a verificação de que esse caminho funciona —
-> ainda não foi feito. A ordem certa teria sido 16 antes de abrir a porta; ela ficou invertida e o
-> jeito de reduzir o risco agora é fazer o 16 logo, não deixá-lo envelhecer.
+> **Quatro dos cinco itens abertos dependem de você, não de código.** Só o 18 é técnico. Vale notar
+> o desconforto que continua de pé desde 06/ago: o 15 já aconteceu, então o checkout **já cobra** de
+> quem chegar nele, e o 16 — a verificação de que esse caminho funciona — ainda não foi feito. A
+> ordem certa teria sido 16 antes de abrir a porta; ela ficou invertida e o jeito de reduzir o risco
+> agora é fazer o 16 logo, não deixá-lo envelhecer.
 
 ### 🧪 Como o item 10 foi provado, e por que "o erro sumiu do log" não bastava
 
@@ -103,16 +112,24 @@ resposta foi `CHARGE_NOT_FOUND`, com a tabela vazia — exatamente o esperado.
 
 ### ⚠️ O e-mail do admin não é o e-mail que você usa — descoberto em 06/ago
 
-`ADMIN_EMAILS` foi preenchida com `bernardobarcellosleite@gmail.com` e **nenhuma conta com esse
-e-mail existia no Supabase**. As três contas eram `bernardobarcellos18@gmail.com` (outro e-mail),
-`bernardobarcellosleite@gmail` (sem TLD — a conta quebrada de 05/ago) e a de demonstração.
+`ADMIN_EMAILS` foi preenchida com um endereço e **nenhuma conta com esse e-mail existia no
+Supabase**. As três contas eram outro endereço parecido, uma **sem TLD** (a conta quebrada de
+05/ago) e a de demonstração — três variações do mesmo nome, o que é exatamente o que torna o erro
+invisível a olho nu.
 
 O estorno teria respondido 404 e a descoberta cairia no item 16, com dinheiro real na mesa.
 Resolvido criando a conta com o e-mail certo. **A regra que sai daí:** `ADMIN_EMAILS` não é uma
 configuração de servidor, é uma **afirmação sobre uma conta que precisa existir** — e só o teste
 acima verifica as duas pontas ao mesmo tempo.
 
-**Conta órfã removida na mesma sessão.** A `bernardobarcellosleite@gmail`, sem TLD, foi apagada do
+> **Por que os endereços saíram deste documento em 09/ago.** Eles estavam escritos por extenso aqui,
+> num repositório público, ao lado da frase que diz qual deles abre a rota de estorno. Não é
+> vulnerabilidade — o `requireAdmin` exige token válido do Supabase e devolve 404 para quem não é
+> admin —, mas é entregar o **alvo**: a única conta capaz de mover dinheiro, nominada, com a
+> informação de que é essa. Serve para tentativa de recuperação de senha e para credential stuffing.
+> A lição não depende de saber qual é o e-mail; o e-mail só ajudava quem não deveria ser ajudado.
+
+**Conta órfã removida na mesma sessão.** A conta sem TLD foi apagada do
 Supabase em 06/ago. Ela era a última evidência viva do bug que originou o `lib/emailValidation.ts`:
 o cadastro aceitava e-mail sem TLD, a conta nascia inalcançável e nenhum e-mail — alerta, aviso de
 vencimento, comprovante — chegava nela. A validação impede novas; esta era anterior a ela e ficou
@@ -171,13 +188,18 @@ pelo #24 (`1e281c9`), em 05/ago/2026.
 
 **Testes:** 304 no backend · 133 no frontend. `tsc`, `eslint` e `build` limpos nos dois pacotes.
 
-> 🚨 **Estes números, e as tabelas de correção abaixo, descrevem a branch `fix/pontas-soltas` — não
-> o que está no ar.** A produção serve a `main`, que está três dias atrás. Ver a seção
-> "A BRANCH ESTÁ TRÊS DIAS À FRENTE DA PRODUÇÃO".
+> ✅ **Desde 09/ago, `main` e produção servem o mesmo texto** (PRs #25 e #27). A ressalva que morava
+> aqui — *"estes números descrevem a branch, não o que está no ar"* — deixou de existir. A única
+> coisa ainda fora da `main` é a **versão 1.1 dos documentos legais**, que espera o push.
 
 > ⚠️ **Este é o único lugar do repositório que carrega a contagem de testes.** A §4.5 já teve os
 > números repetidos (“271 passando”), envelheceu sozinha e passou a ensinar quem executava o
 > checklist a ignorar o desvio. Um fato mora num lugar só — inclusive quando o fato é um número.
+>
+> **Em 09/ago a regra falhou por omissão:** o README carregava "398 tests" em três lugares, estava
+> errado por 39, e não constava do mapa de donos da verdade — a regra foi escrita e o arquivo mais
+> lido do repositório ficou de fora dela. O número saiu do README em vez de ser corrigido lá:
+> contagem que precisa de duas atualizações erra na primeira pressa.
 
 > **09/ago/2026 — quarta varredura da `fix/pontas-soltas`, em duas passadas.**
 >
@@ -209,35 +231,46 @@ O que muda na prática, e vale ler antes de mexer em qualquer coisa:
 > afirmação desatualizada aqui que custou semanas de alerta semanal sem envio — o caso que originou
 > a regra "um fato mora num lugar só".
 
-### 🚨 09/ago/2026 — A BRANCH ESTÁ TRÊS DIAS À FRENTE DA PRODUÇÃO, E ISSO IMPORTA
+### ✅ 09/ago/2026 — A DIVERGÊNCIA ENTRE BRANCH E PRODUÇÃO ACABOU (e a §🚨 que estava aqui errou duas vezes)
 
-> **Descoberto navegando o site em produção como cliente**, não lendo código. É o achado mais
-> importante desta sessão e ele não aparece em nenhum teste, porque os testes rodam contra a branch.
+**A `fix/pontas-soltas` e a `legal/privacidade-e-reembolso` foram mergeadas na `main`** pelos PRs
+**#25** (`0ed2c49`, 12:16) e **#27** (`c2244bd`, 13:10), em squash. A `main` passou a servir o texto
+corrigido, e a produção com ela. Conferido pelos dois lados no mesmo dia:
 
-A `main` — o que qualquer visitante vê **agora** em `precos-combustivel-br.vercel.app` — ainda serve
-**todas** as frases que a tabela abaixo e a de 06/ago dão como corrigidas. Verificado por fetch
-direto das páginas publicadas:
-
-| Página em produção | O que ela ainda diz hoje |
+| Conferência | Resultado |
 |---|---|
-| `/premium.html` | *"Estamos medindo o interesse antes de lançar"* · *"Preço de fundador **travado** enquanto você for assinante"* · *"seu celular avisa"* · *"12 meses de histórico"* como benefício pago |
-| `/termos.html`, `/privacidade.html`, `/reembolso.html` | *"Documento em rascunho, ainda não revisado por advogado"* |
-| `/checkout.html` | `id="simBtn"` presente no HTML estático, com listener ligado (oculto só porque o `#pixPanel` ancestral está `display:none`) |
+| Rodapé do `/termos.html` em produção | *"Versão 1.0 · revisado por advogado em 6 de agosto de 2026"* — igual ao `origin/main` |
+| `robots` do `/premium.html` | `index, follow` nos dois |
+| `id="simBtn"` fora de comentário no `/checkout.html` | **0** ocorrências nos dois |
 
-**Por que isto é diferente de "ainda não deu tempo de mergear".** A decisão de acumular numa branch
-foi tomada em 06/ago com um argumento correto — *"a main publica sozinha, e o produto cobra dinheiro
-real"*. Só que o conteúdo da branch mudou de natureza desde então: ela deixou de ser refatoração
-interna e virou **correção de texto de contrato numa loja aberta**. Cada dia sem merge é um dia em
-que a landing promete preço travado que não existe, e os documentos legais depreciam a si mesmos
-diante de quem vai pagar.
+**Item 18 fechado.** A Vercel publica a `main`, como sempre se supôs.
 
-O argumento original agora aponta para o outro lado: *porque* cobra dinheiro real é que estas
-correções precisam subir.
+#### O que esta seção afirmou de errado, nesta ordem
 
-> ⚠️ **Cuidado ao ler a §"Onde o produto está".** Ela diz "no ar e funcionando, checkout cobrando de
-> verdade" a poucas linhas de tabelas de correções marcadas "fora da main". As duas afirmações são
-> verdadeiras e a leitura natural — *o produto no ar está corrigido* — é falsa. Ao mergear, apague
-> este aviso; enquanto ele estiver aqui, é porque a divergência existe.
+Vale o registro porque os dois erros são de classes diferentes e o segundo é o mais instrutivo.
+
+**Primeiro erro (06–09/ago):** a seção dizia que a produção servia frases já corrigidas. Isso era
+verdade quando foi escrita e deixou de ser às 13:10, quando o #27 subiu. Envelhecimento comum — o
+motivo pelo qual este documento existe.
+
+**Segundo erro (09/ago, na auditoria pré-post):** a seção foi reescrita afirmando o oposto — que
+*"o deploy de produção não sai da `main`"* — com tabela, evidência de fetch e uma lição sobre
+verificar premissas. **Também estava errado, e por um motivo pior.**
+
+A produção foi comparada contra o `main` **local**, que apontava para `2e75b86`. O merge tinha
+acontecido no GitHub minutos antes e **nenhum `git fetch` foi rodado**. Como o conteúdo publicado
+não batia com aquele ref velho, a conclusão foi que a Vercel publicava de outro lugar. A evidência
+era real; a referência contra a qual ela foi comparada é que estava desatualizada.
+
+**A regra que sai daí, e que é nova:** *um `git log` local não é evidência sobre o estado remoto.*
+Ref local é cache, e cache sem `fetch` mente com a mesma cara de quem diz a verdade — inclusive
+sobre a `main`, que é a que todo mundo assume estar em dia. Toda afirmação sobre "o que está no
+GitHub" ou "o que está publicado" precisa de um `git fetch` na mesma sessão, antes.
+
+**E a ironia, que também vale registrar:** a seção errada acusava o projeto de *deduzir sem
+verificar* ("a Vercel publica a main, a main está atrasada, logo..."), e chegou lá pelo mesmo
+caminho — só que uma camada acima, na premissa de que o ref local estava em dia. Diagnóstico
+correto, aplicado ao autor errado.
 
 ### 🔧 Corrigido em 09/ago/2026 — o que o uso real do produto encontrou
 
@@ -1394,7 +1427,7 @@ Conferir em **desktop e mobile** (largura 390 px), tema claro e escuro:
 | C1 | `/` | Seletor de combustível/UF/município, gráfico, estado vazio |
 | C2 | `/premium.html` | Preços **R$ 16,90 e R$ 59,90** — têm de bater com `PLAN_PRICE_CENTS` |
 | C3 | `/premium.html` | Nenhuma promessa de renovação automática. A compra é avulsa |
-| C4 | `/termos.html`, `/privacidade.html`, `/reembolso.html` | Abrem, versão bate com `LEGAL_VERSION = 1.0` |
+| C4 | `/termos.html`, `/privacidade.html`, `/reembolso.html` | Abrem, e as três exibem a **mesma** versão, igual à que o `checkout.html` envia e presente em `LEGAL_VERSIONS`. Não confira contra um número escrito aqui: este item já apontou para `1.0` depois de a 1.1 existir |
 | C5 | Rodapé e links internos | Apontam para o **arquivo real** (`/premium.html`), não para o apelido |
 | C6 | `/premium/checkout` deslogado | Manda logar, não quebra |
 
