@@ -19,15 +19,15 @@
     "db:stats": "ts-node-dev --transpile-only scripts/dbStats.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.8",
-    "axios": "^1.7.9",
+    "@supabase/supabase-js": "^2.112.2",
+    "axios": "^1.19.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
     "node-cron": "^4.6.0",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.0.5",
     "pino": "^10.3.1",
     "zod": "^4.4.3"
   },
@@ -43,7 +43,7 @@
     "supertest": "^7.2.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.23.0",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^4.1.10"
   }
 }
